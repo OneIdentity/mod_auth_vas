@@ -1,4 +1,5 @@
-# $Vintela: Makefile,v 1.10 2005/04/23 04:47:17 davidl Exp $
+# $Vintela: Makefile,v 1.12 2005/09/15 04:14:14 davidl Exp $
+# (c) 2005 Quest Software, Inc. All rights reserved.
 
 #-- Uncomment the following for SuSE linux with apache2
 #APXS=		/usr/sbin/apxs2
@@ -7,6 +8,17 @@
 #-- Uncomment the following for AIX 5.1 with gcc and apache 1.3.31
 #APXS=		/usr/sbin/apxs
 #APXSFLAGS=	-S CC=gcc -Wl,-bexpall
+
+#-- Uncomment the following for HPUX using hpuxwsApache and gcc
+#APXS=           /opt/hpws/apache/bin/apxs
+#APXSFLAGS=      -S CC=gcc
+
+#-- Uncomment the following for Solaris with IBM HTTP Server 6
+#   using gcc. (You will also need to remove the later MODSO definition
+#CC=             /usr/local/bin/gcc
+#APXS=           /opt/IBMIHS/bin/apxs
+#APXSFLAGS=      -S CC=$(CC) -Wl,`$(CC) -print-libgcc-file-name`
+#MODSO=          $(MOD).la
 
 MOD=		mod_auth_vas
 SRCS=		$(MOD).c
@@ -29,6 +41,8 @@ $(MODSO): $(SRCS)
 	rm -f $(MODSO)
 	$(APXS) -c $(APXSFLAGS) \
 	    $(CPPFLAGS) $(LDFLAGS) $(LDADD) $(DEBUG) $(SRCS)
+	#-- the following line may be needed if libtool is broken
+	#gcc -shared -o $(MODSO) $(LDFLAGS) $(LDADD) $(MOD).o
 
 install: $(MODSO)
 	$(SUDO) $(APXS) -i $(APXSFLAGS) -a $(MODSO)
