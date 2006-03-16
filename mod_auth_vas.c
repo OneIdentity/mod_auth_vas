@@ -1,10 +1,9 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
- * Copyright 2004-2005, Vintela, Inc.
- * $Vintela: mod_auth_vas.c,v 1.22 2005/04/26 04:00:58 davidl Exp $
+ * 
+ * $Vintela: mod_auth_vas.c,v 1.27 2006/01/12 04:12:30 davidl Exp $
  *
- *   Copyright (c) 2004, 2005 Vintela, Inc.
- *
+ *   (c) 2005 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -12,24 +11,26 @@
  *   are met:
  *
  *   a. Redistributions of source code must retain the above copyright
- *   notice, this list of conditions and the following disclaimer.
+ *      notice, this list of conditions and the following disclaimer.
  *   b. Redistributions in binary form must reproduce the above copyright
- *   notice, this list of conditions and the following disclaimer in the
- *   documentation and/or other materials provided with the distribution.
- *   c. Neither the name of Vintela, Inc. nor the names of its contributors
- *   may be used to endorse or promote products derived from this software
- *   without specific prior written permission. THIS SOFTWARE IS PROVIDED
- *   BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS
- *   OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- *   ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
- *   BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
- *   OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
- *   OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- *   BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- *   WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- *   OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *   EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *      notice, this list of conditions and the following disclaimer
+ *      in the documentation and/or other materials provided with the
+ *      distribution.
+ *   c. Neither the name of Quest Software, Inc. nor the names of its
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission. THIS
+ *      SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ *      "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT
+ *      NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+ *      FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT
+ *      SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY
+ *      DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ *      DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE
+ *      GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ *      INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ *      WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+ *      NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ *      THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
 
@@ -52,13 +53,13 @@
 # if APR_HAS_USER
 #  include <unixd.h>
 # else
-#  warning "HAVE_UNIX_SUEXEC disabled without APR_HAS_USER"
+#  warning "Disabling HAVE_UNIX_SUEXEC because APR user support not available"
 #  undef HAVE_UNIX_SUEXEC
 # endif
 #endif
 
 #if !defined(STANDARD20_MODULE_STUFF)
-# define APXS1 /* Apache 1.3.x */
+# define APXS1 1 /* Apache 1.3.x */
 #endif
 
 /*
@@ -124,7 +125,7 @@
  */
 #define VAS_AUTH_TYPE		    "VAS"
 #define DEFAULT_SERVICE_PRINCIPAL   "HTTP/"
-#define MODAUTHVAS_VERSION	    "3.1.2"
+#define MODAUTHVAS_VERSION	    "3.1.3e"
 
 /* Flag values for directory configuration */
 #define FLAG_UNSET	(-1)
@@ -174,33 +175,34 @@
     (auth_vas_dir_config *)ap_get_module_config(cv, &auth_vas_module)
 
 /*
- * Macros for keeping the GSSAPI context in the connection record.
+ * Macros for keeping the VAS context in the request record notes.
+ * NB Request ontes may not always be available (eg apache 1.3 without EAPI).
  */
-
 #if defined(APXS1) /* Apache 1.3.x */
-# if defined(EAPI)
+# if defined(EAPI) /* extended API available */
 #  include "ap_ctx.h"
-#  define CONN_NOTE_KEY "rc.vintela.com/mod_auth_vas/conn_note"
-#  define GET_CONN_NOTE(c) \
-    (auth_vas_conn_note *)((c)->ctx			\
-	? ap_ctx_get((c)->ctx, CONN_NOTE_KEY)		\
+#  define RNOTE_KEY "rc.vintela.com/mod_auth_vas/request_note"
+#  define GET_RNOTE(r) 						\
+    (auth_vas_rnote *)((r)->ctx					\
+	? ap_ctx_get((r)->ctx, RNOTE_KEY)			\
 	: NULL)
-#  define SET_CONN_NOTE(c, note)				\
-    do {						\
-       if (!(c)->ctx)					\
-	   (c)->ctx = ap_ctx_new((c)->pool);		\
-       ap_ctx_set((c)->ctx, CONN_NOTE_KEY, note);	\
+#  define SET_RNOTE(r, note)					\
+    do {							\
+       if (!(r)->ctx)						\
+	   (r)->ctx = ap_ctx_new((r)->pool);			\
+       ap_ctx_set((r)->ctx, RNOTE_KEY, note);			\
     } while (0)
 # else /* !EAPI */
-#  define GET_CONN_NOTE(c)		NULL
-#  define SET_CONN_NOTE(c, note)	/* */
+ # warning "No EAPI support detected; diminished functionality"
+#  define GET_RNOTE(r)		NULL
+#  define SET_RNOTE(r, note)	/* */
 # endif /* EAPI */
 #else /* apache 2.0.x */
-# define GET_CONN_NOTE(c) \
-    (auth_vas_conn_note *)ap_get_module_config((c)->conn_config, \
+# define GET_RNOTE(r) 						\
+    (auth_vas_rnote *)ap_get_module_config((r)->request_config, \
 					       &auth_vas_module)
-# define SET_CONN_NOTE(c, note) \
-    ap_set_module_config((c)->conn_config, &auth_vas_module, note)
+# define SET_RNOTE(r, note) 					\
+    ap_set_module_config((r)->request_config, &auth_vas_module, note)
 #endif /* apache 2.0.x */
 
 /*
@@ -221,12 +223,12 @@ typedef struct {
 } auth_vas_dir_config;
 
 /*
- * Per-connection note data - exists for lifetime of connection.
+ * Per-request note data - exists for lifetime of request only.
  */
 typedef struct {
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
     gss_buffer_desc client;		/* exported mech name */
-} auth_vas_conn_note;
+} auth_vas_rnote;
 
 
 /* Forward declaration for module structure: see bottom of this file. */
@@ -274,8 +276,10 @@ static void auth_vas_unlock() {
 static const char *
 server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 {
+    	/* NB The casts to (char *) are to stop warnings under Apache 1.3.x */
 	return ap_set_string_slot(cmd, 
-	    (char *)GET_SERVER_CONFIG(cmd->server->module_config), (char *)arg);
+	    (char *)GET_SERVER_CONFIG(cmd->server->module_config), 
+	    (char *)arg);
 }
 
 /*
@@ -528,9 +532,11 @@ static const struct match {
 };
 
 /**
- * Returns true if the configure authentication type for the
- * request should be understood by this module.
+ * Returns true if the configured authentication type for the
+ * request is understood by this module.
  *   @param r The request being authenticated
+ *   @return true if the AuthType is "VAS", or the
+ *           AuthType is "Basic" and AuthVasUseBasic is on.
  */
 static int
 is_our_auth_type(const request_rec *r)
@@ -555,8 +561,8 @@ is_our_auth_type(const request_rec *r)
 
 /**
  * Authorization phase hook.
- * This hook is called after check_user_id, to determine if
- * the previously authenticated user is permitted to access the
+ * This hook is called after check_user_id hook, to determine if
+ * the now-authenticated user is permitted access the
  * resource.
  *
  * The general contract appears to be:
@@ -566,8 +572,8 @@ is_our_auth_type(const request_rec *r)
  *   - as soon as a require line can be satisfied, return OK
  *   - if there were no 'valid' lines, return DECLINED
  *   @param r The request being authenticated
- *   @return OK if the client could be authenticated, or HTTP_FORBIDDEN
- * if it couldn't.
+ *   @return OK if the client user is authorized access, or HTTP_FORBIDDEN
+ *           if it isn't.
  */
 static int
 auth_vas_auth_checker(request_rec *r)
@@ -674,8 +680,8 @@ auth_vas_auth_checker(request_rec *r)
  *   @param r the request
  *   @param user the user's name
  *   @param password the password to authenticate against
- *   @return OK if credentials could be obtained for that user to use
- *	      this service
+ *   @return OK if credentials could be obtained for the user 
+ *           with the given password to access this HTTP service
  */
 static int
 do_basic_accept(request_rec *r, const char *user, const char *password)
@@ -685,15 +691,24 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     vas_t *vas = NULL;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
 
-    TRACE_R(r, "do_basic_accept: user='%s' password='%s'", user, password );
+    TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
 
     LOCK_VAS();
 
     error = vas_alloc(&vas, user);
     if (error) {
+	char *errstr;
+#if defined(APXS1)
+	errstr = strerror(error);
+#else
+	char errbuf[256];
+	errstr = apr_strerror(APR_FROM_OS_ERROR(error), errbuf,
+		sizeof errbuf);
+#endif
 	rval = HTTP_INTERNAL_SERVER_ERROR;
-	LOG_RERROR(APLOG_ERR, 0, r,
-		"vas_alloc: error=%d", error);
+	LOG_RERROR(APLOG_ERR, APR_FROM_OS_ERROR(error), r, 
+		"vas_alloc: error=%d (%s) while initialising user principal",
+	       	error, errstr ? errstr : "?");
 	goto done;
     }
     ASSERT(vas != NULL);
@@ -776,29 +791,43 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
 
 }
 
-/**
- * Cleans up an auth_vas_conn_note.
- * This function is called when a connection pool is released.
- * It is attached to the pool during do_gss_spnego_accept().
- * It releases GSS storage associated with the connection, if any.
- */
-static CLEANUP_RET_TYPE
-auth_vas_cleanup_connection(void *data)
+/** Initialises an new rnote to an empty state. */
+static void
+rnote_init(auth_vas_rnote *rn)
+{
+    rn->gss_ctx = GSS_C_NO_CONTEXT;
+    rn->client.value = NULL;
+}
+
+/** Releases storage associated with the rnote. */
+static void
+rnote_fini(request_rec *r, auth_vas_rnote *rn)
 {
     OM_uint32 gsserr, minor;
-    conn_rec *connection = (conn_rec *)data;
-    auth_vas_conn_note *cn;
 
-    TRACE_P(connection->pool, "auth_vas_cleanup_connection");
-    cn = GET_CONN_NOTE(connection);
-    if (cn != NULL && cn->gss_ctx != GSS_C_NO_CONTEXT) {
-	gsserr = gss_delete_sec_context(&minor, &cn->gss_ctx, NULL);
+    if (rn->gss_ctx != GSS_C_NO_CONTEXT) {
+	gsserr = gss_delete_sec_context(&minor, &rn->gss_ctx, NULL);
 	if (gsserr != GSS_S_COMPLETE)
-	    LOG_ERROR(APLOG_ERR, 0, connection->base_server,
+	    LOG_RERROR(APLOG_ERR, 0, r,
 		"gss_delete_sec_context: error %d", gsserr);
-	if (cn->client.value)
-	    gss_release_buffer(&minor, &cn->client);
-	SET_CONN_NOTE(connection, NULL);
+	if (rn->client.value)
+	    gss_release_buffer(&minor, &rn->client);
+    }
+}
+
+/** This function is called when the request pool is being released. */
+static CLEANUP_RET_TYPE
+auth_vas_cleanup_request(void *data)
+{
+    request_rec *r = (request_rec *)data;
+    auth_vas_rnote *rn;
+
+    /* XXX Really shouldn't draw from the pool while cleaning it up! */
+    TRACE_P(r->pool, "auth_vas_cleanup_request");
+    rn = GET_RNOTE(r);
+    if (rn != NULL) {
+	rnote_fini(r, rn);
+	SET_RNOTE(r, NULL);
     }
     CLEANUP_RETURN;
 }
@@ -817,10 +846,10 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     const char	   *auth_param;
     unsigned char  *out_token = NULL;
     size_t	    out_token_size = 0;
-    char	   *in_token;
+    char           *in_token;
     int		    in_token_size;
     const auth_vas_server_config *sc;
-    auth_vas_conn_note *cn;
+    auth_vas_rnote *rn;
 
     ASSERT(r != NULL);
     ASSERT(auth_line != NULL);
@@ -838,18 +867,17 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
     /* Store negotiation context in the connection record */
-    cn = GET_CONN_NOTE(r->connection);
-    if (cn == NULL) {
-	TRACE_R(r, "auth_vas_conn_note: init GSS context for connection");
-	cn = (auth_vas_conn_note *)apr_palloc(r->connection->pool, sizeof *cn);
-	cn->gss_ctx = GSS_C_NO_CONTEXT;
-	cn->client.value = NULL;
-	SET_CONN_NOTE(r->connection, cn);
-	/* Release the GSS structure when the connection closes */
-	apr_pool_cleanup_register(r->connection->pool, r->connection,
-		auth_vas_cleanup_connection, apr_pool_cleanup_null);
+    rn = GET_RNOTE(r);
+    if (rn == NULL) {
+	TRACE_R(r, "auth_vas_rnote: init GSS context for connection");
+	rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
+	rnote_init(rn);
+	SET_RNOTE(r, rn);
+	/* Arrange to release the RNOTE data when the request completes */
+	apr_pool_cleanup_register(r->pool, r,
+		auth_vas_cleanup_request, apr_pool_cleanup_null);
     } else {
-	TRACE_R(r, "auth_vas_conn_note: using existing GSS context");
+	TRACE_R(r, "auth_vas_rnote: using existing GSS context");
     }
 
     /* Decode the BASE64 GSSAPI token */
@@ -862,9 +890,9 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     LOCK_VAS();
 
     /* Accept token */
-    TRACE_R(r, "calling vas_gss_spnego_accept token_size=%d",in_token_size);
-    gsserr = vas_gss_spnego_accept(sc->vas, &cn->gss_ctx, NULL,
-	VAS_GSS_SPNEGO_ENCODING_DER, in_token, in_token_size,
+    TRACE_R(r, "calling vas_gss_spnego_accept token_size=%d", in_token_size);
+    gsserr = vas_gss_spnego_accept(sc->vas, &rn->gss_ctx, NULL,
+	VAS_GSS_SPNEGO_ENCODING_DER, (unsigned char *)in_token, in_token_size,
 	&out_token, &out_token_size, NULL);
 
     /* Handle completed GSSAPI negotiation */
@@ -874,7 +902,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
 
 	/* Get the client's name */
-	err = gss_inquire_context(&minor_status, cn->gss_ctx, &client_name,
+	err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
 		NULL, NULL, NULL, NULL, NULL, NULL);
 	if (err != GSS_S_COMPLETE) {
 	    result = HTTP_UNAUTHORIZED;
@@ -884,7 +912,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	}
 
 	/* Keep a copy of the client's MN in the connection note */
-	err = gss_export_name(&minor_status, client_name, &cn->client);
+	err = gss_export_name(&minor_status, client_name, &rn->client);
 	if (err != GSS_S_COMPLETE) {
 	    result = HTTP_UNAUTHORIZED;
 	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
@@ -901,7 +929,12 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	}
 
 	/* Copy out the authenticated user's name */
+#if defined(APXS1)
+	/* http://httpd.apache.org/docs/misc/API.html */
+	RUSER(r) = apr_pstrmemdup(r->connection->pool, buf.value, buf.length);
+#else
 	RUSER(r) = apr_pstrmemdup(r->pool, buf.value, buf.length);
+#endif
 	gss_release_buffer(&minor_status, &buf);
 	if (RUSER(r) == NULL) {
 	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_pstrmemdup");
@@ -914,9 +947,13 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	/* Authentication has succeeded at this point */
 	RAUTHTYPE(r) = (char *)VAS_AUTH_TYPE;
 	result = OK;
+    } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
+	TRACE_R(r, "waiting for more tokens from client");
+	result = HTTP_UNAUTHORIZED;
     } else {
 	/* Any other result means we send back an Unauthorized result */
-	TRACE_R(r, "vas_gss_spnego_accept did not complete; UNAUTHORIZED");
+	LOG_RERROR(APLOG_ERR, 0, r,
+	    "vas_gss_spnego_accept: %s", vas_error_str(sc->vas));
 	result = HTTP_UNAUTHORIZED;
     }
 
@@ -945,7 +982,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	/* Construct the header value string */
 	strcpy(auth_out, NEGOTIATE_TEXT);
-	apr_base64_encode(auth_out + NEGOTIATE_SIZE, out_token,
+	apr_base64_encode(auth_out + NEGOTIATE_SIZE, (char *)out_token,
 		out_token_size);
 	auth_out[NEGOTIATE_SIZE + b64_out_token_size] = '\0';
 
@@ -996,15 +1033,18 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 {
     int error;
     char *name = NULL;
-    auth_vas_server_config *sc = GET_SERVER_CONFIG(s->module_config);
+    auth_vas_server_config *sc;
+   
+    TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
+
+    sc = GET_SERVER_CONFIG(s->module_config);
+    TRACE_S(s, "sc=%p", (void *)sc);
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
 	    "auth_vas_server_init: no server config");
 	return;
     }
-
-    TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
 
     if (sc->vas != NULL) {
 	TRACE_S(s, "auth_vas_server_init: already initialised");
@@ -1013,13 +1053,24 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
     TRACE_S(s, "auth_vas_server_init: spn='%s'", sc->service_principal);
 
+    /* Obtain a new VAS context for the web server */
     error = vas_alloc(&sc->vas, sc->service_principal);
     if (error) {
-	LOG_ERROR(APLOG_ERR, 0, s,
-	    "vas_alloc: error = %d", error);
+	char *errstr;
+#if defined(APXS1)
+	errstr = strerror(error);
+#else
+	char errbuf[256];
+	errstr = apr_strerror(APR_FROM_OS_ERROR(error), errbuf,
+		sizeof errbuf);
+#endif
+	LOG_ERROR(APLOG_ERR, APR_FROM_OS_ERROR(error), s, 
+		"vas_alloc: error=%d (%s) while initialising as %s uid=%d",
+	       	error, errstr ? errstr : "?", sc->service_principal, getuid());
 	return;
     }
 
+    /* Access the keytab */
     error = vas_authenticate(sc->vas, NULL);
     if (error) {
 	vas_info_identity(sc->vas, NULL, &name);
@@ -1034,6 +1085,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	return;
     }
 
+    /* Record our name - XXX do this at a higher LogLevel? */
     vas_info_identity(sc->vas, NULL, &name);
     TRACE_S(s, "auth_vas_server_init: authenticated as '%s'", name);
     if (name != NULL)
@@ -1139,7 +1191,7 @@ auth_vas_check_user_id(request_rec *r)
     /* Determine if its an ANY or ALL match on requirements */
     requires = ap_requires(r);
 
-    /* Pick out the client's Authorization header(s) */
+    /* Pick out the client request's Authorization header(s) */
     auth_line = apr_table_get(r->headers_in, "Authorization");
     if (!auth_line)
     {
@@ -1237,7 +1289,7 @@ auth_vas_check_user_id(request_rec *r)
 
 #if HAVE_UNIX_SUEXEC
 /**
- * Provides uid/gif of a VAS authenticated user, for when suEXEC is enabled.
+ * Provides uid/gid of a VAS authenticated user, for when suEXEC is enabled.
  * @param r curent request
  * @return pointer to an identity structure
  */
@@ -1333,6 +1385,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
 }
 
 /**
+ * Performs post-configuration initialisation.
  * Called after all module config structures have been constructed,
  * and all modules have been loaded. This function is often called twice
  * (since module dependencies may cause a re-scan/re-load).
@@ -1355,14 +1408,15 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
 	    module_info);
 
     /* Create a VAS context for each virtual host */
-    for (sp = s; sp; sp = sp->next)
+    for (sp = s; sp; sp = sp->next) {
 	auth_vas_server_init(p, sp);
+    }
 
     return OK;
 }
 
 /**
- * Initialise per-process mutexes.
+ * Initialises per-process mutexes.
  * This function is called when the server forks a new process.
  * We initialise the process-wide VAS mutex used to
  * control exclusive access to the thread-unsafe VAS
@@ -1398,7 +1452,7 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
 
 #if !defined(APXS1)
 /**
- * Registers this module's hook functions into Apache runtime hook lists.
+ * Registers this module's hook functions into Apache2 runtime hook lists.
  * This function is called immediately after our shared library image
  * has been loaded into memory.
  */
@@ -1419,7 +1473,7 @@ auth_vas_register_hooks(apr_pool_t *p)
 }
 
 /*
- * The public module interface for APXS 2.
+ * This Apache2 module's public interface
  */
 module AP_MODULE_DECLARE_DATA auth_vas_module =
 {
@@ -1447,8 +1501,8 @@ auth_vas_init(server_rec *s, pool *p)
 }
 
 /*
- * The public module interface for APXS 1.
- * Before APXS2, each hook has its own slot in the module export table.
+ * The Apache1 module's public interface.
+ * Each hook has its own slot in the module export table.
  */
 module MODULE_VAR_EXPORT auth_vas_module =
 {
