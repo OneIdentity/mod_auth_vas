@@ -1,5 +1,6 @@
 #! /bin/sh
-# $Vintela: setup.sh,v 1.4 2005/04/11 12:48:57 davidl Exp $
+# (c) 2005 Quest Software, Inc. All rights reserved.
+# $Vintela: setup.sh,v 1.5 2005/10/19 11:44:20 davidl Exp $
 #
 # This helper script is provided to simplify setting up mod_auth_vas
 # on a basic web server. It creates the HTTP service for the computer
@@ -9,6 +10,7 @@
 KEYTAB=/etc/opt/vintela/vas/HTTP.keytab
 PKGNAME=apache2-mod_auth_vas
 VASTOOL=/opt/vintela/vas/bin/vastool
+LOGFILE=/tmp/mod_auth_vas-setup.log
 
 echo1 () { echo -n "$*"; }
 echo2 () { echo "$*\\c"; }
@@ -21,6 +23,8 @@ elif test "x`echo2 y`z" = "xyz"; then
 else
     echon () { echo3 "$*"; }
 fi
+
+umask 077
 
 #-- prints a label with dots after it, and no newline
 label () {
@@ -47,12 +51,32 @@ query () {
     done
 }
 
+yesorno () {
+    echo "";
+    while :; do
+	query "$1" YESORNO y
+	case "$YESORNO" in
+	    Y*|y*) echo; return 0;;
+	    N*|n*) echo; return 1;;
+	    *) echo "Please enter 'y' or 'n'" >&2;;
+	esac
+    done
+}
+
+recordcmd () {
+    (echo "# `date`";
+    echo "$*";
+    echo ) >> $LOGFILE
+    "$@"
+}
+
 #-- intro
 cat <<-.
 
 	This script checks your local configuration for properly using mod_auth_vas.
 	It will prompt you to create a web service object in Active Directory
 	if one is needed, and it will correct permissions on certain files.
+	Commands executed are record in $LOGFILE
 
 .
 
@@ -115,27 +139,31 @@ else
 	You will need to know an account password that has
 	sufficient privileges to create the new service object.
 	Contact your systems administration staff if you do not.
-
-	Please login with a domain account to create the HTTP/ service:
 .
-    checkroot
-    query "Username" USER Administrator
-    $VASTOOL -u "$USER" service create HTTP/ || \
-    	die "Cannot create HTTP/ service key - ring support!"
+    if yesorno "Create the HTTP/ service account?"; then
+        echo "Please login with a domain account to create the HTTP/ service:"
+        checkroot
+        query "Username" USER Administrator
+        recordcmd $VASTOOL -u "$USER" service create HTTP/ || \
+	    die "Cannot create HTTP/ service key: contact your IT support"
 
-    label "looking for HTTP/ keytab"
-    if test -f $KEYTAB; then 
-	echo "found"
+	label "looking for HTTP/ keytab"
+	if test -f $KEYTAB; then 
+	    echo "found"
+	else
+	    echo "still not found"
+	    die "Cannot find $KEYTAB"
+	fi
+	echo ""
+	$VASTOOL ktlist $KEYTAB
+	echo ""
     else
-	echo "still not found"
-	die "Cannot find $KEYTAB"
+	echo "(Not creating HTTP/ service account)"
     fi
-    echo ""
-    $VASTOOL ktlist $KEYTAB
-    echo ""
 fi
 
-if test ! -n "$APACHE_USER"; then
+if test -f $KEYTAB; then
+  if test ! -n "$APACHE_USER"; then
     echo ""
     echo "The apache server process must be able to access the keytab."
     echo "Tell me what username it will run as, and I'll correct the"
@@ -143,22 +171,30 @@ if test ! -n "$APACHE_USER"; then
     echo ""
     query "User for apache process" APACHE_USER nobody
     echo ""
-fi
+  fi
 
-label "checking keytab is readable by $APACHE_USER"
-set -- `/bin/ls -l $KEYTAB`
-case "$1:$3" in
+  label "checking keytab is readable by $APACHE_USER"
+  set -- `/bin/ls -l $KEYTAB`
+  case "$1:$3" in
     -??????r??:*) echo "yes" ;;
     -r????????:$APACHE_USER) echo "yes" ;;
     *) echo "no"
-       label " -> fixing file mode and ownership"
-       checkroot
-       chown $APACHE_USER $KEYTAB || die "Could not change file owner"
-       chmod u+r $KEYTAB || die "Could not change file mode"
-       echo "fixed"
+       if yesorno "Change ownership of $KEYTAB to $APACHE_USER?"; then
+           label " -> fixing file mode and ownership"
+           checkroot
+           recordcmd chown $APACHE_USER $KEYTAB || 
+	       die "Could not change file owner"
+           recordcmd chmod 400 $KEYTAB || 
+	   	die "Could not change file mode"
+           echo "fixed"
+       else
+	   echo "(Not changing ownership)"
+       fi 
        ;;
-esac
+  esac
+fi
 
 echo ""
-echo "Everything ${else}looks OK!"
+test -e "$LOGFILE" && echo "(Log written to $LOGFILE)"
+echo "Finished."
 exit 0
