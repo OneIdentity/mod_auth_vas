@@ -20,14 +20,24 @@
 #APXSFLAGS=      -S CC=$(CC) -Wl,`$(CC) -print-libgcc-file-name`
 #MODSO=          $(MOD).la
 
+#-- Uncomment the following for Red Hat Enterprise Linux 3
+APXS=		/usr/sbin/apxs
+APXSFLAGS=
+
+#-- Uncomment the right line for your installation of VAS
+VASCONFIG=	vas-config
+#VASCONFIG=	/opt/quest/bin/vas-config
+#VASCONFIG=	/opt/vintela/vas/bin/vas-config
+
 MOD=		mod_auth_vas
 SRCS=		$(MOD).c
 MODSO=		$(MOD).so
-CPPFLAGS=	`/opt/vintela/vas/bin/vas-config --cflags` \
+CPPFLAGS=	`$(VASCONFIG) --cflags` \
 		-DHAVE_UNIX_SUEXEC
-LDFLAGS=	`/opt/vintela/vas/bin/vas-config --libs`
+LDFLAGS=	`$(VASCONFIG) --libs`
 DEBUG=		-DMODAUTHVAS_DIAGNOSTIC \
-          	-DMODAUTHVAS_VERBOSE
+          	-DMODAUTHVAS_VERBOSE \
+		-Wc,-Wall -Wc,-pedantic 
 
 #-- enable AP_DEBUG only if your apache was compiled with -DAP_DEBUG
 #DEBUG+=	-DAP_DEBUG -Wc,-g -Wc,-Wall
@@ -41,8 +51,9 @@ $(MODSO): $(SRCS)
 	rm -f $(MODSO)
 	$(APXS) -c $(APXSFLAGS) \
 	    $(CPPFLAGS) $(LDFLAGS) $(LDADD) $(DEBUG) $(SRCS)
-	#-- the following line may be needed if libtool is broken
-	#gcc -shared -o $(MODSO) $(LDFLAGS) $(LDADD) $(MOD).o
+
+manual-link: $(SRCS)
+	gcc -shared -o $(MODSO) $(LDFLAGS) $(LDADD) $(MOD).o
 
 install: $(MODSO)
 	$(SUDO) $(APXS) -i $(APXSFLAGS) -a $(MODSO)
@@ -56,8 +67,6 @@ dist:
 	PKG=$(MOD)-`sed -ne \
 	    '/^#define MODAUTHVAS_VERSION/s/.*"\([^"]*\)"/\1/p' <$(MOD).c`;\
 	echo "** package name: $$PKG" \
-	&& echo "** updating changelog" \
-	&& cvs2cl -t \
 	&& echo "** copying dist files to /tmp/$$PKG" \
 	&& mkdir -p "/tmp/$$PKG" \
 	&& cp $(DISTFILES) "/tmp/$$PKG" \
@@ -66,3 +75,5 @@ dist:
 	&& rm -rf "/tmp/$$PKG" \
 	&& ls -l "$$PKG.tar.gz"
 
+ChangeLog: $(SRCS) Makefile README NEWS auth_vas.conf setup.sh
+	svn2cl -t || echo "No changelog" > $@
