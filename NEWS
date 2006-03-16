@@ -1,0 +1,12 @@
+3.1.1
+	- Fixes bug 4784 where 'Requires valid-user' directive was ignored
+	- Include keytab setup helper script
+3.1.0
+	- Major fixes for Apache 1 compatibility
+	- Fixes bug 4712 where CGI scripts would core dump
+	- Fixes bug 4713 where AuthVasDefaultRealm directive not recognised
+3.0.1
+	- Enables internal diagnostics by default
+3.0.0
+	- Initial release after re-write
+
