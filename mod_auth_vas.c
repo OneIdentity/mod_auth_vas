@@ -125,7 +125,7 @@
  */
 #define VAS_AUTH_TYPE		    "VAS"
 #define DEFAULT_SERVICE_PRINCIPAL   "HTTP/"
-#define MODAUTHVAS_VERSION	    "3.1.3e"
+#define MODAUTHVAS_VERSION	    "3.2.0"
 
 /* Flag values for directory configuration */
 #define FLAG_UNSET	(-1)
