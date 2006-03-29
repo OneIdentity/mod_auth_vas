@@ -7,9 +7,10 @@
 # (if not done), and changes ownerships on the resulting keytab.
 #
 
-KEYTAB=/etc/opt/vintela/vas/HTTP.keytab
+KEYTAB=/etc/opt/quest/vas/HTTP.keytab
 PKGNAME=apache2-mod_auth_vas
-VASTOOL=/opt/vintela/vas/bin/vastool
+VASTOOL=/opt/quest/bin/vastool
+KTUTIL=/opt/quest/bin/ktutil
 LOGFILE=/tmp/mod_auth_vas-setup.log
 
 echo1 () { echo -n "$*"; }
@@ -86,7 +87,7 @@ id -un
 if test `id -u` -ne 0; then
     checkroot () { 
 	echo ""
-	echo "WARNING: This script may need superuser privileges to complete some tasks"
+	echo "WARNING: This script may need superuser privileges to proceed"
 	echo ""
     }
 else
@@ -128,7 +129,7 @@ else
 fi
 
 label "looking for HTTP/ keytab"
-if test -f $KEYTAB; then
+if test -f "$KEYTAB"; then
     echo "$KEYTAB"
 else
     echo "keytab not found"
@@ -148,21 +149,21 @@ else
 	    die "Cannot create HTTP/ service key: contact your IT support"
 
 	label "looking for HTTP/ keytab"
-	if test -f $KEYTAB; then 
+	if test -f "$KEYTAB"; then 
 	    echo "found"
 	else
 	    echo "still not found"
 	    die "Cannot find $KEYTAB"
 	fi
 	echo ""
-	$VASTOOL ktlist $KEYTAB
+	$KTUTIL -k "$KEYTAB" list
 	echo ""
     else
 	echo "(Not creating HTTP/ service account)"
     fi
 fi
 
-if test -f $KEYTAB; then
+if test -f "$KEYTAB"; then
   if test ! -n "$APACHE_USER"; then
     echo ""
     echo "The apache server process must be able to access the keytab."
@@ -174,7 +175,7 @@ if test -f $KEYTAB; then
   fi
 
   label "checking keytab is readable by $APACHE_USER"
-  set -- `/bin/ls -l $KEYTAB`
+  set -- `/bin/ls -l "$KEYTAB"`
   case "$1:$3" in
     -??????r??:*) echo "yes" ;;
     -r????????:$APACHE_USER) echo "yes" ;;
@@ -182,9 +183,9 @@ if test -f $KEYTAB; then
        if yesorno "Change ownership of $KEYTAB to $APACHE_USER?"; then
            label " -> fixing file mode and ownership"
            checkroot
-           recordcmd chown $APACHE_USER $KEYTAB || 
+           recordcmd chown "$APACHE_USER" "$KEYTAB" || 
 	       die "Could not change file owner"
-           recordcmd chmod 400 $KEYTAB || 
+           recordcmd chmod 400 "$KEYTAB" || 
 	   	die "Could not change file mode"
            echo "fixed"
        else
