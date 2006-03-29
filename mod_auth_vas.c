@@ -1,9 +1,9 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  * 
- * $Vintela: mod_auth_vas.c,v 1.27 2006/01/12 04:12:30 davidl Exp $
+ * $Id$
  *
- *   (c) 2005 Quest Software, Inc.
+ *   (c) 2006 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -209,10 +209,10 @@
  * Per-server configuration structure - exists for lifetime of server process.
  */
 typedef struct {
-    const char *service_principal;	/* VASServicePrincipal or NULL */
-    char *default_realm;		/* AuthVasDefaultRealm (never NULL) */
-    vas_t *vas;				/* Library context:
-					 * call LOCK_VAS() before using */
+    vas_ctx_t   *vas_ctx;           /* The global VAS context - needs locking */
+    vas_id_t    *vas_serverid;      /* The server ID context */
+    const char *service_principal;  /* VASServicePrincipal or NULL */
+    char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
 } auth_vas_server_config;
 
 /*
@@ -226,6 +226,9 @@ typedef struct {
  * Per-request note data - exists for lifetime of request only.
  */
 typedef struct {
+    vas_id_t *vas_userid;		/* The user's identity */
+    char *vas_pname;			/* The user's principal name */
+    vas_auth_t*vas_authctx;		/* the VAS authentication context */
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
     gss_buffer_desc client;		/* exported mech name */
 } auth_vas_rnote;
@@ -233,6 +236,50 @@ typedef struct {
 
 /* Forward declaration for module structure: see bottom of this file. */
 module AP_MODULE_DECLARE_DATA auth_vas_module;
+
+/* Prototypes */
+static const char *server_set_string_slot(cmd_parms *cmd, void *ignored, 
+	const char *arg);
+static int server_ctx_is_valid(server_rec *s);
+static int match_user(request_rec *r, const char *name);
+static int match_group(request_rec *r, const char *name);
+static int dn_in_container(const char *dn, const char *container, int *in_ptr);
+static int match_container(request_rec *r, const char *container);
+static int match_valid_user(request_rec *r, const char *ignored);
+static int is_our_auth_type(const request_rec *r);
+static int auth_vas_auth_checker(request_rec *r);
+static int do_basic_accept(request_rec *r, const char *user, 
+	const char *password);
+static void log_gss_error(const char *file, int line, int level, 
+	apr_status_t result, request_rec *r, const char *pfx, 
+	OM_uint32 gsserr, OM_uint32 gsserr_minor);
+static void rnote_init(auth_vas_rnote *rn);
+static void rnote_fini(request_rec *r, auth_vas_rnote *rn);
+static apr_status_t auth_vas_cleanup_request(void *data);
+static int rnote_get(auth_vas_server_config *sc, request_rec *r, 
+	const char *user, auth_vas_rnote **rn_ptr);
+static int do_gss_spnego_accept(request_rec *r, const char *auth_line);
+static void auth_vas_server_init(apr_pool_t *p, server_rec *s);
+static void add_basic_auth_headers(request_rec *r);
+static void add_auth_headers(request_rec *r);
+static int auth_vas_check_user_id(request_rec *r);
+#if HAVE_UNIX_SUEXEC
+static ap_unix_identity_t *auth_vas_suexec(const request_rec *r);
+#endif
+static void *auth_vas_create_dir_config(apr_pool_t *p, char *dirspec);
+static void *auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, 
+	void *new_conf);
+static apr_status_t auth_vas_server_config_destroy(void *data);
+static void *auth_vas_create_server_config(apr_pool_t *p, server_rec *s);
+static int auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog, 
+	apr_pool_t *ptemp, server_rec *s);
+#if !defined(APXS1)
+static void auth_vas_child_init(apr_pool_t *p, server_rec *s);
+static void auth_vas_register_hooks(apr_pool_t *p);
+#else
+static void auth_vas_child_init(server_rec *s, pool *p);
+static void auth_vas_init(server_rec *s, pool *p);
+#endif
 
 /*
  * The per-process VAS mutex.
@@ -385,7 +432,7 @@ server_ctx_is_valid(server_rec *s)
     ASSERT(s != NULL);
     sc = GET_SERVER_CONFIG(s->module_config);
     ASSERT(sc != NULL);
-    return sc->vas != NULL;
+    return sc->vas_ctx != NULL;
 }
 
 /**
@@ -443,8 +490,10 @@ match_user(request_rec *r, const char *name)
 static int
 match_group(request_rec *r, const char *name)
 {
-    int error;
-    const auth_vas_server_config *sc;
+    vas_err_t                 vaserr;
+    int                       rval;
+    auth_vas_server_config   *sc;
+    auth_vas_rnote           *rnote;
 
     ASSERT(r != NULL);
     ASSERT(name != NULL);
@@ -452,18 +501,96 @@ match_group(request_rec *r, const char *name)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
-    ASSERT(sc->vas != NULL);
+    ASSERT(sc->vas_ctx != NULL);
+
+    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
+        return rval;
+
+    /* Make sure that we have a valid VAS authentication context.
+     * If it's not there, then we'll just fail since there is
+     * no available group information. */
+    if (rnote->vas_authctx == NULL) {
+        LOG_RERROR(APLOG_ERR, 0, r,
+                   "match_group(): no available auth context for %s",
+                   rnote->vas_pname);
+        rval = HTTP_FORBIDDEN;
+    }
+        
 
     LOCK_VAS();
-    error = vas_group_contains_user(sc->vas, name, RUSER(r));
-    if (error == -1) {
+    vaserr = vas_auth_check_client_membership(sc->vas_ctx,
+                                              sc->vas_serverid,
+                                              rnote->vas_authctx,
+                                              name);
+    switch (vaserr) {
+        case VAS_ERR_SUCCESS: /* user is member of group */
+            rval = OK;
+            break;
+            
+        case VAS_ERR_NOT_FOUND: /* user not member of group */
+            rval = HTTP_FORBIDDEN;
 	LOG_RERROR(APLOG_ERR, 0, r,
-	   "vas_group_contains_user(%s): %s", name,
-	   vas_error_str(sc->vas));
+                       "match_group(): %s not member of %s",
+                       rnote->vas_pname,
+                       name);
+            break;
+            
+        case VAS_ERR_EXISTS: /* configured group not found */
+            rval = HTTP_FORBIDDEN;
+            LOG_RERROR(APLOG_ERR, 0, r,
+                       "match_group(): group %s does not exist",
+                       name);
+            break;
+            
+        default: /* other type of error */
+            rval = HTTP_INTERNAL_SERVER_ERROR;
+            LOG_RERROR(APLOG_ERR, 0, r,
+                       "match_group(): fatal vas error: %s",
+                       vas_err_get_string(sc->vas_ctx, 1));
+            break;
     }
     UNLOCK_VAS();
 
-    return error == 1 ? OK : HTTP_FORBIDDEN;
+    return rval;
+}
+
+
+static int
+dn_in_container(const char *dn, const char *container, int *in_ptr)
+{
+    int     rval = 0, in_container = 0;
+    char    *container_copy = NULL; 
+    char    *dn_copy = NULL;
+    char    *tmp = NULL;
+    
+    if (!dn || !container || !in_ptr)
+        return EINVAL;
+    
+    /* we have to copy each string to lowercase them for our comparison */
+    if ((container_copy = strdup(container)) == NULL ||
+        (dn_copy = strdup(dn)) == NULL)
+    {   
+        rval = ENOMEM;
+        goto FINISHED;
+    }   
+    
+    strlwr(container_copy);
+    strlwr(dn_copy);
+    
+    /* see of the ou is part of the dn, and make sure that is the last part
+     * of the string. The dn must end with ou */ 
+    if ((tmp = strstr(dn_copy, container_copy))) {
+        if (strlen(tmp) == strlen(container_copy))
+            in_container = 1;
+    }       
+    
+FINISHED:
+    if (container_copy)    free(container_copy);
+    if (dn_copy)           free(dn_copy);
+
+    *in_ptr = in_container;
+
+    return rval;
 }
 
 /**
@@ -474,29 +601,72 @@ match_group(request_rec *r, const char *name)
  *   @return OK if container contains user, otherwise HTTP_...
  */
 static int
-match_container(request_rec *r, const char *name)
+match_container(request_rec *r, const char *container)
 {
-    int error;
-    const auth_vas_server_config *sc;
+    int                       rval = 0;
+    int                       do_unlock = 0;
+    int                       in_container = 0;
+    vas_err_t                 vaserr;
+    auth_vas_server_config    *sc = NULL;
+    auth_vas_rnote            *rnote = NULL;
+    vas_user_t                *vasuser = NULL;
+    char                      *dn = NULL;
 
     ASSERT(r != NULL);
-    ASSERT(name != NULL);
+    ASSERT(container != NULL);
     ASSERT(RUSER(r) != NULL);
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
-    ASSERT(sc->vas != NULL);
+    ASSERT(sc->vas_ctx != NULL);
+    
+    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
+        return rval;
 
     LOCK_VAS();
-    error = vas_ou_contains_user(sc->vas, name, RUSER(r));
-    if (error == -1) {
+    do_unlock = 1;
+
+    if ((vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid,
+		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
+    {
+        LOG_RERROR(APLOG_ERR, 0, r,
+	       	"match_container(): fatal vas error for user_init: %d, %s",
+	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
+        rval = HTTP_FORBIDDEN;
+        goto done;
+    }
+
+    if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, vasuser,
+		    &dn )) != VAS_ERR_SUCCESS ) 
+    {
 	LOG_RERROR(APLOG_ERR, 0, r,
-	   "vas_ou_contains_user(%s): %s", name,
-	   vas_error_str(sc->vas));
+	       	"match_container(): fatal vas error for user_get_dn: %d, %s",
+	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
+        rval = HTTP_FORBIDDEN;
+        goto done;
     }
     UNLOCK_VAS();
+    do_unlock = 0;
 
-    return error == 1 ? OK : HTTP_FORBIDDEN;
+    dn_in_container(dn, container, &in_container);
+    if (in_container == 1)
+        rval = OK;
+    else {
+        LOG_RERROR(APLOG_DEBUG, 0, r,
+	       	"match_container(): user dn %s not in container %s",
+	       	dn, container);
+        rval = HTTP_FORBIDDEN;
+    }
+
+
+done:
+    if (vasuser) vas_user_free(sc->vas_ctx, vasuser);
+    if (dn)      free(dn);
+
+    if (do_unlock)
+        UNLOCK_VAS();
+
+    return rval;
 }
 
 /**
@@ -686,55 +856,38 @@ auth_vas_auth_checker(request_rec *r)
 static int
 do_basic_accept(request_rec *r, const char *user, const char *password)
 {
-    int error;
-    int rval;
-    vas_t *vas = NULL;
+    int                     rval = HTTP_UNAUTHORIZED;
+    vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
+    auth_vas_rnote         *rn;
 
     TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
 
-    LOCK_VAS();
-
-    error = vas_alloc(&vas, user);
-    if (error) {
-	char *errstr;
-#if defined(APXS1)
-	errstr = strerror(error);
-#else
-	char errbuf[256];
-	errstr = apr_strerror(APR_FROM_OS_ERROR(error), errbuf,
-		sizeof errbuf);
-#endif
-	rval = HTTP_INTERNAL_SERVER_ERROR;
-	LOG_RERROR(APLOG_ERR, APR_FROM_OS_ERROR(error), r, 
-		"vas_alloc: error=%d (%s) while initialising user principal",
-	       	error, errstr ? errstr : "?");
+    /* get the note record with the user's id */
+    if ((rval = rnote_get(sc, r, user, &rn)))
 	goto done;
-    }
-    ASSERT(vas != NULL);
-
-    error = vas_opt_set(vas, VAS_OPT_KRB5_USE_MEMCACHE, "1");
-    if (error) {
-	LOG_RERROR(APLOG_ERR, 0, r,
-		"vas_opt_set: %s", vas_error_str(vas));
-    }
 
     /* Check that the given password is correct */
-    error = vas_authenticate(vas, password);
-    if (error) {
-	rval = HTTP_UNAUTHORIZED;
+    LOCK_VAS();
+    vaserr = vas_id_establish_cred_password(sc->vas_ctx, rn->vas_userid,
+	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
+    if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-		"vas_authenticate(user=%s): %s", user, vas_error_str(vas));
+                   "vas_id_establish_cred_password(user=%s): error= %s",
+                   user, vas_err_get_string(sc->vas_ctx, 1));
 	goto done;
     }
 
-    /* Check that the user can use this service */
-    error = vas_user_login(vas, sc->service_principal, 0 /* do_shell_checks */);
-    if (error) {
-	rval = HTTP_UNAUTHORIZED;
+    /* authenticate the user against our service, and store off the auth context
+     * into the connection note so that we can reuse that later for authz
+     * checks */
+    vaserr = vas_auth(sc->vas_ctx, rn->vas_userid, sc->vas_serverid,
+		&rn->vas_authctx);
+    if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-		"vas_user_login(user=%s, spn=%s): %s",
-		user, sc->service_principal, vas_error_str(vas));
+                   "vas_auth(user=%s): %s",
+                   user,
+                   vas_err_get_string(sc->vas_ctx, 1));
 	goto done;
     }
 
@@ -742,8 +895,6 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 
  done:
     /* Release resources */
-    if (vas)
-	vas_free(vas);
     UNLOCK_VAS();
 
     return rval;
@@ -773,9 +924,9 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
     do {
 	gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
 	more = gss_display_status(&minor_status, gsserr,
-	    GSS_C_GSS_CODE, GSS_C_NO_OID, &seq, &buf);
-	LOG_RERROR(level, result, r, "%s: %.*s", \
-	    pfx, buf.length, (char *)buf.value);
+	       	GSS_C_GSS_CODE, GSS_C_NO_OID, &seq, &buf);
+	LOG_RERROR(level, result, r, "%s: %.*s",
+	       	pfx, (int)buf.length, (char*)buf.value);
 	gss_release_buffer(&minor_status, &buf);
     } while (more);
 
@@ -783,9 +934,9 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
     do {
 	gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
 	more = gss_display_status(&minor_status, gsserr_minor,
-	    GSS_C_MECH_CODE, GSS_C_NO_OID, &seq, &buf);
-	LOG_RERROR(level, result, r, "%s: %.*s", \
-	    pfx, buf.length, (char *)buf.value);
+	       	GSS_C_MECH_CODE, GSS_C_NO_OID, &seq, &buf);
+	LOG_RERROR(level, result, r, "%s: %.*s",
+	       	pfx, (int)buf.length, (char*)buf.value);
 	gss_release_buffer(&minor_status, &buf);
     } while (more);
 
@@ -795,6 +946,9 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
 static void
 rnote_init(auth_vas_rnote *rn)
 {
+    rn->vas_userid   = NULL;
+    rn->vas_pname    = NULL;
+    rn->vas_authctx  = NULL;
     rn->gss_ctx = GSS_C_NO_CONTEXT;
     rn->client.value = NULL;
 }
@@ -803,9 +957,11 @@ rnote_init(auth_vas_rnote *rn)
 static void
 rnote_fini(request_rec *r, auth_vas_rnote *rn)
 {
-    OM_uint32 gsserr, minor;
+    auth_vas_server_config  *sc;
 
     if (rn->gss_ctx != GSS_C_NO_CONTEXT) {
+        OM_uint32 gsserr, minor;
+        
 	gsserr = gss_delete_sec_context(&minor, &rn->gss_ctx, NULL);
 	if (gsserr != GSS_S_COMPLETE)
 	    LOG_RERROR(APLOG_ERR, 0, r,
@@ -813,9 +969,21 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 	if (rn->client.value)
 	    gss_release_buffer(&minor, &rn->client);
     }
+    
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+    
+    if (rn->vas_userid)
+        vas_id_free(sc->vas_ctx, rn->vas_userid);
+
+    if (rn->vas_pname)
+        free(rn->vas_pname);
+    
+    if (rn->vas_authctx)
+        vas_auth_free(sc->vas_ctx, rn->vas_authctx);
 }
 
-/** This function is called when the request pool is being released. */
+/** This function is called when the request pool is being released.
+ * It is passed a auth_vas_rnote pointer we need to cleanup. */
 static CLEANUP_RET_TYPE
 auth_vas_cleanup_request(void *data)
 {
@@ -832,6 +1000,53 @@ auth_vas_cleanup_request(void *data)
     CLEANUP_RETURN;
 }
 
+static int
+rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
+       	  auth_vas_rnote **rn_ptr)
+{
+    int             rval = 0; 
+    auth_vas_rnote  *rn = NULL;
+    vas_err_t       vaserr = VAS_ERR_SUCCESS;
+    
+    rn = GET_RNOTE(r);
+    if (rn == NULL) {
+        TRACE_R(r, "rnote_get: creating rnote");
+        rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
+
+        /* initialize the rnote and set it on the record */
+        rnote_init(rn);
+        SET_RNOTE(r, rn);
+        
+        /* Arrange to release the RNOTE data when the request completes */
+        apr_pool_cleanup_register(r->pool, r, auth_vas_cleanup_request,
+	       	apr_pool_cleanup_null);
+    } else {
+        TRACE_R(r, "rnote_get: reusing existing rnote");
+    }
+
+    /* initialize the userid if there's a username passed in, and we haven't
+     * yet. */
+    if (user && rn->vas_userid == NULL) {
+        vaserr = vas_id_alloc(sc->vas_ctx, user, &rn->vas_userid);
+        if (vaserr == VAS_ERR_SUCCESS) {
+            vaserr = vas_id_get_name(sc->vas_ctx, rn->vas_userid,
+		    &rn->vas_pname, NULL);
+        }
+    }
+
+    if (vaserr != VAS_ERR_SUCCESS) {
+        /* free the rnote and set it to NULL */
+        rnote_fini(r, rn);
+        rn = NULL;
+        
+        rval = HTTP_INTERNAL_SERVER_ERROR;
+    }
+    
+    *rn_ptr = rn;
+    return rval;
+}
+
+
 /**
  * Performs one acceptance step in the SPNEGO protocol using
  * a BASE64-encoded token in auth_line.
@@ -841,15 +1056,14 @@ auth_vas_cleanup_request(void *data)
 static int
 do_gss_spnego_accept(request_rec *r, const char *auth_line)
 {
-    OM_uint32	    gsserr;
-    int		    result;
-    const char	   *auth_param;
-    unsigned char  *out_token = NULL;
-    size_t	    out_token_size = 0;
-    char           *in_token;
-    int		    in_token_size;
-    const auth_vas_server_config *sc;
-    auth_vas_rnote *rn;
+    OM_uint32               gsserr;
+    int                     result;
+    const char             *auth_param;
+    gss_buffer_desc         out_token = GSS_C_EMPTY_BUFFER;
+    gss_buffer_desc         in_token = GSS_C_EMPTY_BUFFER;
+    auth_vas_server_config *sc;
+    auth_vas_rnote         *rn;
+    gss_name_t              client_name = NULL;
 
     ASSERT(r != NULL);
     ASSERT(auth_line != NULL);
@@ -867,38 +1081,27 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
     /* Store negotiation context in the connection record */
-    rn = GET_RNOTE(r);
-    if (rn == NULL) {
-	TRACE_R(r, "auth_vas_rnote: init GSS context for connection");
-	rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
-	rnote_init(rn);
-	SET_RNOTE(r, rn);
-	/* Arrange to release the RNOTE data when the request completes */
-	apr_pool_cleanup_register(r->pool, r,
-		auth_vas_cleanup_request, apr_pool_cleanup_null);
-    } else {
-	TRACE_R(r, "auth_vas_rnote: using existing GSS context");
-    }
+    if ((result = rnote_get(sc, r, NULL, &rn)))
+        goto cleanup;
 
-    /* Decode the BASE64 GSSAPI token */
-    /* (Use APR's decoder because VAS's decoder uses realloc) */
-    TRACE_R(r, "decoding input token");
-    in_token_size = apr_base64_decode_len(auth_param);
-    in_token = (char *)apr_palloc(r->pool, in_token_size);
-    apr_base64_decode(in_token, auth_param);
+    /* setup the input token */
+    in_token.length = strlen(auth_param);
+    in_token.value = (void *)auth_param;
 
     LOCK_VAS();
 
-    /* Accept token */
-    TRACE_R(r, "calling vas_gss_spnego_accept token_size=%d", in_token_size);
-    gsserr = vas_gss_spnego_accept(sc->vas, &rn->gss_ctx, NULL,
-	VAS_GSS_SPNEGO_ENCODING_DER, (unsigned char *)in_token, in_token_size,
-	&out_token, &out_token_size, NULL);
+    vas_gss_initialize(sc->vas_ctx, sc->vas_serverid);
+
+    /* Accept token - have the VAS api handle the base64 stuff for us */
+    TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d",
+            (int) in_token.length);
+    gsserr = vas_gss_spnego_accept(sc->vas_ctx, sc->vas_serverid,
+	    &rn->vas_authctx, &rn->gss_ctx, NULL,
+	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token, NULL);
 
     /* Handle completed GSSAPI negotiation */
     if (gsserr == GSS_S_COMPLETE) {
-	OM_uint32	minor_status, err;
-	gss_name_t	client_name;
+	OM_uint32       minor_status, err;
 	gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
 
 	/* Get the client's name */
@@ -953,26 +1156,26 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else {
 	/* Any other result means we send back an Unauthorized result */
 	LOG_RERROR(APLOG_ERR, 0, r,
-	    "vas_gss_spnego_accept: %s", vas_error_str(sc->vas));
+                   "vas_gss_spnego_accept: %s",
+                   vas_err_get_string(sc->vas_ctx, 1));
 	result = HTTP_UNAUTHORIZED;
     }
 
  done:
+    vas_gss_deinitialize(sc->vas_ctx);
     UNLOCK_VAS();
 
-    /* If there is an out token we need to return it in the header */
-    if (out_token && result != OK) {
-	int	b64_out_token_size; /* token size after encoding */
+    /* If there is an out token we need to return it in the header -
+     * it's already base64 encoded */
+    if (out_token.value && result != OK) {
 	char   *auth_out;		/* "Negotiate <token>" string */
 	size_t	auth_out_size;
 
 #define NEGOTIATE_TEXT "Negotiate "
 #define NEGOTIATE_SIZE	10 /* strlen("Negotiate ") */
 
-	b64_out_token_size = apr_base64_encode_len(out_token_size);
-
 	/* Allocate space for the header value */
-	auth_out_size = b64_out_token_size + NEGOTIATE_SIZE + 1;
+        auth_out_size = out_token.length + NEGOTIATE_SIZE + 1;
 	auth_out = apr_palloc(r->pool, auth_out_size);
 	if (auth_out == NULL) {
 	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
@@ -982,9 +1185,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	/* Construct the header value string */
 	strcpy(auth_out, NEGOTIATE_TEXT);
-	apr_base64_encode(auth_out + NEGOTIATE_SIZE, (char *)out_token,
-		out_token_size);
-	auth_out[NEGOTIATE_SIZE + b64_out_token_size] = '\0';
+        strcat(auth_out, out_token.value);
+        auth_out[NEGOTIATE_SIZE + out_token.length] = '\0';
 
 	/* Add to the outgoing header set */
 	apr_table_set(r->err_headers_out, "WWW-Authenticate", auth_out);
@@ -993,8 +1195,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     /* Detect NTLMSSP attempts */
     if (gsserr == GSS_S_DEFECTIVE_TOKEN &&
-	in_token_size >= 7 &&
-	memcmp(in_token, "NTLMSSP", 7) == 0)
+        in_token.length >= 7 &&
+        memcmp(in_token.value, "NTLMSSP", 7) == 0)
     {
 	LOG_RERROR(APLOG_ERR, 0, r,
 	    "Client used unsupported NTLMSSP authentication");
@@ -1004,14 +1206,16 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	/* Log failures */
 	LOCK_VAS();
 	LOG_RERROR(APLOG_ERR, 0, r,
-	    "vas_gss_spnego_accept: %s", vas_error_str(sc->vas));
+                   "vas_gss_spnego_accept: %s",
+                   vas_err_get_string(sc->vas_ctx, 1));
 	UNLOCK_VAS();
     }
 
-    if (out_token)
-	free(out_token);
-
  cleanup:
+    gss_release_buffer(&gsserr, &out_token);
+    if (client_name)
+        gss_release_name(NULL, &client_name);
+
     return result;
 }
 
@@ -1031,8 +1235,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 static void
 auth_vas_server_init(apr_pool_t *p, server_rec *s)
 {
-    int error;
-    char *name = NULL;
+    vas_err_t               vaserr;
     auth_vas_server_config *sc;
    
     TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
@@ -1046,7 +1249,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	return;
     }
 
-    if (sc->vas != NULL) {
+    if (sc->vas_ctx != NULL) {
 	TRACE_S(s, "auth_vas_server_init: already initialised");
 	return;
     }
@@ -1054,52 +1257,39 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     TRACE_S(s, "auth_vas_server_init: spn='%s'", sc->service_principal);
 
     /* Obtain a new VAS context for the web server */
-    error = vas_alloc(&sc->vas, sc->service_principal);
-    if (error) {
-	char *errstr;
-#if defined(APXS1)
-	errstr = strerror(error);
-#else
-	char errbuf[256];
-	errstr = apr_strerror(APR_FROM_OS_ERROR(error), errbuf,
-		sizeof errbuf);
-#endif
-	LOG_ERROR(APLOG_ERR, APR_FROM_OS_ERROR(error), s, 
-		"vas_alloc: error=%d (%s) while initialising as %s uid=%d",
-	       	error, errstr ? errstr : "?", sc->service_principal, getuid());
+    vaserr = vas_ctx_alloc(&sc->vas_ctx);
+    if (vaserr != VAS_ERR_SUCCESS) {
+        LOG_ERROR(APLOG_ERR, vaserr, s, 
+		"vas_ctx_alloc failed, err = %d",
+	       	vaserr);
 	return;
     }
 
-    /* Access the keytab */
-    error = vas_authenticate(sc->vas, NULL);
-    if (error) {
-	vas_info_identity(sc->vas, NULL, &name);
+    vas_info_joined_domain(sc->vas_ctx, &sc->default_realm, NULL);
+    
+    /* Create the vas_id for the server */
+    vaserr = vas_id_alloc(sc->vas_ctx, 
+                          sc->service_principal, 
+                          &sc->vas_serverid);
+    if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
-	    "Could not authenticate VAS context for "
-	    "service principal '%s': %s",
-	    name, vas_error_str(sc->vas));
-	if (name != NULL)
-	    free(name);
-	vas_free(sc->vas);
-	sc->vas = NULL;
-	return;
+                  "vas_id_alloc() failed on %s, err = %s",
+                  sc->service_principal,
+                  vas_err_get_string(sc->vas_ctx,1));
     }
 
-    /* Record our name - XXX do this at a higher LogLevel? */
-    vas_info_identity(sc->vas, NULL, &name);
-    TRACE_S(s, "auth_vas_server_init: authenticated as '%s'", name);
-    if (name != NULL)
-	free(name);
-
-    /* Determine the default realm for comparing principals with */
-    error = vas_info_joined_domain(sc->vas, &sc->default_realm, NULL);
-    if (error) {
+    /* Establish our credentials using the service keytab */
+    vaserr = vas_id_establish_cred_keytab(sc->vas_ctx, 
+                                          sc->vas_serverid, 
+                                          VAS_ID_FLAG_USE_MEMORY_CCACHE |
+                                          VAS_ID_FLAG_KEEP_COPY_OF_CRED,
+                                          NULL);
+    if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
-	    "vas_info_joined_domain: %s", vas_error_str(sc->vas));
-	sc->default_realm = NULL;
+                  "establish_cred_keytab failed, err = %s",
+                  vas_err_get_string(sc->vas_ctx, 1));
     } else {
-	TRACE_S(s, "auth_vas_server_init: default realm is '%s'",
-	    sc->default_realm);
+        TRACE_S(s, "successfully authenticated as %s", sc->service_principal);
     }
 }
 
@@ -1240,7 +1430,8 @@ auth_vas_check_user_id(request_rec *r)
 
 	if (dc->auth_basic != FLAG_ON) {
 	    LOG_RERROR(APLOG_ERR, 0, r,
-	       "Basic authentication denied (%s off)", CMD_USEBASIC);
+                       "Basic authentication denied (%s off)",
+                       CMD_USEBASIC);
 	    return HTTP_UNAUTHORIZED;
 	}
 
@@ -1363,6 +1554,34 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     return (void *)merged_dc;
 }
 
+/** Passed a auth_vas_server_config pointer */
+static CLEANUP_RET_TYPE
+auth_vas_server_config_destroy(void* data)
+{
+    auth_vas_server_config *sc = (auth_vas_server_config *)data;
+    
+    if (sc != NULL) {
+        
+        if (sc->default_realm != NULL) {
+            free(sc->default_realm);
+            sc->default_realm = NULL;
+        }
+        
+        if (sc->vas_serverid != NULL) {
+            vas_id_free(sc->vas_ctx, sc->vas_serverid);
+            sc->vas_serverid = NULL;
+        }        
+        
+        if (sc->vas_ctx) {
+            vas_ctx_free(sc->vas_ctx);
+            sc->vas_ctx = NULL;            
+        }
+    }
+
+    CLEANUP_RETURN;
+}
+
+
 /**
  * Creates and initialises a server configuration structure.
  * This function is called for each virtual host server at startup.
@@ -1378,8 +1597,12 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     sc = (auth_vas_server_config *)apr_pcalloc(p, sizeof *sc);
     if (sc != NULL) {
 	sc->service_principal = DEFAULT_SERVICE_PRINCIPAL;
-	sc->vas = NULL;
     }
+    
+    /* register our server config cleanup function */
+    apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy,
+	    apr_pool_cleanup_null);
+    
     TRACE_S(s, "auth_vas_create_server_config()");
     return (void *)sc;
 }
@@ -1442,6 +1665,8 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
     auth_vas_libvas_mutex = ap_create_mutex("auth_vas_libvas_mutex");
     if (auth_vas_libvas_mutex == NULL)
 	LOG_ERROR(APLOG_ERR, 0, s, "ap_create_mutex: failed");
+    else
+	LOG_ERROR(APLOG_DEBUG, r, s, "created mutex");
   }
 #endif /* APXS1 */
 
