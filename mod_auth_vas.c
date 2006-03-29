@@ -243,7 +243,7 @@ static const char *server_set_string_slot(cmd_parms *cmd, void *ignored,
 static int server_ctx_is_valid(server_rec *s);
 static int match_user(request_rec *r, const char *name);
 static int match_group(request_rec *r, const char *name);
-static int dn_in_container(const char *dn, const char *container, int *in_ptr);
+static int dn_in_container(const char *dn, const char *container);
 static int match_container(request_rec *r, const char *container);
 static int match_valid_user(request_rec *r, const char *ignored);
 static int is_our_auth_type(const request_rec *r);
@@ -518,6 +518,8 @@ match_group(request_rec *r, const char *name)
         
 
     LOCK_VAS();
+/* XXX remove this when vas_auth_check_client_membership() is available*/
+#define vas_auth_check_client_membership(c,i,a,n) VAS_ERR_INTERNAL
     vaserr = vas_auth_check_client_membership(sc->vas_ctx,
                                               sc->vas_serverid,
                                               rnote->vas_authctx,
@@ -554,43 +556,22 @@ match_group(request_rec *r, const char *name)
     return rval;
 }
 
-
+/**
+ * Checks if the given dn matches "*,container".
+ * Assumes the dn and container have been normalised to contain
+ * no spaces, escapes or double quotes. Container comparison is
+ * performed case-insensitively. Strict inclusion is tested.
+ * @return true if dn is in the container
+ */
 static int
-dn_in_container(const char *dn, const char *container, int *in_ptr)
+dn_in_container(const char *dn, const char *container)
 {
-    int     rval = 0, in_container = 0;
-    char    *container_copy = NULL; 
-    char    *dn_copy = NULL;
-    char    *tmp = NULL;
-    
-    if (!dn || !container || !in_ptr)
-        return EINVAL;
-    
-    /* we have to copy each string to lowercase them for our comparison */
-    if ((container_copy = strdup(container)) == NULL ||
-        (dn_copy = strdup(dn)) == NULL)
-    {   
-        rval = ENOMEM;
-        goto FINISHED;
-    }   
-    
-    strlwr(container_copy);
-    strlwr(dn_copy);
-    
-    /* see of the ou is part of the dn, and make sure that is the last part
-     * of the string. The dn must end with ou */ 
-    if ((tmp = strstr(dn_copy, container_copy))) {
-        if (strlen(tmp) == strlen(container_copy))
-            in_container = 1;
-    }       
-    
-FINISHED:
-    if (container_copy)    free(container_copy);
-    if (dn_copy)           free(dn_copy);
-
-    *in_ptr = in_container;
-
-    return rval;
+    int offset;
+   
+    offset = strlen(dn) - strlen(container);
+    return offset > 0 &&
+	   dn[offset - 1] == ',' && 
+	   strcasecmp(dn + offset, container) == 0;
 }
 
 /**
@@ -605,7 +586,6 @@ match_container(request_rec *r, const char *container)
 {
     int                       rval = 0;
     int                       do_unlock = 0;
-    int                       in_container = 0;
     vas_err_t                 vaserr;
     auth_vas_server_config    *sc = NULL;
     auth_vas_rnote            *rnote = NULL;
@@ -648,8 +628,8 @@ match_container(request_rec *r, const char *container)
     UNLOCK_VAS();
     do_unlock = 0;
 
-    dn_in_container(dn, container, &in_container);
-    if (in_container == 1)
+    ASSERT(dn != NULL);
+    if (dn_in_container(dn, container)) 
         rval = OK;
     else {
         LOG_RERROR(APLOG_DEBUG, 0, r,
