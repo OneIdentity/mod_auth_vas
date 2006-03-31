@@ -20,7 +20,10 @@
 #APXSFLAGS=      -S CC=$(CC) -Wl,`$(CC) -print-libgcc-file-name`
 #MODSO=          $(MOD).la
 
-#-- Uncomment the following for Red Hat Enterprise Linux 3
+#-- Uncomment the following for Red Hat Enterprise Linux 3/4
+#   You will need to have the following packages installed:
+#      - httpd-devel
+#      - libtool
 APXS=		/usr/sbin/apxs
 APXSFLAGS=
 
@@ -36,11 +39,12 @@ CPPFLAGS=	`$(VASCONFIG) --cflags` \
 		-DHAVE_UNIX_SUEXEC
 LDFLAGS=	`$(VASCONFIG) --libs`
 DEBUG=		-DMODAUTHVAS_DIAGNOSTIC \
-          	-DMODAUTHVAS_VERBOSE \
-		-Wc,-Wall -Wc,-pedantic 
+          	-DMODAUTHVAS_VERBOSE 
 
 #-- enable AP_DEBUG only if your apache was compiled with -DAP_DEBUG
-#DEBUG+=	-DAP_DEBUG -Wc,-g -Wc,-Wall
+#DEBUG+=	-DAP_DEBUG 
+#DEBUG+=	-Wc,-g -Wc,-Wall
+#DEBUG+=	-Wc,-pedantic 
 
 all: $(MODSO)
 
@@ -56,7 +60,11 @@ manual-link: $(SRCS)
 	gcc -shared -o $(MODSO) $(LDFLAGS) $(LDADD) $(MOD).o
 
 install: $(MODSO)
-	$(SUDO) $(APXS) -i $(APXSFLAGS) -a $(MODSO)
+	if test -f "$(MODSO:.so=.la)"; then \
+	    $(SUDO) $(APXS) -i $(APXSFLAGS) -a $(MODSO:.so=.la); \
+	else \
+	    $(SUDO) $(APXS) -i $(APXSFLAGS) -a $(MODSO); \
+	fi
 
 clean:
 	rm -rf .libs $(MOD).la $(MOD).slo $(MOD).lo $(MOD).so $(MOD).o
