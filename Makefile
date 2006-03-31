@@ -73,7 +73,7 @@ clean:
 DISTFILES = $(SRCS) Makefile README ChangeLog NEWS auth_vas.conf setup.sh
 dist:
 	PKG=$(MOD)-`sed -ne \
-	    '/^#define MODAUTHVAS_VERSION/s/.*"\([^"]*\)"/\1/p' <$(MOD).c`;\
+	    '/^#define MODAUTHVAS_VERSION/s/.*"\([^"]*\)"/\1/p' <$(MOD).c`.`svnversion . /trunk`;\
 	echo "** package name: $$PKG" \
 	&& echo "** copying dist files to /tmp/$$PKG" \
 	&& mkdir -p "/tmp/$$PKG" \
@@ -84,4 +84,4 @@ dist:
 	&& ls -l "$$PKG.tar.gz"
 
 ChangeLog: $(SRCS) Makefile README NEWS auth_vas.conf setup.sh
-	svn2cl -t || echo "No changelog" > $@
+	svn2cl || echo "No changelog" > $@
