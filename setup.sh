@@ -64,11 +64,13 @@ yesorno () {
     done
 }
 
+logfile_written=false
 recordcmd () {
     (echo "# `date`";
     echo "$*";
     echo ) >> $LOGFILE
     "$@"
+    logfile_written=true
 }
 
 #-- intro
@@ -77,7 +79,7 @@ cat <<-.
 	This script checks your local configuration for properly using mod_auth_vas.
 	It will prompt you to create a web service object in Active Directory
 	if one is needed, and it will correct permissions on certain files.
-	Commands executed are record in $LOGFILE
+	Commands executed will be recorded in $LOGFILE
 
 .
 
@@ -196,6 +198,6 @@ if test -f "$KEYTAB"; then
 fi
 
 echo ""
-test -e "$LOGFILE" && echo "(Log written to $LOGFILE)"
+$logfile_written && echo "(Log written to $LOGFILE)"
 echo "Finished."
 exit 0
