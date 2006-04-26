@@ -1,6 +1,6 @@
 #! /bin/sh
 # (c) 2005 Quest Software, Inc. All rights reserved.
-# $Vintela: setup.sh,v 1.5 2005/10/19 11:44:20 davidl Exp $
+# $Id$
 #
 # This helper script is provided to simplify setting up mod_auth_vas
 # on a basic web server. It creates the HTTP service for the computer

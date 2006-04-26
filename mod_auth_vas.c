@@ -125,7 +125,7 @@
  */
 #define VAS_AUTH_TYPE		    "VAS"
 #define DEFAULT_SERVICE_PRINCIPAL   "HTTP/"
-#define MODAUTHVAS_VERSION	    "3.2.0"
+#define MODAUTHVAS_VERSION	    "3.2.1"
 
 /* Flag values for directory configuration */
 #define FLAG_UNSET	(-1)
@@ -518,8 +518,15 @@ match_group(request_rec *r, const char *name)
         
 
     LOCK_VAS();
-/* XXX remove this when vas_auth_check_client_membership() is available*/
-#define vas_auth_check_client_membership(c,i,a,n) VAS_ERR_INTERNAL
+
+#define VASVER ((VAS_API_VERSION_MAJOR * 10000) + \
+    	        (VAS_API_VERSION_MINOR * 100)   + \
+    	        VAS_API_VERSION_MICRO)
+#if VASVER < 40100
+#define vas_auth_check_client_membership(c,i,a,n) \
+    	vas_auth_is_client_member(c,a,n)
+#endif
+
     vaserr = vas_auth_check_client_membership(sc->vas_ctx,
                                               sc->vas_serverid,
                                               rnote->vas_authctx,

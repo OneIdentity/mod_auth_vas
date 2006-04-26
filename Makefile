@@ -1,4 +1,4 @@
-# $Vintela: Makefile,v 1.12 2005/09/15 04:14:14 davidl Exp $
+# $Id$
 # (c) 2005 Quest Software, Inc. All rights reserved.
 
 #-- Uncomment the following for SuSE linux with apache2
