@@ -1,5 +1,5 @@
 
-SUBDIRS=	http-get
+SUBDIRS=	http-get .
 
 TESTS = \
 	test.version \
@@ -12,5 +12,5 @@ TESTS = \
 
 TEST_PLATFORM = $(shell $(srcdir)/get-platform)
 # Set environment variable DEBUG=true for test debugging
-TESTS_ENVIRONMENT = $(SHELL) run-test $(TEST_PLATFORM)
+TESTS_ENVIRONMENT = $(SHELL) $(srcdir)/run-test $(TEST_PLATFORM)
 EXTRA_DIST= get-platform run-test

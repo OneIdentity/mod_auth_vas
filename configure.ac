@@ -6,7 +6,7 @@ AC_INIT([mod_auth_vas],
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile test/Makefile])
 
 AC_PROG_CC
 
@@ -26,7 +26,7 @@ AC_CACHE_CHECK([where to find Apache extension tool],
 dnl -- Search path for finding apxs2/apxs
 APXS_PATH="$PATH"
 APXS_PATH="$APXS_PATH:/opt/hpws/apache/bin"
-APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin"
+APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/opt/freeware/bin"
 APXS_PATH="$APXS_PATH:/usr/local/bin:/usr/sbin:/usr/bin"
 
 if test x"$ac_cv_with_apxs" = x"default"; then
@@ -44,6 +44,13 @@ if test x"$APXS" = x"no"; then
 fi
 AC_SUBST(APXS)
 
+APXSFLAGS=
+
+#apxs vars:
+# CC CFLAGS CFLAGS_SHLIB INCLUDEDIR LDFLAGS_SHLIB LD_SHLIB LIBEXECDIR
+# LIBS_SHLIB PREFIX SBINDIR SYSCONFDIR TARGET
+
+APXSFLAGS="$APXSFLAGS -S CC='\$(CC)'"
 
 dnl -- SuSE Linux with apache2
 AC_MSG_CHECKING([for SuSE loadmodule.conf])
@@ -117,10 +124,25 @@ case "$ac_cv_enable_developer" in
 	if test x"$ac_cv_cc_wall_ok" != x"yes"; then
 	    CFLAGS="$CFLAGS_save"
 	fi
-	AC_CONFIG_SUBDIRS(test/http-get)
-	TEST_SUBDIRS="test"
 	;;
 esac
+
+#-- --enable-tests
+AC_ARG_ENABLE(tests,
+	    AS_HELP_STRING([--disable-tests],
+			   [Disable tests (default enabled)]),
+	    [ac_cv_enable_tests=$withval],
+	    [ac_cv_enable_tests=default])
+case "$ac_cv_enable_tests" in
+   yes|default)	
+   	tests_enabled=yes
+	AC_CONFIG_SUBDIRS(test/http-get)
+	;;
+   *)
+	tests_enabled=no
+	;;
+esac
+AM_CONDITIONAL([ENABLE_TESTS], [test $tests_enabled = yes])
 
 #-- --with-vas
 AC_ARG_WITH(vas,
@@ -143,5 +165,11 @@ VAS_LIBS=`$VASCONFIG --libs vasapi`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
 AC_SUBST(TEST_SUBDIRS)
+
+aplibexecdir=`$APXS -q LIBEXECDIR`
+AC_SUBST(aplibexecdir)
+
+DSO=.so
+AC_SUBST(DSO)
 
 AC_OUTPUT
