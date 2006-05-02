@@ -1,0 +1,255 @@
+#!/bin/sh
+#
+# usage: run-test platform scriptname
+#
+# macros and variables defined for controlling the web server
+# and installing a package etc. scripts should undo all their own changes,
+# including stopping the web server
+#
+#  ap_conf_save - save the conf file to a temp area
+#  ap_conf_append - append stdin to the httpd.conf file (automatically undone)
+#  ap_conf_check - checks the conf file
+#  ap_conf_restore - restore the apache conf files
+#  ap_start	- start the web server
+#  ap_stop	- kill the web server
+#  ap_restart	- restart the web server
+#  vas_kinit	- acquire a TGT as a user
+#  vas_kdestroy	- kdestroy the TGT
+#  fetch_nego   - fetch an URL to stdout using HTTP/SPNEGO
+#  fetch_basic  - fetch an URL to stdout using Basic auth
+#  fetch_simple - fetch an URL to stdout using no authentication
+#  pass		- signals a test pass (and exits)
+#  fail		- signals a test fail (and exits)
+#  ignore	- signals this test is not valid (and exits)
+#  cleanup_add	- add a command to run at cleanup
+#
+#  $PLATFORM	- platform name
+#  $AP_URL	- URL to the server's root (minus the trailing slash)
+#  $AP_DOCROOT  - path to server's DocumentRoot
+#  $DOC_DIR	- path to an empty document area under $AP_DOCROOT
+#  $DOC_URL	- the URL to the empty document area
+#  $DOC_URI	- the URI to the empty document area
+#  $FETCH_RES	- numeric code of last fetch_nego/fetch_basic call
+#  $VERSION	- version of the module under test
+#
+#  $USER_test	- name of test user
+#  $PASSWD_test - password of test user
+#  $USER_local	- name of non-AD user
+#  $PASSWD_local - password of non-AD user
+#
+
+if test $# -ne 2; then
+  echo "usage: $0 platform scriptname"
+  exit 1
+fi
+
+PLATFORM="$1"
+script="$2"
+
+VASTOOL=/opt/vintela/vas/bin/vastool
+SUDO=sudo
+TMPDIR=/var/tmp
+USER_test=testuser
+PASSWD_test=testuser
+USER_local=local
+PASSWD_local=local
+USER_disabled=disabled
+PASSWD_disabled=disabled
+USER_expired=expired
+PASSWD_expired=expired
+TEST_DESC=' ** no description ** '
+
+FETCH=http-get/get
+
+if test -n "$DEBUG" -a x"$DEBUG" != x"false"; then
+    NDEBUG=false; DEBUG=true
+    DEBUGHASH=
+else
+    NDEBUG=true; DEBUG=false
+    DEBUGHASH='#'
+fi
+
+$NDEBUG || echo " ==> $0 $PLATFORM $script" >&2
+
+#-- basic helpers
+pass () { (echo "PASS $platform $script" ${1+"($*)"} >&2); exit 0; }
+fail () { (echo "FAIL $platform $script" ${1+"($*)"} >&2); showerrors; exit 1; }
+ignore () { (echo "IGNORE $platform $script" ${1+"($*)"} >&2); exit 1; }
+ifdebug () { $NDEBUG || echo "$@"; }
+vas_kinit () {
+    test $# -ne 2 && fail "vas_kinit: wrong arg count"
+    KRB5CCNAME="/tmp/test.krb5_cc.$1"; export KRB5CCNAME
+    if test -r $KRB5CCNAME &&
+	$VASTOOL -f -u "$1" klist 2>&1 | grep '>>>Expired<<<' > /dev/null;
+    then
+	rm -f "$KRB5CCNAME"
+    fi
+    if test ! -r "$KRB5CCNAME"; then
+        $VASTOOL -f -u "$1" -w "$2" kinit || fail "cannot get TGT for $1"
+    fi
+}
+vas_kdestroy () {
+    unset KRB5CCNAME
+}
+description () { TEST_DESC="$*"; }
+
+#-- fetch API; platforms should define $FETCH
+FETCH_RES_FILE=/tmp/.fetchres$$
+_fetch () {
+    rm -f $FETCH_RES_FILE;
+    $FETCH -e $FETCH_RES_FILE "$@"; exitcode=$?
+    FETCH_RES=`test -f $FETCH_RES_FILE && cat $FETCH_RES_FILE`
+    return $exitcode
+}
+fetch_nego ()   { _fetch -n "$@" && (ifdebug "Negotiate auth: success" >&2) ; }
+fetch_basic ()  { _fetch -b "$@" && (ifdebug "Basic auth: success" >&2) ; }
+fetch_simple () { _fetch -s "$@" && (ifdebug "No auth: success" >&2) ; }
+
+#-- cleanup management
+_CLEANUPS='cleanup'
+trap '$_CLEANUPS' 0 1 2
+cleanup () { : this can be redefined by the script; }
+cleanup_add () { _CLEANUPS="$_CLEANUPS; $*"; }
+
+#-- make a note of the size of the error log
+errormark () {
+    if $SUDO test -r $AP_ERROR_LOG; then
+	error_offset=`$SUDO cat $AP_ERROR_LOG 2>/dev/null | wc -c`
+    fi
+}
+#-- dump the errors since the last mark
+showerrors () {
+    if test x"$error_offset" != x""; then
+	error_offset=`expr $error_offset + 1`
+	echo "--start error_log:" >&2
+	$SUDO cat $AP_ERROR_LOG | tail +${error_offset}c >&2
+	echo "--end error_log:" >&2
+    fi
+}
+
+case "$PLATFORM" in
+  aix)
+	#-- Apache 1.3.x
+	APACHECTL=/opt/freeware/apache/sbin/apachectl
+	CONF=/etc/opt/freeware/apache/httpd.conf
+	AP_DOCROOT=`sed -n -e s'/^DocumentRoot "\([^"]*\)"/\1/p' $CONF`
+	AP_ERROR_LOG=/var/opt/freeware/apache/logs/error_log
+	AP_URL=http://`hostname`
+	DOC_URI=/regress
+	DOC_DIR=$AP_DOCROOT$DOC_URI
+	DOC_URL=$AP_URL$DOC_URI
+
+	ap_conf_save () { $SUDO cp $CONF $CONF.save.$script ; }
+	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
+	ap_conf_check () { $SUDO $APACHECTL configtest 2>/dev/null || 
+	    		   fail "bad conf"; }
+	ap_conf_restore () { $SUDO mv $CONF $CONF.$script &&
+			     $SUDO mv $CONF.save.$script $CONF ; }
+	ap_start () { errormark && $SUDO $APACHECTL start >/dev/null ; }
+	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
+	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
+
+	test -x $FETCH || fail "$FETCH: not found"
+	rpm -q mod_auth_vas >/dev/null || fail "mod_auth_vas not installed"
+	VERSION=`rpm -q --queryformat '%{VERSION}' mod_auth_vas`
+
+	;;
+    suse)
+    	APACHECTL=/usr/sbin/apache2ctl
+	CONF=/etc/apache2/conf.d/regress.conf
+	AP_DOCROOT=/srv/www/htdocs
+	AP_ERROR_LOG=/var/log/apache2/error_log
+
+	AP_URL=http://`hostname`
+	DOC_URI=/regress
+	DOC_DIR=$AP_DOCROOT$DOC_URI
+	DOC_URL=$AP_URL$DOC_URI
+
+	ap_conf_save () { : ; }
+	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
+	ap_conf_check () { $SUDO $APACHECTL -t 2>/dev/null; }
+	ap_conf_restore () { $SUDO rm -f $CONF; }
+	ap_start () { errormark && $SUDO $APACHECTL start >/dev/null ; }
+	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
+	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
+
+	test -x $FETCH || fail "$FETCH: not found"
+	rpm -q apache2-mod_auth_vas >/dev/null || 
+		fail "mod_auth_vas not installed"
+	VERSION=`rpm -q --queryformat '%{VERSION}' apache2-mod_auth_vas`
+	;;
+
+    redhat)
+    	APACHECTL=/usr/sbin/apachectl
+	CONF=/etc/httpd/conf.d/regress.conf
+	AP_DOCROOT=/var/www/html
+	AP_ERROR_LOG=/var/log/httpd/error_log
+	AP_URL=http://`hostname`
+	DOC_URI=/regress
+	DOC_DIR=$AP_DOCROOT$DOC_URI
+	DOC_URL=$AP_URL$DOC_URI
+
+	ap_conf_save () { : ; }
+	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
+	ap_conf_check () { $SUDO $APACHECTL -t 2>/dev/null; }
+	ap_conf_restore () { $SUDO rm -f $CONF; }
+	ap_start () { errormark && $SUDO $APACHECTL start >/dev/null ; }
+	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
+	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
+
+	test -x $FETCH || fail "$FETCH: not found"
+        if rpm -q mod_auth_vas >/dev/null; then
+                RPMNAME=mod_auth_vas
+        elif rpm -q mod_auth_vas2 >/dev/null; then
+                RPMNAME=mod_auth_vas2
+        else
+                fail "mod_auth_vas/mod_auth_vas2 not installed"
+        fi
+	VERSION=`rpm -q --queryformat '%{VERSION}' $RPMNAME`
+	;;
+
+    hpux)
+    	APACHECTL=/opt/hpws/apache/bin/apachectl
+	CONF=/opt/hpws/apache/conf/vas.conf
+	AP_DOCROOT=/opt/hpws/apache/htdocs
+	AP_ERROR_LOG=/opt/hpws/apache/logs/error_log
+	AP_URL=http://`hostname`
+	DOC_URI=/regress
+	DOC_DIR=$AP_DOCROOT$DOC_URI
+	DOC_URL=$AP_URL$DOC_URI
+
+	ap_conf_save () { : ; }
+	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
+	ap_conf_check () { ( $SUDO $APACHECTL -t 2>/dev/null ) ; }
+	ap_conf_restore () { $SUDO rm -f $CONF; }
+	ap_start () { errormark && ($SUDO $APACHECTL start >/dev/null) ; }
+	ap_stop ()  { ($SUDO $APACHECTL stop >/dev/null) ; : ; }
+	ap_restart () { ($SUDO $APACHECTL restart >/dev/null) ; }
+
+	test -x $FETCH || fail "$FETCH: not found"
+	VERSION=unknown
+	;;
+
+    *)
+    	echo "Unknown platform $PLATFORM"
+	exit 1;
+	;;
+esac
+
+#-- create the document directory if it isn't there already
+test x"" != x"$AP_DOCROOT" || fail "DocumentRoot not found in $CONF"
+case "$DOC_DIR" in
+       /??*/??*/??*)
+      	  $SUDO rm -rf "$DOC_DIR"
+	  $SUDO mkdir -p "$DOC_DIR" || fail "cannot create $DOC_DIR"
+	  $SUDO chmod 777 "$DOC_DIR"
+	  ;;
+       *)
+          echo "Too scared to delete directory '$DOC_DIR'" >&2;
+       	  exit 1;;
+esac
+
+set -e
+. "`dirname $0`/$script"
+pass "$TEST_DESC"
+

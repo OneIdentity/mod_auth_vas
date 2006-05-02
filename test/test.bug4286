@@ -1,0 +1,71 @@
+# bug 4286 segv under suse
+#
+# In this test, we do a general exercise of the mod_auth_vas module,
+# by protecting a single file with VAS.
+# We perform a general fetch with SPNEGO and Basic Auth using the
+# test user. We also try an unauthenticated fetch which is expected to 
+# fail.
+#
+
+description "files protected by SPNEGO and BASIC"
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f /tmp/hello$$
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		Options none
+		AllowOverride All
+		AuthVasUseBasic on
+		Order allow,deny
+		Allow from all
+	</Directory>
+.
+ap_conf_check
+
+cat <<-. >>$DOC_DIR/.htaccess
+	AuthType VAS
+	require user $USER_test
+.
+echo "$$ hello" > $DOC_DIR/hello.txt
+
+$NDEBUG || ls -la $DOC_DIR
+
+ap_start
+
+vas_kinit $USER_test $PASSWD_test
+
+#
+# check we can access the file using SPNEGO
+#
+fetch_nego -u $USER_test `ifdebug -d` $DOC_URL/hello.txt > /tmp/hello$$ || 
+	fail "couldn't fetch with spnego"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp /tmp/hello$$  $DOC_DIR/hello.txt || 
+	fail "different file for nego?"
+
+#
+# check that the file is protected
+#
+if fetch_simple `ifdebug -d` $DOC_URL/hello.txt > /tmp/hello$$; then
+	fail "resource wasn't protected"
+else
+	test 401 = "$FETCH_RES" || fail "expected 401 but got $FETCH_RES"
+	: expected to fail
+fi
+
+#
+# check we can access the file with Basic fallback
+#
+fetch_basic `ifdebug -d` $USER_test:$PASSWD_test $DOC_URL/hello.txt > /tmp/hello$$ || 
+	fail "couldn't fetch with basic"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp /tmp/hello$$  $DOC_DIR/hello.txt || 
+	fail "different file for basic?"
+

@@ -1,0 +1,24 @@
+
+This is a simple tool to use SPNEGO to perform a GET request on 
+an HTTP server. It was written to 
+  * test mod_auth_vas
+  * exercises VAS2.6/VAS3 vas_gss_spnego_initiate()
+  * exercise VAS's GSSAPI without transition calls
+
+When checking out from subversion, configure using:
+    bootstrap.sh
+
+Usage:
+   get [options] -s URL                         - GET using no auth (simple)
+   get [options] -n [-S spn] [-u user] [-g] URL - GET using "Negotiate" auth
+   get [options] -b user:pass URL               - GET using "Basic" auth
+
+Other options are:
+    -e outfile               - Where to write the HTTP response code
+    -d                       - Enable debugging
+
+For -n (negotiate), the other options are
+      -S spn                 - Kerberos service principal name to use
+      -u user                - User service principal name to use
+      -g                     - Use GSSAPI calls instead of VASAPI
+

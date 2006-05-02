@@ -1,0 +1,79 @@
+# bug 4784 
+description "Require valid-user"
+#
+# This test works by protecting a resource with 'Require valid-user' only.
+# It tests to make sure that only AD-enabled users can access the file
+# via SPNEGO or Basic
+#
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f /tmp/hello$$
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		Options none
+		AllowOverride All
+		AuthVasUseBasic on
+		Order allow,deny
+		Allow from all
+	</Directory>
+.
+ap_conf_check
+
+cat <<-. >>$DOC_DIR/.htaccess
+	AuthType VAS
+	require valid-user
+.
+echo "$$ hello" > $DOC_DIR/hello.txt
+
+$NDEBUG || ls -la $DOC_DIR
+
+ap_start
+
+vas_kinit $USER_test $PASSWD_test
+
+#
+# check we can access the file using SPNEGO
+#
+fetch_nego -u $USER_test `ifdebug -d` $DOC_URL/hello.txt > /tmp/hello$$ || 
+	fail "couldn't fetch with spnego"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp /tmp/hello$$  $DOC_DIR/hello.txt || 
+	fail "different file for nego?"
+
+#
+# check that the file is protected against anonymous access
+#
+if fetch_simple `ifdebug -d` $DOC_URL/hello.txt > /tmp/hello$$; then
+	fail "resource wasn't protected"
+else
+	test 401 = "$FETCH_RES" || fail "expected 401 but got $FETCH_RES"
+	: expected to fail
+fi
+
+#
+# check we can access the file with Basic fallback
+#
+fetch_basic `ifdebug -d` $USER_test:$PASSWD_test $DOC_URL/hello.txt > /tmp/hello$$ || 
+	fail "couldn't fetch with basic/$USER_test"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp /tmp/hello$$  $DOC_DIR/hello.txt || 
+	fail "different file for basic/$USER_test?"
+
+
+#
+# check we are denied access for non-AD accounts (that are valid)
+#
+if fetch_basic `ifdebug -d` $USER_local:$PASSWD_local $DOC_URL/hello.txt > /tmp/hello$$; then
+    fail "resource not protected for basic/$USER_local"
+else
+    test 401 = "$FETCH_RES" || fail "expected 401 but got $FETCH_RES"
+    : expected to fail
+fi
+

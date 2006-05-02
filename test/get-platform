@@ -1,0 +1,18 @@
+#!/bin/sh
+
+case "`uname -s`" in
+	AIX)	echo "aix"; exit 0;;
+	Linux)	if rpm -q suse-release >/dev/null; then
+			echo "suse"; exit 0
+		elif rpm -q redhat-release >/dev/null; then
+			echo "redhat"; exit 0
+		elif rpm -q fedora-release >/dev/null; then
+			echo "redhat"; exit 0
+		fi;;
+	HP-UX)	echo "hpux"; exit 0;;
+esac
+echo "unknown"
+
+echo "$0: can't determine platform name" >&2
+exit 1
+

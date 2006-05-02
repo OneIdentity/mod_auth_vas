@@ -1,0 +1,14 @@
+EXPECTED_VERSION=3.1.3e
+# version
+description "version is $EXPECTED_VERSION and sudo works"
+#
+# This test simply confirms 
+#  - the version number of the module is the latest
+#  - $SUDO does what it is supposed to
+#
+
+test "$EXPECTED_VERSION" = "$VERSION" || 
+	fail "expected version $EXPECTED_VERSION, got $VERSION"
+
+test 0 -eq "`$SUDO id -u `" ||
+	fail "\$SUDO does not run as uid 0"

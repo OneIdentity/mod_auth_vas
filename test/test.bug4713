@@ -1,0 +1,22 @@
+# bug 4713 
+description "AuthVasDefaultRealm conf directive accepted"
+#
+# This test works by adding a AuthVasDefaultRealm to the conf files,
+# and running the conf check. (It does not try to exercise the
+# option - it checks the parser only)
+#
+
+cleanup () {
+   ap_conf_restore
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	AuthVasDefaultRealm VINTELA.COM
+.
+
+if ! ap_conf_check; then
+    fail
+fi
