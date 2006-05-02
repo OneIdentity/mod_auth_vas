@@ -16,3 +16,12 @@ apxs-install:
 
 sbin_SCRIPTS=  setup-mod_auth_vas
 
+EXTRA_DIST=	ChangeLog NEWS README
+CLEANFILES=	ChangeLog
+
+ChangeLog:
+	svn2cl || echo No changelog > $@
+
+#-- targets needed for automated test/build
+print-dist-archives:; echo $(DIST_ARCHIVES)
+print-dist-name:;     echo $(distdir)
