@@ -86,6 +86,7 @@ fi
 
 # xxx - should test SUEXEC
 CPPFLAGS="$CPPFLAGS -DHAVE_UNIX_SUEXEC"
+TEST_SUBDIRS=
 
 #-- --enable-debug
 AC_ARG_ENABLE(debug,
@@ -94,7 +95,7 @@ AC_ARG_ENABLE(debug,
 	    [ac_cv_enable_debug=$withval],
 	    [ac_cv_enable_debug=default])
 case "$ac_cv_enable_debug" in
-    no)
+    yes|default)
 	CPPFLAGS="$CPPFLAGS -DMODAUTHVAS_DIAGNOSTIC"
 	CPPFLAGS="$CPPFLAGS -DMODAUTHVAS_VERBOSE"
 	;;
@@ -116,6 +117,8 @@ case "$ac_cv_enable_developer" in
 	if test x"$ac_cv_cc_wall_ok" != x"yes"; then
 	    CFLAGS="$CFLAGS_save"
 	fi
+	AC_CONFIG_SUBDIRS(test/http-get)
+	TEST_SUBDIRS="test"
 	;;
 esac
 
@@ -139,5 +142,6 @@ VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 VAS_LIBS=`$VASCONFIG --libs vasapi`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
+AC_SUBST(TEST_SUBDIRS)
 
 AC_OUTPUT
