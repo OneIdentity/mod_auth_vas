@@ -125,7 +125,7 @@
  */
 #define VAS_AUTH_TYPE		    "VAS"
 #define DEFAULT_SERVICE_PRINCIPAL   "HTTP/"
-#define MODAUTHVAS_VERSION	    "3.2.1"
+#define MODAUTHVAS_VERSION	    PACKAGE_VERSION
 
 /* Flag values for directory configuration */
 #define FLAG_UNSET	(-1)
@@ -255,7 +255,7 @@ static void log_gss_error(const char *file, int line, int level,
 	OM_uint32 gsserr, OM_uint32 gsserr_minor);
 static void rnote_init(auth_vas_rnote *rn);
 static void rnote_fini(request_rec *r, auth_vas_rnote *rn);
-static apr_status_t auth_vas_cleanup_request(void *data);
+static CLEANUP_RET_TYPE auth_vas_cleanup_request(void *data);
 static int rnote_get(auth_vas_server_config *sc, request_rec *r, 
 	const char *user, auth_vas_rnote **rn_ptr);
 static int do_gss_spnego_accept(request_rec *r, const char *auth_line);
@@ -269,7 +269,7 @@ static ap_unix_identity_t *auth_vas_suexec(const request_rec *r);
 static void *auth_vas_create_dir_config(apr_pool_t *p, char *dirspec);
 static void *auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, 
 	void *new_conf);
-static apr_status_t auth_vas_server_config_destroy(void *data);
+static CLEANUP_RET_TYPE auth_vas_server_config_destroy(void *data);
 static void *auth_vas_create_server_config(apr_pool_t *p, server_rec *s);
 static int auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog, 
 	apr_pool_t *ptemp, server_rec *s);
@@ -1543,7 +1543,7 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 
 /** Passed a auth_vas_server_config pointer */
 static CLEANUP_RET_TYPE
-auth_vas_server_config_destroy(void* data)
+auth_vas_server_config_destroy(void *data)
 {
     auth_vas_server_config *sc = (auth_vas_server_config *)data;
     
