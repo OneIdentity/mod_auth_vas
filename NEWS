@@ -1,4 +1,6 @@
-3.2.0 [unreleased]
+3.2.1 [unreleased]
+	- Using autoconf to simplify builds
+3.2.0 [internal release only]
 	- Use VAS3.0 API
 	- Improve VAS error messages
 	- Storage improvement for Apache 1
