@@ -8,7 +8,6 @@
 #
 
 KEYTAB=/etc/opt/quest/vas/HTTP.keytab
-PKGNAME=apache2-mod_auth_vas
 VASTOOL=/opt/quest/bin/vastool
 KTUTIL=/opt/quest/bin/ktutil
 LOGFILE=/tmp/mod_auth_vas-setup.log
@@ -95,10 +94,6 @@ if test `id -u` -ne 0; then
 else
     checkroot () { : ; }
 fi
-
-
-#label "version of mod_auth_vas"
-#rpm -q $PKGNAME >/dev/null 2>&1 && rpm -q $PKGNAME || echo "rpm not found"
 
 label "looking for apache conf"
 AP_CF=
