@@ -78,16 +78,17 @@ pass () { (echo "PASS $platform $script" ${1+"($*)"} >&2); exit 0; }
 fail () { (echo "FAIL $platform $script" ${1+"($*)"} >&2); showerrors; exit 1; }
 ignore () { (echo "IGNORE $platform $script" ${1+"($*)"} >&2); exit 1; }
 ifdebug () { $NDEBUG || echo "$@"; }
+verbose () { echo "+ $*" >&2; "$@"; }
 vas_kinit () {
     test $# -ne 2 && fail "vas_kinit: wrong arg count"
     KRB5CCNAME="/tmp/test.krb5_cc.$1"; export KRB5CCNAME
     if test -r $KRB5CCNAME &&
-	$VASTOOL -f -u "$1" klist 2>&1 | grep '>>>Expired<<<' > /dev/null;
+	$VASTOOL klist 2>&1 | grep '>>>Expired<<<' > /dev/null;
     then
 	rm -f "$KRB5CCNAME"
     fi
     if test ! -r "$KRB5CCNAME"; then
-        $VASTOOL -f -u "$1" -w "$2" kinit || fail "cannot get TGT for $1"
+        $VASTOOL -w "$2" kinit "$1" || fail "cannot get TGT for $1"
     fi
 }
 vas_kdestroy () {
@@ -192,14 +193,19 @@ case "$PLATFORM" in
 	DOC_DIR=$AP_DOCROOT$DOC_URI
 	DOC_URL=$AP_URL$DOC_URI
 
-	ap_options="-c 'LoadModule ${modpath}' -c 'Include $CONF'"
+	ap_options="-f $CONF"
 	ap_conf_save () { : ; }
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
-	ap_conf_check () { OPTIONS="${ap_options}" $SUDO $APACHECTL -t 2>/dev/null; }
+	ap_conf_check () { OPTIONS="${ap_options}" $SUDO $APACHECTL configtest 2>/dev/null; }  # use configtest or -t ?
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { errormark && OPTIONS="${ap_options}" $SUDO $APACHECTL start >/dev/null ; }
+	ap_start () { errormark && verbose OPTIONS="${ap_options}" $SUDO $APACHECTL start ; }
 	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
 	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
+
+	$SUDO sh -c ": > $CONF"
+	ap_conf_append << .
+	    LoadModule mod_auth_vas_module ${modpath}
+.
 
 	test -x $FETCH || fail "$FETCH: not found"
 #        if rpm -q mod_auth_vas >/dev/null; then
@@ -253,11 +259,11 @@ case "$DOC_DIR" in
        	  exit 1;;
 esac
 
-set -e
 case "$script" in
     /*)	;;
     *) if test ! -e ./"$script"; then script="`dirname $0`/$script"; fi;;
 esac
+#set -x
 . "$script"
 pass "$TEST_DESC"
 
