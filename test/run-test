@@ -46,7 +46,7 @@ fi
 PLATFORM="$1"
 script="$2"
 
-VASTOOL=/opt/vintela/vas/bin/vastool
+VASTOOL=/opt/quest/bin/vastool
 SUDO=sudo
 TMPDIR=/var/tmp
 USER_test=testuser
@@ -60,6 +60,8 @@ PASSWD_expired=expired
 TEST_DESC=' ** no description ** '
 
 FETCH=http-get/get
+
+modpath=`cd .. && /bin/pwd`/mod_auth_vas.so
 
 if test -n "$DEBUG" -a x"$DEBUG" != x"false"; then
     NDEBUG=false; DEBUG=true
@@ -181,7 +183,8 @@ case "$PLATFORM" in
 
     redhat)
     	APACHECTL=/usr/sbin/apachectl
-	CONF=/etc/httpd/conf.d/regress.conf
+	#CONF=/etc/httpd/conf.d/regress.conf
+	CONF=/tmp/regress.conf
 	AP_DOCROOT=/var/www/html
 	AP_ERROR_LOG=/var/log/httpd/error_log
 	AP_URL=http://`hostname`
@@ -189,23 +192,24 @@ case "$PLATFORM" in
 	DOC_DIR=$AP_DOCROOT$DOC_URI
 	DOC_URL=$AP_URL$DOC_URI
 
+	ap_options="-c 'LoadModule ${modpath}' -c 'Include $CONF'"
 	ap_conf_save () { : ; }
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
-	ap_conf_check () { $SUDO $APACHECTL -t 2>/dev/null; }
+	ap_conf_check () { OPTIONS="${ap_options}" $SUDO $APACHECTL -t 2>/dev/null; }
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { errormark && $SUDO $APACHECTL start >/dev/null ; }
+	ap_start () { errormark && OPTIONS="${ap_options}" $SUDO $APACHECTL start >/dev/null ; }
 	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
 	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
 
 	test -x $FETCH || fail "$FETCH: not found"
-        if rpm -q mod_auth_vas >/dev/null; then
-                RPMNAME=mod_auth_vas
-        elif rpm -q mod_auth_vas2 >/dev/null; then
-                RPMNAME=mod_auth_vas2
-        else
-                fail "mod_auth_vas/mod_auth_vas2 not installed"
-        fi
-	VERSION=`rpm -q --queryformat '%{VERSION}' $RPMNAME`
+#        if rpm -q mod_auth_vas >/dev/null; then
+#                RPMNAME=mod_auth_vas
+#        elif rpm -q mod_auth_vas2 >/dev/null; then
+#                RPMNAME=mod_auth_vas2
+#        else
+#                fail "mod_auth_vas/mod_auth_vas2 not installed"
+#        fi
+#	VERSION=`rpm -q --queryformat '%{VERSION}' $RPMNAME`
 	;;
 
     hpux)
@@ -250,6 +254,10 @@ case "$DOC_DIR" in
 esac
 
 set -e
-. "`dirname $0`/$script"
+case "$script" in
+    /*)	;;
+    *) if test ! -e ./"$script"; then script="`dirname $0`/$script"; fi;;
+esac
+. "$script"
 pass "$TEST_DESC"
 

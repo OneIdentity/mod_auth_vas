@@ -1,7 +1,7 @@
 # (c) 2006 Quest Software. All right reserved.
 
 AC_INIT([mod_auth_vas], 
-        [3.2.1.]esyscmd(svnversion -n . /trunk),
+        [3.2.1.]esyscmd(svnversion -n . /trunk || echo 0),
 	[apache@rc.vintela.com])
 AM_INIT_AUTOMAKE
 
@@ -9,6 +9,7 @@ AC_CONFIG_SRCDIR([mod_auth_vas.c])
 AC_CONFIG_FILES([Makefile test/Makefile])
 
 AC_PROG_CC
+AC_PREFIX_DEFAULT([/opt/quest])
 
 
 dnl -- APXS is Apache's extension tool.
@@ -74,19 +75,21 @@ fi
 #-- check to see whether libgcc is required
 AC_MSG_CHECKING([for libgcc])
 if $CC -print-libgcc-file-name >/dev/null 2>/dev/null; then
-	libgccfn=no
+	libgccfilename=no
 else
-	libgccfn=`$CC -print-libgcc-file-name`
+	libgccfilename=`$CC -print-libgcc-file-name`
 fi
-AC_MSG_RESULT([$libgccfn])
+AC_MSG_RESULT([$libgccfilename])
 
-if test x"$libgccfn" != x"no" -a x"$libgccfn" != x""; then
+if test x"$libgccfilename" != x"no" -a x"$libgccfilename" != x""; then
 	AC_MSG_CHECKING([whether linking libgcc works])
 	CFLAGS_save="$CFLAGS"
-	CFLAGS="$CFLAGS -Wl,$libgccfn"
-	AC_TRY_LINK([],[],[ac_cv_var_libgccfn=yes],[ac_cv_var_libgccfn=no])
-	AC_MSG_RESULT([$ac_cv_var_libgccfn])
-	if test x"$ac_cv_var_libgccfn" != x"yes"; then
+	CFLAGS="$CFLAGS -Wl,$libgccfilename"
+	AC_TRY_LINK([],[],
+		    [ac_cv_var_libgccfilename=yes],
+		    [ac_cv_var_libgccfilename=no])
+	AC_MSG_RESULT([$ac_cv_var_libgccfilename])
+	if test x"$ac_cv_var_libgccfilename" != x"yes"; then
 		CFLAGS="$CFLAGS_save"
 	fi
 fi
@@ -165,9 +168,6 @@ VAS_LIBS=`$VASCONFIG --libs vasapi`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
 AC_SUBST(TEST_SUBDIRS)
-
-aplibexecdir=`$APXS -q LIBEXECDIR`
-AC_SUBST(aplibexecdir)
 
 DSO=.so
 AC_SUBST(DSO)

@@ -1,15 +1,12 @@
-
 # $Id$
 
 AUTOMAKE_OPTIONS=	no-dependencies foreign
 
-aplibexecdir = @aplibexecdir@
-aplibexec_DATA= 	mod_auth_vas$(DSO)
-aplibexecDATA_INSTALL=	i () { $(apxs_install); } ; i
-apxs_install = echo $(APXS) -i -S LIBEXECDIR=`dirname $$2 2>/dev/null` -a -n `basename $$1 $(DSO)` $$1 
-
+# We make the module noinst here, and install with apxs-install target
+noinst_DATA= 		mod_auth_vas$(DSO)
 mod_auth_vas_SRCS=	mod_auth_vas.c
 
+# Use -Wc and -Wl to protect linker options that aren't already protected
 Wc:=-Wc,
 Wl:=-Wl,
 mod_auth_vas$(DSO): $(mod_auth_vas_SRCS)
@@ -21,9 +18,12 @@ mod_auth_vas$(DSO): $(mod_auth_vas_SRCS)
 		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(VAS_LIBS:%=$(Wl)%)) \
 		-o $@ \
 		$^
+
+# Install the module using APXS
 apxs-install:
 	$(SUDO) $(APXS) -i $(APXSFLAGS) -a mod_auth_vas$(DSO)
 
+# A handy shell script that performs setup checks
 sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	ChangeLog NEWS README $(mod_auth_vas_SRCS)
