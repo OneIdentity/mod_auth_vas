@@ -2,12 +2,14 @@
 description "AuthVasServicePrincipal actually changes service principal"
 #
 # This test works by using the host/ principal stored in 
-# /etc/opt/vas/host.keytab (instead of the default HTTP.keytab) via the 
+# /etc/.../vas/host.keytab (instead of the default HTTP.keytab) via the 
 # AuthVasServicePrincipal directive.
 #
 
+KEYTAB=/etc/opt/quest/vas/host.keytab
+
 cleanup () {
-   $SUDO chmod 600 /etc/opt/vas/host.keytab
+   $SUDO chmod 600 $KEYTAB
    ap_stop
    ap_conf_restore
    rm -f /tmp/hello$$
@@ -17,8 +19,8 @@ trap cleanup 0 1 2
 ap_conf_save
 
 #-- use the first host/ key we find
-$SUDO chmod 644 /etc/opt/vas/host.keytab
-SPN=`vastool ktlist /etc/opt/vas/host.keytab | 
+$SUDO chmod 644 $KEYTAB
+SPN=`vastool ktutil -k $KEYTAB list | 
     awk '$3 ~ /^host\// { print $3; exit; }'`
 
 $NDEBUG || echo "SPN=$SPN"
@@ -30,8 +32,8 @@ ap_conf_append <<-.
 		Options none
 		AllowOverride All
 		AuthVasUseBasic on
-		Order allow,deny
-		Allow from all
+		#Order allow,deny
+		#Allow from all
 	</Directory>
 .
 ap_conf_check

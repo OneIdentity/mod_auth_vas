@@ -21,8 +21,8 @@ ap_conf_append <<-.
 		Options none
 		AllowOverride All
 		AuthVasUseBasic on
-		Order allow,deny
-		Allow from all
+		#Order allow,deny
+		#Allow from all
 	</Directory>
 .
 ap_conf_check
