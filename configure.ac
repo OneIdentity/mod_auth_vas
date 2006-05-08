@@ -64,12 +64,12 @@ fi
 AC_SUBST(APXSFLAGS)
 
 #-- check for the -bexpall linker flag (needed on AIX for apache 1.3.31)
-CFLAGS_save="$CFLAGS"
-CFLAGS="$CFLAGS -Wl,-bexpall"
+LDFLAGS_save="$LDFLAGS"
+LDFLAGS="$LDFLAGS -Wl,-bexpall"
 AC_CACHE_CHECK([whether -bexpall works], [ac_cv_var_bexpall],
 	[AC_TRY_LINK([],[],[ac_cv_var_bexpall=yes],[ac_cv_var_bexpall=no])])
 if test x"$ac_cv_var_bexpall" != x"yes"; then
-	CFLAGS="$CFLAGS_save"
+	LDFLAGS="$LDFLAGS_save"
 fi
 
 #-- check to see whether libgcc is required
@@ -137,11 +137,11 @@ AC_ARG_ENABLE(tests,
 	    [ac_cv_enable_tests=$withval],
 	    [ac_cv_enable_tests=default])
 case "$ac_cv_enable_tests" in
-   yes|default)	
+   yes)	
    	tests_enabled=yes
 	AC_CONFIG_SUBDIRS(test/http-get)
 	;;
-   *)
+   *|default)
 	tests_enabled=no
 	;;
 esac

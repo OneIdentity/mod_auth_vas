@@ -18,16 +18,20 @@ mod_auth_vas$(DSO): $(mod_auth_vas_SRCS)
 		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(LDFLAGS:%=$(Wl)%)) \
 		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(VAS_LIBS:%=$(Wl)%)) \
 		-o $@ \
+		-n auth_vas \
 		$(mod_auth_vas_SRCS)
 
 clean-local:
 	-rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
 
 # Install the module using APXS
-apxs-install:
+install-data-local:
 	mkdir -p $(DESTDIR)`$(APXS) -q LIBEXECDIR`
+	mkdir -p $(DESTDIR)`$(APXS) -q SYSCONFDIR`
 	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
-		$(APXSFLAGS) -a -n mod_auth_vas mod_auth_vas$(DSO)
+		   -S SYSCONFDIR=$(DESTDIR)`$(APXS) -q SYSCONFDIR` \
+		$(APXSFLAGS) -a -n auth_vas \
+		mod_auth_vas`test -e mod_auth_vas.la && echo .la || echo $(DSO)`
 
 # A handy shell script that performs setup checks
 sbin_SCRIPTS=  setup-mod_auth_vas
