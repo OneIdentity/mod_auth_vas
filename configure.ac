@@ -6,7 +6,7 @@ AC_INIT([mod_auth_vas],
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
-AC_CONFIG_FILES([Makefile test/Makefile])
+AC_CONFIG_FILES([Makefile])
 
 AC_PROG_CC
 AC_PREFIX_DEFAULT([/opt/quest])
