@@ -15,7 +15,7 @@ mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
 	test "$(srcdir)" = "$(builddir)" || cp $(srcdir)/mod_auth_vas.c .
 	$(APXS) -c $(APXSFLAGS) \
 		$(CPPFLAGS) \
-		-DPACKAGE_VERSION='\"$(PACKAGE_VERSION)\"' \
+		-DMODAUTHVAS_VERSION='\"$(PACKAGE_VERSION)\"' \
 		$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(CFLAGS:%=$(Wc)%)) \
 		$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(VAS_CFLAGS:%=$(Wc)%)) \
 		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(LDFLAGS:%=$(Wl)%)) \
