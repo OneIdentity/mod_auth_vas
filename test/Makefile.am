@@ -1,5 +1,6 @@
 
 SUBDIRS=	http-get .
+DIST_SUBDIRS=	http-get
 
 TESTS = \
 	test.version \

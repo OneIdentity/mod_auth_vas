@@ -3,6 +3,7 @@
 AC_INIT([mod_auth_vas], 
         [3.2.1.]esyscmd(svnversion -n . /trunk || echo 0),
 	[apache@rc.vintela.com])
+AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])

@@ -1,6 +1,7 @@
 # Process this file with autoconf to produce a configure script.
 AC_INIT([http-get], [0.1], [David.Leonard@quest.com])
 AC_REVISION($Id$)
+AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_SRCDIR([get.c])

@@ -48,6 +48,7 @@ EXTRA_DIST=	NEWS README $(mod_auth_vas_SRCS) $(sbin_SCRIPTS)
 
 DIST_SUBDIRS=	test
 SUBDIRS=	. $(TESTDIR)
+DISTCHECK_CONFIGURE_FLAGS= --disable-tests
 
 #-- targets needed for automated test/build
 print-dist-archives:; echo $(DIST_ARCHIVES)
