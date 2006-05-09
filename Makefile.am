@@ -5,6 +5,7 @@ AUTOMAKE_OPTIONS=	foreign
 # We make the module noinst here, and install with apxs-install target
 noinst_DATA= 		mod_auth_vas$(DSOEXT)
 mod_auth_vas_SRCS=	mod_auth_vas.c
+abs_builddir=		@abs_builddir@
 
 # Use -Wc and -Wl to protect linker options that aren't already protected
 Wc:=-Wc,
@@ -53,3 +54,13 @@ DISTCHECK_CONFIGURE_FLAGS= --disable-tests
 #-- targets needed for automated test/build
 print-dist-archives:; echo $(DIST_ARCHIVES)
 print-dist-name:;     echo $(distdir)
+
+suse-rpm: suse.spec
+	echo '%_rpmdir $(abs_builddir)' > .rpmmacros
+	echo '%_builddir $(abs_builddir)' >> .rpmmacros
+	HOME=$(abs_builddir) rpmbuild -bb suse.spec
+
+suse.spec: suse.spec.in
+	sed -e 's,[@]VERSION[@],$(VERSION),g' \
+	    -e 's,[@]abs_builddir[@],$(abs_builddir),g' \
+	    < $^ > $@

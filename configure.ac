@@ -1,7 +1,7 @@
 # (c) 2006 Quest Software. All right reserved.
 
 AC_INIT([mod_auth_vas], 
-        [3.2.1.]esyscmd(svnversion -n . /trunk || echo 0),
+        [3.2.1.]esyscmd((svnversion -n . /trunk || echo 0) | tr : _),
 	[apache@rc.vintela.com])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE

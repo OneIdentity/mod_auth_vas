@@ -1,0 +1,60 @@
+# $Id$
+Vendor:		Vintela, Inc.
+Name:		apache2-mod_auth_vas
+%define modname mod_auth_vas
+%define apxs apxs2
+%define apache apache2
+%define apache_libexecdir %(%{apxs} -q LIBEXECDIR)
+%define apache_sysconfdir %(%{apxs} -q SYSCONFDIR)
+%define apache_includedir %(%{apxs} -q INCLUDEDIR)
+%define apache_serverroot %(%{apxs} -q PREFIX)
+%define apache_localstatedir %(%{apxs} -q LOCALSTATEDIR)
+%define apache_mmn        %(MMN=$(%{apxs} -q LIBEXECDIR)_MMN; test -x $MMN && $MMN)
+Version:	@VERSION@
+Release:	1
+License:	BSD
+Group:		Productivity/Networking/Web/Servers
+Requires:	apache2 %{apache_mmn} 
+Requires:	libvas.so.4
+BuildRequires:	apache2-devel vasdev
+Summary:	Enables the Apache web server to authenticate users against Active Directory
+URL:		http://rc.vintela.com/topics/mod_auth_vas/
+BuildRoot:	%{_tmppath}/%{name}-%{version}-build
+Prefix:		/opt/quest
+
+%description
+Enables the Apache web server to authenticate users against Active Directory
+
+%prep
+%build
+%install
+cd @abs_builddir@
+rm -rf $RPM_BUILD_ROOT
+make install-exec DESTDIR=$RPM_BUILD_ROOT
+mkdir -p $RPM_BUILD_ROOT%{apache_libexecdir}
+mkdir -p $RPM_BUILD_ROOT%{apache_confd}
+cp -p .libs/%{modname}.so $RPM_BUILD_ROOT%{apache_libexecdir}
+
+%post
+cf=/etc/sysconfig/apache2
+sed -e '/APACHE_MODULES="/{/"auth_vas"/q;/"auth_vas "/q;/auth_vas"/q;s/="/="auth_vas /}' \
+	<${cf} >${cf}.NEW
+mv ${cf} ${cf}.orig
+mv ${cf}.NEW ${cf}
+
+%preun
+cf=/etc/sysconfig/apache2
+sed -e '/^APACHE_MODULES="/s/ auth_vas"/"/' \
+    -e '/^APACHE_MODULES="/s/"auth_vas /"/' \
+    -e '/^APACHE_MODULES="/s/"auth_vas"/""/' \
+    -e '/^APACHE_MODULES="/s/ auth_vas / /' \
+	<${cf} >${cf}.OLD
+mv ${cf} ${cf}.OLD.orig
+mv ${cf}.OLD ${cf}
+
+%files
+%defattr(-,root,root)
+%dir %{apache_libexecdir}
+%{apache_libexecdir}/%{modname}.so
+/opt/quest/sbin/setup-mod_auth_vas
+#%conf /etc/apache2/conf.d/auth_vas.conf
