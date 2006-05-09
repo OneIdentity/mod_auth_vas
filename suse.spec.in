@@ -1,5 +1,5 @@
 # $Id$
-Vendor:		Vintela, Inc.
+Vendor:		Quest Software, Inc.
 Name:		apache2-mod_auth_vas
 %define modname mod_auth_vas
 %define apxs apxs2
@@ -41,6 +41,7 @@ sed -e '/APACHE_MODULES="/{/"auth_vas"/q;/"auth_vas "/q;/auth_vas"/q;s/="/="auth
 	<${cf} >${cf}.NEW
 mv ${cf} ${cf}.orig
 mv ${cf}.NEW ${cf}
+#/etc/init.d/apache2 reload
 
 %preun
 cf=/etc/sysconfig/apache2
