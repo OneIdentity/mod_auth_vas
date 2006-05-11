@@ -102,6 +102,20 @@ for apxs in apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
     test -f "$AP_CF" && break
     AP_CF=
 done
+
+#-- if apxs isn't installed, then look in likely directories
+if test ! -n "$AP_CF"; then
+    for dir in /etc/httpd /etc/apache2 /etc/apache /etc/www /var/www \
+		/opt/IBMIHS
+    do
+	if test -f $dir/conf/httpd.conf; then
+	    AP_CF=$dir/conf/httpd.conf
+	    break
+	fi
+    done
+fi
+
+#-- scan the config file for a user name
 if test -f "$AP_CF"; then
     echo "$AP_CF"
     #echo "found"
@@ -123,6 +137,17 @@ if test -f "$AP_CF"; then
 else
     APACHE_USER=
     echo "not found"
+fi
+
+#-- if the apache user is still unknown, look at existing users and guess
+if test ! -n "$APACHE_USER"; then
+    APACHE_USER_GUESS=nobody
+    for u in apache httpd www; do
+	if test x`eval echo "~$u"` != x"~$u"; then
+	    APACHE_USER_GUESS=$u
+	    break
+	fi
+    done
 fi
 
 label "looking for HTTP/ keytab"
@@ -167,7 +192,7 @@ if test -f "$KEYTAB"; then
     echo "Tell me what username it will run as, and I'll correct the"
     echo "keytab file permissions so that it is readable."
     echo ""
-    query "User for apache process" APACHE_USER nobody
+    query "User for apache process" APACHE_USER $APACHE_USER_GUESS
     echo ""
   fi
 
