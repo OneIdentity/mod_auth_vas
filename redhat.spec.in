@@ -42,8 +42,8 @@ case "$1" in
 # Added by %{name}-%{version}
 <IfDefine HAVE_AUTH_VAS>
 LoadModule auth_vas_module modules/mod_auth_vas.so
-</IfDefine>
 Include %{apache_sysconfdir}/httpd/conf.d/auth_vas.conf
+</IfDefine>
 _end_mav
     fi
     ;;
