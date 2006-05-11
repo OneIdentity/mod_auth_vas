@@ -2,6 +2,9 @@
 
 AUTOMAKE_OPTIONS=	foreign
 
+#-- set this to -a to cause 'make install' to activate the module (unreliable)
+APXS_ACTIVATE=		# -a
+
 # We make the module noinst here, and install with apxs-install target
 noinst_DATA= 		mod_auth_vas$(DSOEXT)
 mod_auth_vas_SRCS=	mod_auth_vas.c
@@ -34,13 +37,17 @@ install-data-local:
 	mkdir -p $(DESTDIR)`$(APXS) -q SYSCONFDIR`
 	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
 		   -S SYSCONFDIR=$(DESTDIR)`$(APXS) -q SYSCONFDIR` \
-		$(APXSFLAGS) -a -n auth_vas \
+		$(APXSFLAGS) $(APXS_ACTIVATE) -n auth_vas \
 		mod_auth_vas$(DSOEXT)
 
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
 
-EXTRA_DIST=	NEWS README $(mod_auth_vas_SRCS) $(sbin_SCRIPTS)
+EXTRA_DIST=	NEWS README $(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
+
+install-conf: auth_vas.conf
+	test -z "$(confdir)" || $(mkdir_p) "$(DESTDIR)$(confdir)"
+	$(INSTALL_DATA) $^ "$(DESTDIR)$(confdir)"
 
 #EXTRA_DIST+=	ChangeLog
 #CLEANFILES=	ChangeLog
@@ -55,12 +62,25 @@ DISTCHECK_CONFIGURE_FLAGS= --disable-tests
 print-dist-archives:; echo $(DIST_ARCHIVES)
 print-dist-name:;     echo $(distdir)
 
+subst=  sed -e 's,[@]VERSION[@],$(VERSION),g' \
+	    -e 's,[@]abs_builddir[@],$(abs_builddir),g' \
+	    -e 's,[@]sbindir[@],$(sbindir),g' 
+
 suse-rpm: suse.spec
 	echo '%_rpmdir $(abs_builddir)' > .rpmmacros
 	echo '%_builddir $(abs_builddir)' >> .rpmmacros
 	HOME=$(abs_builddir) rpmbuild -bb suse.spec
 
 suse.spec: suse.spec.in
-	sed -e 's,[@]VERSION[@],$(VERSION),g' \
-	    -e 's,[@]abs_builddir[@],$(abs_builddir),g' \
-	    < $^ > $@
+	    $(subst) < $^ > $@
+
+redhat-rpm: redhat.spec
+	echo '%_rpmdir $(abs_builddir)' > .rpmmacros
+	echo '%_builddir $(abs_builddir)' >> .rpmmacros
+	HOME=$(abs_builddir) rpmbuild -bb \
+	     	--define='apxs1 1' \
+		--define="apache_libdir `$(APXS) -q LIBEXECDIR`" \
+		--define="apache_sysconfdir `$(APXS) -q SYSCONFDIR`" \
+		redhat.spec
+redhat.spec: redhat.spec.in
+	    $(subst) < $^ > $@
