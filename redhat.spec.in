@@ -1,0 +1,81 @@
+# $Id$
+Name:		mod_auth_vas
+Version:	@VERSION@
+Release:	1%{?apxs1:_ap1}%{!?apxs1:_ap2}
+License:	BSD
+Group:		Applications/Publishing
+BuildPreReq:	%{?apxs1:apache-devel < 2} %{!?apxs1:httpd-devel >= 2}
+PreReq:		%{?apxs1:apache < 2}       %{!?apxs1:httpd >= 2}
+BuildPreReq:	vasdev
+Requires:	libvas.so.4
+Summary:	SPNEGO authentication for Apache using Active Directory
+BuildRoot:	%{_tmppath}/%{name}-%{version}-root
+AutoReq:	no
+Prefix:		/opt/quest
+
+%define apxs 			%{?apxs1:apxs} %{!?apxs1:apxs2}
+%define apache_libdir		%(%{apxs} -q LIBEXECDIR)
+%define apache_sysconfdir	%(%{apxs} -q SYSCONFDIR)
+
+%description
+mod_auth_vas authenticates Active Directory users,
+and can restrict file access by user, organisational unit, AD domain or
+group.
+
+%prep 
+%build
+%install
+cd @abs_builddir@
+make install DESTDIR=$RPM_BUILD_ROOT
+make install-conf DESTDIR=$RPM_BUILD_ROOT \
+		  confdir=%{apache_sysconfdir}/httpd/conf.d
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%post
+case "$1" in
+ 1)
+    if ! grep -s '^LoadModule.*mod_auth_vas' %{apache_sysconfdir}/httpd.conf
+    then
+	cat >> %{apache_sysconfdir}/httpd.conf <<_end_mav
+
+# Added by %{name}-%{version}
+<IfDefine HAVE_AUTH_VAS>
+LoadModule auth_vas_module modules/mod_auth_vas.so
+</IfDefine>
+Include %{apache_sysconfdir}/httpd/conf.d/auth_vas.conf
+_end_mav
+    fi
+    ;;
+esac
+#/etc/init.d/httpd reload
+
+#if test ! -e /etc/sysconfig/httpd || 
+#        ! (. /etc/sysconfig/httpd && 
+#	   echo "$HTTPD" | grep libvas > /dev/null) 2>/dev/null
+#then
+#    (echo
+#     echo '# The following line may be needed for %{name}-%{version}'
+#     echo '#HTTPD="env LD_PRELOAD=/opt/vintela/vas/lib/libvas.so $HTTPD"'
+#    ) >> /etc/sysconfig/httpd
+#    echo "** Please check the end of /etc/sysconfig/httpd" >&2
+#fi
+
+#%preun
+#if test "$1" -eq 0; then
+#  if test -f /etc/init.d/.httpd.backup_%{name}; then
+#      mv -f /etc/init.d/httpd /etc/init.d/.httpd.rpmsave.%{name}
+#      mv -f /etc/init.d/.httpd.backup_%{name} /etc/init.d/httpd
+#  fi
+#fi
+#/etc/init.d/httpd restart	#-- reload server?
+
+
+%files
+%defattr(-,root,root)
+%dir %{apache_libdir}
+%{apache_libdir}/mod_auth_vas.so
+%attr(755,root,root) @sbindir@/setup-mod_auth_vas
+%dir %{apache_sysconfdir}/httpd/conf.d/
+%config(noreplace) %{apache_sysconfdir}/httpd/conf.d/auth_vas.conf
+
