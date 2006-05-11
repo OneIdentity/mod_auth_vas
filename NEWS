@@ -1,5 +1,6 @@
-3.2.1 [unreleased]
-	- Using autoconf to simplify builds
+3.2.1 
+	- Replace makefile with autoconf/configure
+	- Ehancement bug 9: VASAuthAuthoritative (Paul Whittaker)
 3.2.0 [internal release only]
 	- Use VAS3.0 API
 	- Improve VAS error messages
