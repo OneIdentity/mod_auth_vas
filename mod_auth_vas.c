@@ -218,7 +218,12 @@ typedef struct {
  * Per-directory configuration data - computed while traversing htaccess.
  */
 typedef struct {
-    int auth_basic;			/* VASAuthBasic [on|off] or UNSET */
+    int auth_negotiate;			/* Kerberos Negotiate [on|off] or */
+					/* UNSET (default on) */
+    int auth_basic;			/* VASAuthBasic [on|off] or UNSET
+					 * (default off) */
+    int auth_authoritative;		/* Authenticate authoritatively */
+					/* [on|off] or UNSET (default on) */
 } auth_vas_dir_config;
 
 /*
@@ -240,11 +245,11 @@ module AP_MODULE_DECLARE_DATA auth_vas_module;
 static const char *server_set_string_slot(cmd_parms *cmd, void *ignored, 
 	const char *arg);
 static int server_ctx_is_valid(server_rec *s);
-static int match_user(request_rec *r, const char *name);
-static int match_group(request_rec *r, const char *name);
+static int match_user(request_rec *r, const char *name, int);
+static int match_group(request_rec *r, const char *nam, int);
 static int dn_in_container(const char *dn, const char *container);
-static int match_container(request_rec *r, const char *container);
-static int match_valid_user(request_rec *r, const char *ignored);
+static int match_container(request_rec *r, const char *container, int);
+static int match_valid_user(request_rec *r, const char *ignored, int);
 static int is_our_auth_type(const request_rec *r);
 static int auth_vas_auth_checker(request_rec *r);
 static int do_basic_accept(request_rec *r, const char *user, 
@@ -331,15 +336,25 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 /*
  * Configuration commands table for this module.
  */
-#define CMD_USEBASIC	"AuthVasUseBasic"
-#define CMD_SPN		"AuthVasServicePrincipal"
-#define CMD_REALM	"AuthVasDefaultRealm"
+#define CMD_USENEGOTIATE	"AuthVasUseNegotiate"
+#define CMD_USEBASIC		"AuthVasUseBasic"
+#define CMD_AUTHORITATIVE	"AuthVasAuthoritative"
+#define CMD_SPN			"AuthVasServicePrincipal"
+#define CMD_REALM		"AuthVasDefaultRealm"
 static const command_rec auth_vas_cmds[] =
 {
+    AP_INIT_FLAG(CMD_USENEGOTIATE, ap_set_flag_slot,
+		APR_OFFSETOF(auth_vas_dir_config, auth_negotiate),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Kerberos SPNEGO authentication using Active Directory"),
     AP_INIT_FLAG(CMD_USEBASIC, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, auth_basic),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Basic Authentication using Active Directory"),
+    AP_INIT_FLAG(CMD_AUTHORITATIVE, ap_set_flag_slot,
+		APR_OFFSETOF(auth_vas_dir_config, auth_authoritative),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Authenticate authoritatively ('Off' allows fall-through to other authentication modules)"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -443,7 +458,7 @@ server_ctx_is_valid(server_rec *s)
  *   @return OK if the user has the same name, otherwise HTTP_...
  */
 static int
-match_user(request_rec *r, const char *name)
+match_user(request_rec *r, const char *name, int log_level)
 {
     const auth_vas_server_config *sc;
     const char *p;
@@ -487,7 +502,7 @@ match_user(request_rec *r, const char *name)
  *   @return OK if group contains user, otherwise HTTP_...
  */
 static int
-match_group(request_rec *r, const char *name)
+match_group(request_rec *r, const char *name, int log_level)
 {
     vas_err_t                 vaserr;
     int                       rval;
@@ -509,7 +524,7 @@ match_group(request_rec *r, const char *name)
      * If it's not there, then we'll just fail since there is
      * no available group information. */
     if (rnote->vas_authctx == NULL) {
-        LOG_RERROR(APLOG_ERR, 0, r,
+        LOG_RERROR(log_level, 0, r,
                    "match_group(): no available auth context for %s",
                    rnote->vas_pname);
         rval = HTTP_FORBIDDEN;
@@ -537,7 +552,7 @@ match_group(request_rec *r, const char *name)
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
             rval = HTTP_FORBIDDEN;
-	LOG_RERROR(APLOG_ERR, 0, r,
+            LOG_RERROR(log_level, 0, r,
                        "match_group(): %s not member of %s",
                        rnote->vas_pname,
                        name);
@@ -545,14 +560,14 @@ match_group(request_rec *r, const char *name)
             
         case VAS_ERR_EXISTS: /* configured group not found */
             rval = HTTP_FORBIDDEN;
-            LOG_RERROR(APLOG_ERR, 0, r,
+            LOG_RERROR(log_level, 0, r,
                        "match_group(): group %s does not exist",
                        name);
             break;
             
         default: /* other type of error */
             rval = HTTP_INTERNAL_SERVER_ERROR;
-            LOG_RERROR(APLOG_ERR, 0, r,
+            LOG_RERROR(log_level, 0, r,
                        "match_group(): fatal vas error: %s",
                        vas_err_get_string(sc->vas_ctx, 1));
             break;
@@ -588,7 +603,7 @@ dn_in_container(const char *dn, const char *container)
  *   @return OK if container contains user, otherwise HTTP_...
  */
 static int
-match_container(request_rec *r, const char *container)
+match_container(request_rec *r, const char *container, int log_level)
 {
     int                       rval = 0;
     int                       do_unlock = 0;
@@ -615,7 +630,7 @@ match_container(request_rec *r, const char *container)
     if ((vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid,
 		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
     {
-        LOG_RERROR(APLOG_ERR, 0, r,
+        LOG_RERROR(log_level, 0, r,
 	       	"match_container(): fatal vas error for user_init: %d, %s",
 	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
         rval = HTTP_FORBIDDEN;
@@ -625,7 +640,7 @@ match_container(request_rec *r, const char *container)
     if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, vasuser,
 		    &dn )) != VAS_ERR_SUCCESS ) 
     {
-	LOG_RERROR(APLOG_ERR, 0, r,
+	LOG_RERROR(log_level, 0, r,
 	       	"match_container(): fatal vas error for user_get_dn: %d, %s",
 	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
         rval = HTTP_FORBIDDEN;
@@ -662,7 +677,7 @@ done:
  *   @return OK if the user is valid.
  */
 static int
-match_valid_user(request_rec *r, const char *ignored)
+match_valid_user(request_rec *r, const char *ignored, int log_level)
 {
     /* XXX should check to see if the user has been disabled */
     if (RUSER(r) != NULL)
@@ -677,7 +692,7 @@ match_valid_user(request_rec *r, const char *ignored)
  */
 static const struct match {
     const char *name;
-    int (*func)(request_rec *r, const char *arg);
+    int (*func)(request_rec *r, const char *arg, int log_level);
     int has_args;
 } matchtab[] = {
     { "user",	    match_user,	      1 },
@@ -740,8 +755,10 @@ auth_vas_auth_checker(request_rec *r)
     int			      rval = 0;
     int			      valid_lines = 0;
     char		     *arg;
+    auth_vas_dir_config	     *dc;
 
     ASSERT(r != NULL);
+    dc = GET_DIR_CONFIG(r->per_dir_config);
     TRACE_R(r, "auth_vas_auth_checker: user=%s authtype=%s",
 	RUSER(r), RAUTHTYPE(r));
 
@@ -750,6 +767,8 @@ auth_vas_auth_checker(request_rec *r)
 	return DECLINED;
 
     if (!server_ctx_is_valid(r->server)) {
+	if (dc && dc->auth_authoritative == FLAG_OFF)
+	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
 	      "auth_vas_auth_checker: no VAS context for server; FORBIDDEN");
 	return HTTP_FORBIDDEN;
@@ -800,7 +819,9 @@ auth_vas_auth_checker(request_rec *r)
 
 		ASSERT(match != NULL);
 		ASSERT(match->func != NULL);
-		rval = (*match->func)(r, arg);
+                rval = (*match->func)(r, arg,
+                    (dc && dc->auth_authoritative == FLAG_OFF) ? 
+                        APLOG_DEBUG : APLOG_ERR);
 		TRACE_R(r, "require %s \"%s\" -> %s", type, arg,
 			    rval == OK ? "OK" : "FAIL");
 		if (rval == OK)
@@ -812,7 +833,9 @@ auth_vas_auth_checker(request_rec *r)
 		LOG_RERROR(APLOG_WARNING, 0, r,
 		    "Ignoring unexpected arguments to 'Require %s'", type);
 	    }
-	    rval = (*match->func)(r, NULL);
+	    rval = (*match->func)(r, NULL,
+		(dc && dc->auth_authoritative == FLAG_OFF) ? 
+		    APLOG_DEBUG : APLOG_ERR);
 	    TRACE_R(r, "require %s  -> %s", type, rval == OK ? "OK" : "FAIL");
 	    if (rval == OK)
 		return OK;
@@ -824,6 +847,9 @@ auth_vas_auth_checker(request_rec *r)
 		"No lines apply; consider 'Require valid-user'");
 	return DECLINED;
     }
+
+    if (dc && dc->auth_authoritative == FLAG_OFF)
+	return DECLINED;
 
     LOG_RERROR(APLOG_ERR, 0, r,
 		  "auth_vas_auth_checker: Denied access to "
@@ -1359,6 +1385,8 @@ auth_vas_check_user_id(request_rec *r)
     }
 
     if (!server_ctx_is_valid(r->server)) {
+	if (dc && dc->auth_authoritative == FLAG_OFF)
+	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
 	      "auth_vas_check_user_id: no VAS context");
 	return HTTP_INTERNAL_SERVER_ERROR;
@@ -1371,10 +1399,22 @@ auth_vas_check_user_id(request_rec *r)
     auth_line = apr_table_get(r->headers_in, "Authorization");
     if (!auth_line)
     {
-	/* There were no Authorization headers: Deny access now,
-	 * but offer possible means of negotiation via WWW-Authenticate */
-	TRACE_R(r, "sending initial negotiate headers");
-	add_auth_headers(r);
+	if (dc->auth_negotiate != FLAG_OFF) {
+	    /* There were no Authorization headers: Deny access now,
+	     * but offer possible means of negotiation via WWW-Authenticate */
+	    TRACE_R(r, "sending initial negotiate headers");
+	    add_auth_headers(r);
+	} else if (dc->auth_basic == FLAG_ON) {
+	    TRACE_R(r, "sending initial basic headers");
+	    add_basic_auth_headers(r);
+	} else {
+	    LOG_RERROR(APLOG_WARNING, 0, r,
+		"%s off and %s off; no authentication possible",
+		CMD_USENEGOTIATE, CMD_USEBASIC);
+	}
+	/* Note that in the absence of Authorization headers there is no way
+	 * that any other auth module will be able to authenticate either, so
+	 * there's no need to return DECLINED if not authoritative. */
 	return HTTP_UNAUTHORIZED;
     }
 
@@ -1384,6 +1424,13 @@ auth_vas_check_user_id(request_rec *r)
     /* Handle "Authorization: Negotiate ..." */
     if (strcasecmp(auth_type, "Negotiate") == 0)
     {
+	if (dc->auth_negotiate == FLAG_OFF) {
+	    if (dc && dc->auth_authoritative == FLAG_OFF)
+		return DECLINED;
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		"Negotiate authentication denied (%s off)", CMD_USENEGOTIATE);
+	    return HTTP_UNAUTHORIZED;
+	}
 	result = do_gss_spnego_accept(r, auth_line);
 	if (result != OK) {
 	    /*
@@ -1406,7 +1453,8 @@ auth_vas_check_user_id(request_rec *r)
 	     */
 	    add_basic_auth_headers(r);
 	}
-	return result;
+	return (result != OK && dc && dc->auth_authoritative == FLAG_OFF) ?
+	    DECLINED : result;
     }
 
     /* Handle "Authorization: Basic ..." */
@@ -1415,6 +1463,8 @@ auth_vas_check_user_id(request_rec *r)
 	char *colon = NULL;
 
 	if (dc->auth_basic != FLAG_ON) {
+	    if (dc && dc->auth_authoritative == FLAG_OFF)
+		return DECLINED;
 	    LOG_RERROR(APLOG_ERR, 0, r,
                        "Basic authentication denied (%s off)",
                        CMD_USEBASIC);
@@ -1439,6 +1489,8 @@ auth_vas_check_user_id(request_rec *r)
 	{
 	    LOG_RERROR(APLOG_ERR, 0, r,
 		   "Error parsing credentials, no ':' separator");
+	    /* N.B. If the basic auth header can't be parsed, there's no point
+	     * declining if not authoritative. */
 	    return HTTP_UNAUTHORIZED;
 	}
 
@@ -1452,7 +1504,8 @@ auth_vas_check_user_id(request_rec *r)
 	     RUSER(r) = apr_pstrdup(r->pool, user);
 	     ASSERT(RUSER(r) != NULL);
 	}
-	return result;
+	return (result != OK && dc && dc->auth_authoritative == FLAG_OFF) ?
+	    DECLINED : result;
     }
 
     /* Handle "Authorization: [other]" */
@@ -1460,7 +1513,8 @@ auth_vas_check_user_id(request_rec *r)
     {
 	/* We don't understand. Deny access. */
 	add_auth_headers(r);
-	return HTTP_UNAUTHORIZED;
+	return (dc && dc->auth_authoritative == FLAG_OFF) ? DECLINED :
+		HTTP_UNAUTHORIZED;
     }
 }
 
