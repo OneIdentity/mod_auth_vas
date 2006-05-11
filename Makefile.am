@@ -47,7 +47,7 @@ EXTRA_DIST=	NEWS README $(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
 
 install-conf: auth_vas.conf
 	test -z "$(confdir)" || $(mkdir_p) "$(DESTDIR)$(confdir)"
-	$(INSTALL_DATA) $^ "$(DESTDIR)$(confdir)"
+	$(INSTALL_DATA) $^ "$(DESTDIR)$(confdir)/auth_vas.conf"
 
 #EXTRA_DIST+=	ChangeLog
 #CLEANFILES=	ChangeLog
@@ -64,23 +64,31 @@ print-dist-name:;     echo $(distdir)
 
 subst=  sed -e 's,[@]VERSION[@],$(VERSION),g' \
 	    -e 's,[@]abs_builddir[@],$(abs_builddir),g' \
-	    -e 's,[@]sbindir[@],$(sbindir),g' 
+	    -e 's,[@]sbindir[@],$(sbindir),g' \
+	    -e 's,[@]APXS[@],$(APXS),g' 
 
-suse-rpm: suse.spec
+.rpmmacros: Makefile
 	echo '%_rpmdir $(abs_builddir)' > .rpmmacros
 	echo '%_builddir $(abs_builddir)' >> .rpmmacros
+
+suse-rpm: suse.spec .rpmmacros
 	HOME=$(abs_builddir) rpmbuild -bb suse.spec
 
 suse.spec: suse.spec.in
 	    $(subst) < $^ > $@
 
-redhat-rpm: redhat.spec
-	echo '%_rpmdir $(abs_builddir)' > .rpmmacros
-	echo '%_builddir $(abs_builddir)' >> .rpmmacros
+redhat-ap1-rpm: redhat.spec .rpmmacros
 	HOME=$(abs_builddir) rpmbuild -bb \
 	     	--define='apxs1 1' \
 		--define="apache_libdir `$(APXS) -q LIBEXECDIR`" \
 		--define="apache_sysconfdir `$(APXS) -q SYSCONFDIR`" \
 		redhat.spec
+
+redhat-ap2-rpm: redhat.spec .rpmmacros
+	HOME=$(abs_builddir) rpmbuild -bb \
+		--define="apache_libdir `$(APXS) -q LIBEXECDIR`" \
+		--define="apache_sysconfdir `$(APXS) -q SYSCONFDIR`" \
+		redhat.spec
+
 redhat.spec: redhat.spec.in
 	    $(subst) < $^ > $@

@@ -13,7 +13,7 @@ BuildRoot:	%{_tmppath}/%{name}-%{version}-root
 AutoReq:	no
 Prefix:		/opt/quest
 
-%define apxs 			%{?apxs1:apxs} %{!?apxs1:apxs2}
+%define apxs 			@APXS@
 %define apache_libdir		%(%{apxs} -q LIBEXECDIR)
 %define apache_sysconfdir	%(%{apxs} -q SYSCONFDIR)
 
@@ -28,21 +28,33 @@ group.
 cd @abs_builddir@
 make install DESTDIR=$RPM_BUILD_ROOT
 make install-conf DESTDIR=$RPM_BUILD_ROOT \
-		  confdir=%{apache_sysconfdir}/httpd/conf.d
+		  confdir=%{apache_sysconfdir}.d
+
+#-- unlike suse, we have to add the LoadModule explicitly
+ed -s $RPM_BUILD_ROOT%{apache_sysconfdir}.d/auth_vas.conf <<_end
+1i
+LoadModule auth_vas_module modules/mod_auth_vas.so
+.
+w
+_end
+
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %post
 case "$1" in
  1)
-    if ! grep -s '^LoadModule.*mod_auth_vas' %{apache_sysconfdir}/httpd.conf
+    #-- For apache-1.3.x, we need to insert the include line
+    if ! grep '^LoadModule.*mod_auth_vas' \
+		%{apache_sysconfdir}/httpd.conf >/dev/null && \
+       ! grep '^Include.*conf\.d/\*' \
+		%{apache_sysconfdir}/httpd.conf >/dev/null
     then
 	cat >> %{apache_sysconfdir}/httpd.conf <<_end_mav
 
 # Added by %{name}-%{version}
 <IfDefine HAVE_AUTH_VAS>
-LoadModule auth_vas_module modules/mod_auth_vas.so
-Include %{apache_sysconfdir}/httpd/conf.d/auth_vas.conf
+Include %{apache_sysconfdir}.d/auth_vas.conf
 </IfDefine>
 _end_mav
     fi
@@ -76,6 +88,6 @@ esac
 %dir %{apache_libdir}
 %{apache_libdir}/mod_auth_vas.so
 %attr(755,root,root) @sbindir@/setup-mod_auth_vas
-%dir %{apache_sysconfdir}/httpd/conf.d/
-%config(noreplace) %{apache_sysconfdir}/httpd/conf.d/auth_vas.conf
+%dir %{apache_sysconfdir}.d/
+%config(noreplace) %{apache_sysconfdir}.d/auth_vas.conf
 
