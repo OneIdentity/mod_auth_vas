@@ -16,7 +16,8 @@ Wl:=-Wl,
 
 # NB: copy the sources locally so that apxs doesn't get confused
 mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
-	test "$(srcdir)" = "$(builddir)" || cp $(srcdir)/mod_auth_vas.c .
+	cmp $(srcdir)/mod_auth_vas.c ./mod_auth_vas.c 2>/dev/null || \
+	  cp $(srcdir)/mod_auth_vas.c .
 	$(APXS) -c $(APXSFLAGS) \
 		$(CPPFLAGS) \
 		-DMODAUTHVAS_VERSION='\"$(PACKAGE_VERSION)\"' \
