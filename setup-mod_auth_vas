@@ -10,7 +10,7 @@
 KEYTAB=/etc/opt/quest/vas/HTTP.keytab
 VASTOOL=/opt/quest/bin/vastool
 KTUTIL=/opt/quest/bin/ktutil
-LOGFILE=/tmp/mod_auth_vas-setup.log
+LOGFILE=/tmp/mod_auth_vas-setup.log.$$
 
 echo1 () { echo -n "$*"; }
 echo2 () { echo "$*\\c"; }
@@ -65,11 +65,17 @@ yesorno () {
 
 logfile_written=false
 recordcmd () {
+    if ! $logfile_written; then
+	rm -f $LOGFILE
+	set -o noclobber
+	exec 5>$LOGFILE 
+	set +o noclobber
+    	logfile_written=true
+    fi
     (echo "# `date`";
     echo "$*";
-    echo ) >> $LOGFILE
+    echo ) >&5
     "$@"
-    logfile_written=true
 }
 
 #-- intro
@@ -115,36 +121,36 @@ if test ! -n "$AP_CF"; then
     done
 fi
 
-#-- scan the config file for a user name
+#-- scan the config file for a group name
 if test -f "$AP_CF"; then
     echo "$AP_CF"
     #echo "found"
-    label "looking for apache daemon user"
-    APACHE_USER=`(sed -ne 's/^User //p' < "$AP_CF"|sed -e 1q) 2>/dev/null`
-    if test ! -n "$APACHE_USER"; then
+    label "looking for apache daemon group"
+    APACHE_GROUP=`(sed -ne 's/^Group //p' < "$AP_CF"|sed -e 1q) 2>/dev/null`
+    if test ! -n "$APACHE_GROUP"; then
 	#-- try harder 
 	for path in `sed -ne 's/^Include //p' < "$AP_CF"` /dev/null; do
-	    APACHE_USER=`(sed -ne 's/^User //p' < "$path"|sed -e 1q) 2>/dev/null`
-	    test -n "$APACHE_USER" && break
+	    APACHE_GROUP=`(sed -ne 's/^Group //p' < "$path"|sed -e 1q) 2>/dev/null`
+	    test -n "$APACHE_GROUP" && break
 	done
     fi
 
-    if test -n "$APACHE_USER"; then
-	echo "$APACHE_USER"
+    if test -n "$APACHE_GROUP"; then
+	echo "$APACHE_GROUP"
     else
 	echo "not found"
     fi
 else
-    APACHE_USER=
+    APACHE_GROUP=
     echo "not found"
 fi
 
-#-- if the apache user is still unknown, look at existing users and guess
-if test ! -n "$APACHE_USER"; then
-    APACHE_USER_GUESS=nobody
-    for u in apache httpd www; do
+#-- if the apache group is still unknown, look at existing groups and guess
+if test ! -n "$APACHE_GROUP"; then
+    APACHE_GROUP_GUESS=nobody
+    for u in apache httpd www nogroup; do
 	if test x`eval echo "~$u"` != x"~$u"; then
-	    APACHE_USER_GUESS=$u
+	    APACHE_GROUP_GUESS=$u
 	    break
 	fi
     done
@@ -186,28 +192,28 @@ else
 fi
 
 if test -f "$KEYTAB"; then
-  if test ! -n "$APACHE_USER"; then
+  if test ! -n "$APACHE_GROUP"; then
     echo ""
     echo "The apache server process must be able to access the keytab."
-    echo "Tell me what username it will run as, and I'll correct the"
+    echo "Tell me what group it will run as, and I'll correct the"
     echo "keytab file permissions so that it is readable."
     echo ""
-    query "User for apache process" APACHE_USER $APACHE_USER_GUESS
+    query "Group for apache process" APACHE_GROUP $APACHE_GROUP_GUESS
     echo ""
   fi
 
-  label "checking keytab is readable by $APACHE_USER"
+  label "checking keytab is readable by $APACHE_GROUP"
   set -- `/bin/ls -l "$KEYTAB"`
-  case "$1:$3" in
+  case "$1:$4" in
     -??????r??:*) echo "yes" ;;
-    -r????????:$APACHE_USER) echo "yes" ;;
+    -???r?????:$APACHE_GROUP) echo "yes" ;;
     *) echo "no"
-       if yesorno "Change ownership of $KEYTAB to $APACHE_USER?"; then
+       if yesorno "Change group of $KEYTAB to $APACHE_GROUP?"; then
            label " -> fixing file mode and ownership"
            checkroot
-           recordcmd chown "$APACHE_USER" "$KEYTAB" || 
-	       die "Could not change file owner"
-           recordcmd chmod 400 "$KEYTAB" || 
+           recordcmd chgrp "$APACHE_GROUP" "$KEYTAB" || 
+	       die "Could not change file group"
+           recordcmd chmod 640 "$KEYTAB" || 
 	   	die "Could not change file mode"
            echo "fixed"
        else
