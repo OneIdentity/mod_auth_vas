@@ -1,3 +1,6 @@
+3.2.2
+	- Remove race conditions and from setup-mod_auth_vas
+	- Setup changed to set group (not user) access to the keytab file 
 3.2.1 
 	- Replace makefile with autoconf/configure
 	- Ehancement bug 9: VASAuthAuthoritative (Paul Whittaker)
