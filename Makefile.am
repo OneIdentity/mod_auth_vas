@@ -45,23 +45,28 @@ install-data-local:
 sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	NEWS README $(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
+CLEANFILES=
 
 install-conf: auth_vas.conf
 	test -z "$(confdir)" || $(mkdir_p) "$(DESTDIR)$(confdir)"
 	$(INSTALL_DATA) $^ "$(DESTDIR)$(confdir)/auth_vas.conf"
 
 #EXTRA_DIST+=	ChangeLog
-#CLEANFILES=	ChangeLog
+#CLEANFILES+=	ChangeLog
 #ChangeLog:
 #	svn2cl || echo No changelog > $@
 
-DIST_SUBDIRS=	test
+DIST_SUBDIRS=	$(TESTDIR)
 SUBDIRS=	. $(TESTDIR)
 DISTCHECK_CONFIGURE_FLAGS= --disable-tests
 
 #-- targets needed for automated test/build
 print-dist-archives:; echo $(DIST_ARCHIVES)
 print-dist-name:;     echo $(distdir)
+
+#-- targets for RPM building
+EXTRA_DIST+= suse.spec.in redhat.spec.in
+CLEANFILES+= suse.spec redhat.spec .rpmmacros
 
 subst=  sed -e 's,[@]VERSION[@],$(VERSION),g' \
 	    -e 's,[@]abs_builddir[@],$(abs_builddir),g' \
@@ -93,3 +98,5 @@ redhat-ap2-rpm: redhat.spec .rpmmacros
 
 redhat.spec: redhat.spec.in
 	    $(subst) < $^ > $@
+
+
