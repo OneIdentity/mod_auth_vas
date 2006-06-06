@@ -1261,7 +1261,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
 
     sc = GET_SERVER_CONFIG(s->module_config);
-    TRACE_S(s, "sc=%p", (void *)sc);
+    TRACE_S(s, "sc=%x", (void *)sc);
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
@@ -1280,7 +1280,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
     if (vaserr != VAS_ERR_SUCCESS) {
         LOG_ERROR(APLOG_ERR, vaserr, s, 
-		"vas_ctx_alloc failed, err = %d",
+		"vas_ctx_alloc() failed, err = %d",
 	       	vaserr);
 	return;
     }
@@ -1295,7 +1295,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	LOG_ERROR(APLOG_ERR, 0, s,
                   "vas_id_alloc() failed on %s, err = %s",
                   sc->service_principal,
-                  vas_err_get_string(sc->vas_ctx,1));
+                  vas_err_get_string(sc->vas_ctx, 1));
     }
 
     /* Establish our credentials using the service keytab */
@@ -1306,7 +1306,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                                           NULL);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
-                  "establish_cred_keytab failed, err = %s",
+                  "vas_id_establish_cred_keytab() failed, err = %s",
                   vas_err_get_string(sc->vas_ctx, 1));
     } else {
         TRACE_S(s, "successfully authenticated as %s", sc->service_principal);
