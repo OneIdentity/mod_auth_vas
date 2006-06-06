@@ -131,6 +131,7 @@
 #define FLAG_OFF	0
 #define FLAG_ON		1
 #define FLAG_MERGE(basef,newf) ((newf) == FLAG_UNSET ? (basef) : (newf))
+#define TEST_FLAG_DEFAULT(f,def)  ((f) == FLAG_UNSET ? (def) : (f))
 
 /*
  * Trace macros for verbose debugging.
@@ -218,13 +219,22 @@ typedef struct {
  * Per-directory configuration data - computed while traversing htaccess.
  */
 typedef struct {
-    int auth_negotiate;			/* Kerberos Negotiate [on|off] or */
-					/* UNSET (default on) */
-    int auth_basic;			/* VASAuthBasic [on|off] or UNSET
-					 * (default off) */
-    int auth_authoritative;		/* Authenticate authoritatively */
-					/* [on|off] or UNSET (default on) */
+    int auth_negotiate;			/* AuthVasUseNegotiate (default on) */
+    int auth_basic;			/* AuthVasUseBasic (default off) */
+    int auth_authoritative;		/* AuthVasAuthoritative (default on) */
 } auth_vas_dir_config;
+
+/* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
+#define USING_AUTH_DEFAULT(dc, field, def) \
+		((dc) ? TEST_FLAG_DEFAULT((dc)->field, def) : def)
+
+/* Macros to safely test the per-directory flags, applying defaults. */
+#define USING_AUTH_NEGOTIATE(dc) \
+		USING_AUTH_DEFAULT(dc, auth_negotiate, FLAG_ON)
+#define USING_AUTH_BASIC(dc) \
+		USING_AUTH_DEFAULT(dc, auth_basic, FLAG_OFF)
+#define USING_AUTH_AUTHORITATIVE(dc) \
+		USING_AUTH_DEFAULT(dc, auth_authoritative, FLAG_ON)
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -723,7 +733,7 @@ is_our_auth_type(const request_rec *r)
     dc = GET_DIR_CONFIG(r->per_dir_config);
     ASSERT(dc != NULL);
 
-    if (dc->auth_basic == FLAG_ON &&
+    if (USING_AUTH_BASIC(dc) &&
 	strcmp(RAUTHTYPE(r), "Basic") == 0)
 	return 1;
 
@@ -767,7 +777,7 @@ auth_vas_auth_checker(request_rec *r)
 	return DECLINED;
 
     if (!server_ctx_is_valid(r->server)) {
-	if (dc && dc->auth_authoritative == FLAG_OFF)
+	if (!USING_AUTH_AUTHORITATIVE(dc))
 	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
 	      "auth_vas_auth_checker: no VAS context for server; FORBIDDEN");
@@ -820,8 +830,7 @@ auth_vas_auth_checker(request_rec *r)
 		ASSERT(match != NULL);
 		ASSERT(match->func != NULL);
                 rval = (*match->func)(r, arg,
-                    (dc && dc->auth_authoritative == FLAG_OFF) ? 
-                        APLOG_DEBUG : APLOG_ERR);
+                    USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_DEBUG);
 		TRACE_R(r, "require %s \"%s\" -> %s", type, arg,
 			    rval == OK ? "OK" : "FAIL");
 		if (rval == OK)
@@ -834,8 +843,7 @@ auth_vas_auth_checker(request_rec *r)
 		    "Ignoring unexpected arguments to 'Require %s'", type);
 	    }
 	    rval = (*match->func)(r, NULL,
-		(dc && dc->auth_authoritative == FLAG_OFF) ? 
-		    APLOG_DEBUG : APLOG_ERR);
+                USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_DEBUG);
 	    TRACE_R(r, "require %s  -> %s", type, rval == OK ? "OK" : "FAIL");
 	    if (rval == OK)
 		return OK;
@@ -848,7 +856,7 @@ auth_vas_auth_checker(request_rec *r)
 	return DECLINED;
     }
 
-    if (dc && dc->auth_authoritative == FLAG_OFF)
+    if (!USING_AUTH_AUTHORITATIVE(dc)) 
 	return DECLINED;
 
     LOG_RERROR(APLOG_ERR, 0, r,
@@ -1321,7 +1329,7 @@ add_basic_auth_headers(request_rec *r)
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
 
-    if (dc->auth_basic == FLAG_ON) {
+    if (USING_AUTH_BASIC(dc)) {
 	s = apr_psprintf(r->pool, "Basic realm=\"%s\"", sc->default_realm);
 	ASSERT(s != NULL);
 	apr_table_add(r->err_headers_out, "WWW-Authenticate", s);
@@ -1385,7 +1393,7 @@ auth_vas_check_user_id(request_rec *r)
     }
 
     if (!server_ctx_is_valid(r->server)) {
-	if (dc && dc->auth_authoritative == FLAG_OFF)
+	if (!USING_AUTH_AUTHORITATIVE(dc))
 	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
 	      "auth_vas_check_user_id: no VAS context");
@@ -1399,12 +1407,12 @@ auth_vas_check_user_id(request_rec *r)
     auth_line = apr_table_get(r->headers_in, "Authorization");
     if (!auth_line)
     {
-	if (dc->auth_negotiate != FLAG_OFF) {
+	if (USING_AUTH_NEGOTIATE(dc)) {
 	    /* There were no Authorization headers: Deny access now,
 	     * but offer possible means of negotiation via WWW-Authenticate */
 	    TRACE_R(r, "sending initial negotiate headers");
 	    add_auth_headers(r);
-	} else if (dc->auth_basic == FLAG_ON) {
+	} else if (USING_AUTH_BASIC(dc)) {
 	    TRACE_R(r, "sending initial basic headers");
 	    add_basic_auth_headers(r);
 	} else {
@@ -1424,8 +1432,8 @@ auth_vas_check_user_id(request_rec *r)
     /* Handle "Authorization: Negotiate ..." */
     if (strcasecmp(auth_type, "Negotiate") == 0)
     {
-	if (dc->auth_negotiate == FLAG_OFF) {
-	    if (dc && dc->auth_authoritative == FLAG_OFF)
+	if (!USING_AUTH_NEGOTIATE(dc)) {
+	    if (!USING_AUTH_AUTHORITATIVE(dc))
 		return DECLINED;
 	    LOG_RERROR(APLOG_ERR, 0, r,
 		"Negotiate authentication denied (%s off)", CMD_USENEGOTIATE);
@@ -1453,8 +1461,8 @@ auth_vas_check_user_id(request_rec *r)
 	     */
 	    add_basic_auth_headers(r);
 	}
-	return (result != OK && dc && dc->auth_authoritative == FLAG_OFF) ?
-	    DECLINED : result;
+	return (result == OK || USING_AUTH_AUTHORITATIVE(dc)) ? 
+	    result : DECLINED;
     }
 
     /* Handle "Authorization: Basic ..." */
@@ -1462,8 +1470,8 @@ auth_vas_check_user_id(request_rec *r)
     {
 	char *colon = NULL;
 
-	if (dc->auth_basic != FLAG_ON) {
-	    if (dc && dc->auth_authoritative == FLAG_OFF)
+	if (!USING_AUTH_BASIC(dc)) {
+	    if (!USING_AUTH_AUTHORITATIVE(dc))
 		return DECLINED;
 	    LOG_RERROR(APLOG_ERR, 0, r,
                        "Basic authentication denied (%s off)",
@@ -1504,8 +1512,8 @@ auth_vas_check_user_id(request_rec *r)
 	     RUSER(r) = apr_pstrdup(r->pool, user);
 	     ASSERT(RUSER(r) != NULL);
 	}
-	return (result != OK && dc && dc->auth_authoritative == FLAG_OFF) ?
-	    DECLINED : result;
+	return (result == OK || USING_AUTH_AUTHORITATIVE(dc)) ?
+	    result : DECLINED;
     }
 
     /* Handle "Authorization: [other]" */
@@ -1513,8 +1521,7 @@ auth_vas_check_user_id(request_rec *r)
     {
 	/* We don't understand. Deny access. */
 	add_auth_headers(r);
-	return (dc && dc->auth_authoritative == FLAG_OFF) ? DECLINED :
-		HTTP_UNAUTHORIZED;
+	return USING_AUTH_AUTHORITATIVE(dc) ? HTTP_UNAUTHORIZED : DECLINED;
     }
 }
 
@@ -1565,6 +1572,8 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
     TRACE_P(p, "auth_vas_create_dir_config()");
     if (dc != NULL) {
 	dc->auth_basic = FLAG_UNSET;
+	dc->auth_negotiate = FLAG_UNSET;
+	dc->auth_authoritative = FLAG_UNSET;
     }
     return (void *)dc;
 }
@@ -1590,6 +1599,10 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     if (merged_dc != NULL) {
 	merged_dc->auth_basic = FLAG_MERGE(base_dc->auth_basic,
 		new_dc->auth_basic);
+	merged_dc->auth_negotiate = FLAG_MERGE(base_dc->auth_negotiate,
+		new_dc->auth_negotiate);
+	merged_dc->auth_authoritative = FLAG_MERGE(base_dc->auth_authoritative,
+		new_dc->auth_authoritative);
     }
     return (void *)merged_dc;
 }
