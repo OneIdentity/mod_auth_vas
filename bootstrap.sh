@@ -1,6 +1,6 @@
 #! /bin/sh
-# $Id$
-# 
+# (c) 2006 Quest Software, Inc. All rights reserved.
+# Initialises the directory with autoconf after a respoitory check-out.
 
 bootstrap () { 
     (set -x; cd "$1"
