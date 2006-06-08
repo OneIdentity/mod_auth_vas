@@ -1649,6 +1649,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
 
     sc = (auth_vas_server_config *)apr_pcalloc(p, sizeof *sc);
     if (sc != NULL) {
+	/* XXX Shouldn't we default to "HTTP/" + s->server_hostname ? */
 	sc->service_principal = DEFAULT_SERVICE_PRINCIPAL;
     }
     
