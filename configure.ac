@@ -7,9 +7,7 @@ AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
-AC_CONFIG_FILES([Makefile 
-		 test/Makefile
-		 ])
+AC_CONFIG_FILES([Makefile])
 
 AC_PROG_CC
 AC_PREFIX_DEFAULT([/opt/quest])
@@ -150,8 +148,6 @@ fi
 
 # xxx - should test SUEXEC
 CPPFLAGS="$CPPFLAGS -DHAVE_UNIX_SUEXEC"
-TEST_SUBDIRS=
-
 #-- --enable-debug
 AC_ARG_ENABLE(debug,
 	    AS_HELP_STRING([--disable-debug],
@@ -185,14 +181,26 @@ esac
 #-- --enable-tests
 AC_ARG_ENABLE(tests,
 	    AS_HELP_STRING([--enable-tests],
-			   [Enable tests (default disabled)]),,
-	    [enable_tests=no])
+			   [Enable tests (default auto)]),,
+	    [enable_tests=auto])
+
+if test x"$enable_tests" = x"auto"; then
+    AC_CACHE_CHECK([whether tests are available], [quest_cv_opt_havetests],
+	   [quest_cv_opt_havetests=no
+	    test -d $srcdir/test && quest_cv_opt_havetests=yes])
+    enable_tests=$quest_cv_opt_havetests
+fi
+
 case $enable_tests in
    yes)	
+	if test ! -d "$srcdir/test/http-get"; then
+	    AC_MSG_ERROR([tests not available])
+	fi
+	AC_CONFIG_FILES([test/Makefile])
 	AC_CONFIG_SUBDIRS([test/http-get])
 	TESTDIR=test
 	;;
-   no)
+   *)
 	TESTDIR=
 	;;
 esac
@@ -217,6 +225,5 @@ VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
-AC_SUBST(TEST_SUBDIRS)
 
 AC_OUTPUT
