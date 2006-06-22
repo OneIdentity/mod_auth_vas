@@ -876,7 +876,8 @@ auth_vas_auth_checker(request_rec *r)
 static int
 do_basic_accept(request_rec *r, const char *user, const char *password)
 {
-    int                     rval = HTTP_UNAUTHORIZED;
+    int                     status = HTTP_UNAUTHORIZED;
+    int                     ret;
     vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
@@ -884,8 +885,10 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
 
     /* get the note record with the user's id */
-    if ((rval = rnote_get(sc, r, user, &rn)))
+    if ((ret = rnote_get(sc, r, user, &rn))) {
+	status = ret;
 	goto done;
+    }
 
     /* Check that the given password is correct */
     LOCK_VAS();
@@ -911,13 +914,13 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	goto done;
     }
 
-    rval = OK;
+    status = OK;
 
  done:
     /* Release resources */
     UNLOCK_VAS();
 
-    return rval;
+    return status;
 }
 
 /**
@@ -1020,6 +1023,9 @@ auth_vas_cleanup_request(void *data)
     CLEANUP_RETURN;
 }
 
+/**
+ * @return 0 on success, or an HTTP error code on failure
+ */
 static int
 rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
        	  auth_vas_rnote **rn_ptr)
