@@ -886,8 +886,9 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 
     /* get the note record with the user's id */
     if ((ret = rnote_get(sc, r, user, &rn))) {
-	status = ret;
-	goto done;
+        /* return the status code from rnote_get. no resources have been aquired
+         * yet so there's no need to 'goto done;' */
+        return ret;
     }
 
     /* Check that the given password is correct */
@@ -1030,7 +1031,7 @@ static int
 rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
        	  auth_vas_rnote **rn_ptr)
 {
-    int             rval = 0; 
+    int             rval = HTTP_INTERNAL_SERVER_ERROR; 
     auth_vas_rnote  *rn = NULL;
     vas_err_t       vaserr = VAS_ERR_SUCCESS;
     
@@ -1050,6 +1051,15 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
         TRACE_R(r, "rnote_get: reusing existing rnote");
     }
 
+    /* Don't allow an empty-string be sent as username to VAS
+     * (see VAS bug #9473), though even with that fixed, an empty username
+     * should be HTTP_UNAUTHORIZED rather than HTTP_INTERNAL_SERVER_ERROR.
+     */
+    if (user && user[0] == '\0') {
+        rval = HTTP_UNAUTHORIZED;
+	goto failure;
+    }
+
     /* initialize the userid if there's a username passed in, and we haven't
      * yet. */
     if (user && rn->vas_userid == NULL) {
@@ -1061,14 +1071,17 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
     }
 
     if (vaserr != VAS_ERR_SUCCESS) {
-        /* free the rnote and set it to NULL */
-        rnote_fini(r, rn);
-        rn = NULL;
-        
-        rval = HTTP_INTERNAL_SERVER_ERROR;
+	goto failure;
     }
-    
+
+    /* This is the point of success */
     *rn_ptr = rn;
+    return 0;
+
+failure:
+    /* free the rnote and set it to NULL */
+    rnote_fini(r, rn);
+    *rn_ptr = NULL;
     return rval;
 }
 
