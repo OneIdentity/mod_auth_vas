@@ -1057,7 +1057,7 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
      */
     if (user && user[0] == '\0') {
         rval = HTTP_UNAUTHORIZED;
-	goto failure;
+        goto failure;
     }
 
     /* initialize the userid if there's a username passed in, and we haven't
@@ -1071,7 +1071,7 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
     }
 
     if (vaserr != VAS_ERR_SUCCESS) {
-	goto failure;
+        goto failure;
     }
 
     /* This is the point of success */
