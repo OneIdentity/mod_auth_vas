@@ -1,3 +1,8 @@
+3.2.3
+	- Fixes bug 44 where an empty test directory caused configure to fail
+	- Fixes bug 46 where passwords were not checked properly
+	- Fixes bug 47 where an empty username would cause the server to abort
+	- Avoids unlocking a mutex that was never locked
 3.2.2
 	- Fixes bug 42 where AuthVasNegotiate did not always work
 	- Remove race conditions and from setup-mod_auth_vas
