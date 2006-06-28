@@ -125,7 +125,7 @@ showerrors () {
     if test x"$error_offset" != x""; then
 	error_offset=`expr $error_offset + 1`
 	echo "--start error_log:" >&2
-	$SUDO cat $AP_ERROR_LOG | tail +${error_offset}c >&2
+	$SUDO cat $AP_ERROR_LOG | tail -c +${error_offset} >&2
 	echo "--end error_log:" >&2
     fi
 }
