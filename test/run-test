@@ -240,6 +240,29 @@ case "$PLATFORM" in
 	VERSION=unknown
 	;;
 
+    debian)
+	APACHE=/usr/sbin/apache2
+	APACHECTL=/usr/sbin/apache2ctl
+	CONF=/etc/apache2/sites-enabled/regress.conf
+	AP_DOCROOT=/var/www
+	AP_ERROR_LOG=/var/log/apache2/error.log
+	AP_URL=http://`hostname --fqdn`
+	DOC_URI=/regress/
+	DOC_DIR=$AP_DOCROOT$DOC_URI
+    	DOC_URL=$AP_URL$DOC_URI
+
+	ap_conf_save () { : ; }
+	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
+	ap_conf_check () { $APACHE -t ; }
+	ap_conf_restore () { $SUDO rm -f $CONF; }
+	ap_start () { errormark && ($SUDO $APACHECTL start > /dev/null) ; }
+	ap_stop () { ( $SUDO $APACHECTL stop > /dev/null) ; : ; }
+	ap_restart () { errormark && ( $SUDO $APACHECTL restart > /dev/null) ; }
+
+	test -x $FETCH || fail "$FETCH: not found"
+	VERSION=unknown # currently no .debs
+	;;
+
     *)
     	echo "Unknown platform $PLATFORM"
 	exit 1;
