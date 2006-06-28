@@ -527,8 +527,11 @@ match_group(request_rec *r, const char *name, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
 
-    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
-        return rval;
+    LOCK_VAS();
+
+    if ((rval = rnote_get(sc, r, RUSER(r), &rnote))) {
+	goto finish;
+    }
 
     /* Make sure that we have a valid VAS authentication context.
      * If it's not there, then we'll just fail since there is
@@ -539,9 +542,6 @@ match_group(request_rec *r, const char *name, int log_level)
                    rnote->vas_pname);
         rval = HTTP_FORBIDDEN;
     }
-        
-
-    LOCK_VAS();
 
 #define VASVER ((VAS_API_VERSION_MAJOR * 10000) + \
     	        (VAS_API_VERSION_MINOR * 100)   + \
@@ -582,8 +582,9 @@ match_group(request_rec *r, const char *name, int log_level)
                        vas_err_get_string(sc->vas_ctx, 1));
             break;
     }
-    UNLOCK_VAS();
 
+finish:
+    UNLOCK_VAS();
     return rval;
 }
 
@@ -631,11 +632,11 @@ match_container(request_rec *r, const char *container, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
     
-    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
-        return rval;
-
     LOCK_VAS();
     do_unlock = 1;
+
+    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
+        return rval;
 
     if ((vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid,
 		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
@@ -876,23 +877,22 @@ auth_vas_auth_checker(request_rec *r)
 static int
 do_basic_accept(request_rec *r, const char *user, const char *password)
 {
-    int                     status = HTTP_UNAUTHORIZED;
-    int                     ret;
+    int                     rval;
     vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
     TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
 
+    LOCK_VAS();
+
     /* get the note record with the user's id */
-    if ((ret = rnote_get(sc, r, user, &rn))) {
-        /* return the status code from rnote_get. no resources have been aquired
-         * yet so there's no need to 'goto done;' */
-        return ret;
+    if ((rval = rnote_get(sc, r, user, &rn))) {
+        goto done;
     }
+    rval = HTTP_UNAUTHORIZED;
 
     /* Check that the given password is correct */
-    LOCK_VAS();
     vaserr = vas_id_establish_cred_password(sc->vas_ctx, rn->vas_userid,
 	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
     if (vaserr != VAS_ERR_SUCCESS) {
@@ -915,13 +915,13 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	goto done;
     }
 
-    status = OK;
+    rval = OK;
 
  done:
     /* Release resources */
     UNLOCK_VAS();
 
-    return status;
+    return rval;
 }
 
 /**
@@ -1025,6 +1025,8 @@ auth_vas_cleanup_request(void *data)
 }
 
 /**
+ * Retrieves the request note for holding VAS information.
+ * VAS_LOCK() must have been called prior to calling this.
  * @return 0 on success, or an HTTP error code on failure
  */
 static int
@@ -1119,17 +1121,24 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
+    LOCK_VAS();
+
     /* Store negotiation context in the connection record */
-    if ((result = rnote_get(sc, r, NULL, &rn)))
-        goto cleanup;
+    if ((result = rnote_get(sc, r, NULL, &rn))) {
+	UNLOCK_VAS();
+	/* no other resources to free */
+	return result;
+    }
 
     /* setup the input token */
     in_token.length = strlen(auth_param);
     in_token.value = (void *)auth_param;
 
-    LOCK_VAS();
-
-    vas_gss_initialize(sc->vas_ctx, sc->vas_serverid);
+    if (VAS_ERR_SUCCESS != vas_gss_initialize(sc->vas_ctx, sc->vas_serverid)) {
+	/* TODO: log cause */
+	UNLOCK_VAS();
+	return HTTP_INTERNAL_SERVER_ERROR;
+    }
 
     /* Accept token - have the VAS api handle the base64 stuff for us */
     TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d",
