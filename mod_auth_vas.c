@@ -1276,6 +1276,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 {
     vas_err_t               vaserr;
     auth_vas_server_config *sc;
+    char* tmp_realm;
    
     TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
 
@@ -1304,7 +1305,22 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	return;
     }
 
-    vas_info_joined_domain(sc->vas_ctx, &sc->default_realm, NULL);
+    vaserr = vas_info_joined_domain(sc->vas_ctx, &tmp_realm, NULL);
+    if (vaserr == VAS_ERR_SUCCESS) {
+	/* sc->default_realm is always owned by apache */
+	sc->default_realm = apr_pstrdup(p, tmp_realm);
+	free(tmp_realm);
+    }
+    else {
+	LOG_ERROR(APLOG_WARNING, vaserr, s,
+		"VAS cannot determine the default realm, "
+		"ensure it is set with AuthVasDefaultRealm.");
+	/* make sure default_realm contains _something_. If one day
+	 * sc->server_principal contains a full SPN, we could use the
+	 * domain from it. See initialisation in auth_vas_create_server_config().
+	 */
+	sc->default_realm = "unknown-realm";
+    }
     
     /* Create the vas_id for the server */
     vaserr = vas_id_alloc(sc->vas_ctx, 
@@ -1634,11 +1650,8 @@ auth_vas_server_config_destroy(void *data)
     
     if (sc != NULL) {
         
-        if (sc->default_realm != NULL) {
-            free(sc->default_realm);
-            sc->default_realm = NULL;
-        }
-        
+	/* sc->default_realm is always handled by apache */
+
         if (sc->vas_serverid != NULL) {
             vas_id_free(sc->vas_ctx, sc->vas_serverid);
             sc->vas_serverid = NULL;
