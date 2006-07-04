@@ -49,12 +49,21 @@ if test x"$with_apxs" = x"default"; then
 	APXS="$APXS2"
     fi
 else
-    AC_PATH_PROG([APXS], [$with_apxs], [no])
+    APXS="$with_apxs"
 fi
 if test x"$APXS" = x"no"; then
     AC_MSG_FAILURE([no apxs found. Is the Apache developer kit installed?])
 fi
 AC_SUBST(APXS)
+
+dnl -- use this as a sanity test that apxs is working
+AC_MSG_CHECKING([Apache extension target])
+apxs_target=`$APXS -q TARGET || echo error`
+AC_MSG_RESULT([$apxs_target])
+
+if test x"$apxs_target" = x"error"; then
+    AC_MSG_FAILURE([$APXS does not appear to work])
+fi
 
 APXSFLAGS=
 
