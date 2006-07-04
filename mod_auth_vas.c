@@ -177,7 +177,7 @@
 
 /*
  * Macros for keeping the VAS context in the request record notes.
- * NB Request ontes may not always be available (eg apache 1.3 without EAPI).
+ * NB Request notes may not always be available (eg apache 1.3 without EAPI).
  */
 #if defined(APXS1) /* Apache 1.3.x */
 # if defined(EAPI) /* extended API available */
