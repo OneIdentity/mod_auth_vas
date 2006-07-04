@@ -41,6 +41,7 @@
 
 #include <vas.h>
 #include <vas_gss.h>
+#include <gssapi_krb5.h>
 
 #include <httpd.h>
 #include <http_config.h>
@@ -222,6 +223,7 @@ typedef struct {
     int auth_negotiate;			/* AuthVasUseNegotiate (default on) */
     int auth_basic;			/* AuthVasUseBasic (default off) */
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
+    int export_delegated;		/* AuthVasExportDelegated (default off) */
 } auth_vas_dir_config;
 
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
@@ -235,6 +237,8 @@ typedef struct {
 		USING_AUTH_DEFAULT(dc, auth_basic, FLAG_OFF)
 #define USING_AUTH_AUTHORITATIVE(dc) \
 		USING_AUTH_DEFAULT(dc, auth_authoritative, FLAG_ON)
+#define USING_EXPORT_DELEGATED(dc) \
+		USING_AUTH_DEFAULT(dc, export_delegated, FLAG_OFF)
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -242,9 +246,11 @@ typedef struct {
 typedef struct {
     vas_id_t *vas_userid;		/* The user's identity */
     char *vas_pname;			/* The user's principal name */
-    vas_auth_t*vas_authctx;		/* the VAS authentication context */
+    vas_auth_t *vas_authctx;		/* The VAS authentication context */
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
-    gss_buffer_desc client;		/* exported mech name */
+    gss_buffer_desc client;		/* Exported mech name */
+    gss_cred_id_t deleg_cred;		/* Delegated credential */
+    krb5_ccache deleg_ccache;		/* Exported cred cache */
 } auth_vas_rnote;
 
 
@@ -280,6 +286,8 @@ static int auth_vas_check_user_id(request_rec *r);
 #if HAVE_UNIX_SUEXEC
 static ap_unix_identity_t *auth_vas_suexec(const request_rec *r);
 #endif
+static void export_cc(request_rec *r);
+static int auth_vas_fixup(request_rec *r);
 static void *auth_vas_create_dir_config(apr_pool_t *p, char *dirspec);
 static void *auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, 
 	void *new_conf);
@@ -349,6 +357,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_USENEGOTIATE	"AuthVasUseNegotiate"
 #define CMD_USEBASIC		"AuthVasUseBasic"
 #define CMD_AUTHORITATIVE	"AuthVasAuthoritative"
+#define CMD_EXPORTDELEG		"AuthVasExportDelegated"
 #define CMD_SPN			"AuthVasServicePrincipal"
 #define CMD_REALM		"AuthVasDefaultRealm"
 static const command_rec auth_vas_cmds[] =
@@ -365,6 +374,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_dir_config, auth_authoritative),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Authenticate authoritatively ('Off' allows fall-through to other authentication modules)"),
+    AP_INIT_FLAG(CMD_EXPORTDELEG, ap_set_flag_slot,
+		APR_OFFSETOF(auth_vas_dir_config, export_delegated),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Write exported credentials to a file, setting KRB5CCNAME"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -975,26 +988,42 @@ rnote_init(auth_vas_rnote *rn)
     rn->vas_authctx  = NULL;
     rn->gss_ctx = GSS_C_NO_CONTEXT;
     rn->client.value = NULL;
+    rn->deleg_cred = GSS_C_NO_CREDENTIAL;
+    rn->deleg_ccache = NULL;
 }
 
 /** Releases storage associated with the rnote. */
 static void
 rnote_fini(request_rec *r, auth_vas_rnote *rn)
 {
-    auth_vas_server_config  *sc;
+    auth_vas_server_config *sc;
+    OM_uint32 gsserr, minor;
+
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+
+    LOCK_VAS();
+
+    if (rn->deleg_ccache) {
+	krb5_context krb5ctx;
+        if (!vas_krb5_get_context(sc->vas_ctx, &krb5ctx)) {
+	    (void)krb5_cc_destroy(krb5ctx, rn->deleg_ccache);
+	    rn->deleg_ccache = NULL;
+        }
+    }
+
+    if (rn->deleg_cred != GSS_C_NO_CREDENTIAL) {
+	if ((gsserr = gss_release_cred(&minor, &rn->deleg_cred)))
+	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+		    "gss_release_cred", gsserr, minor);
+    }
 
     if (rn->gss_ctx != GSS_C_NO_CONTEXT) {
-        OM_uint32 gsserr, minor;
-        
-	gsserr = gss_delete_sec_context(&minor, &rn->gss_ctx, NULL);
-	if (gsserr != GSS_S_COMPLETE)
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		"gss_delete_sec_context: error %d", gsserr);
 	if (rn->client.value)
-	    gss_release_buffer(&minor, &rn->client);
+	    (void)gss_release_buffer(&minor, &rn->client);
+	if ((gsserr = gss_delete_sec_context(&minor, &rn->gss_ctx, NULL)))
+	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+		    "gss_delete_sec_context", gsserr, minor);
     }
-    
-    sc = GET_SERVER_CONFIG(r->server->module_config);
     
     if (rn->vas_userid)
         vas_id_free(sc->vas_ctx, rn->vas_userid);
@@ -1004,10 +1033,12 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
     
     if (rn->vas_authctx)
         vas_auth_free(sc->vas_ctx, rn->vas_authctx);
+
+    UNLOCK_VAS();
 }
 
 /** This function is called when the request pool is being released.
- * It is passed a auth_vas_rnote pointer we need to cleanup. */
+ * It is passed an auth_vas_rnote pointer we need to cleanup. */
 static CLEANUP_RET_TYPE
 auth_vas_cleanup_request(void *data)
 {
@@ -1145,7 +1176,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
             (int) in_token.length);
     gsserr = vas_gss_spnego_accept(sc->vas_ctx, sc->vas_serverid,
 	    &rn->vas_authctx, &rn->gss_ctx, NULL,
-	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token, NULL);
+	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token,
+	    &rn->deleg_cred);
 
     /* Handle completed GSSAPI negotiation */
     if (gsserr == GSS_S_COMPLETE) {
@@ -1290,7 +1322,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
 
     sc = GET_SERVER_CONFIG(s->module_config);
-    TRACE_S(s, "sc=%x", (void *)sc);
+    TRACE_S(s, "sc=%x", (int)sc);
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
@@ -1600,6 +1632,98 @@ auth_vas_suexec(const request_rec *r)
 #endif /* HAVE_UNIX_SUEXEC */
 
 /**
+ * Exports delegated credentials into a file, and sets the subprocess
+ * environment KRB5CCNAME to point to the file. The file gets removed
+ * by rnote_fini() during request cleanup.
+ *
+ * This function performs no action if already exported, export 
+ * delegation is disabled, or if the GSS credential is unavailable.
+ */
+static void
+export_cc(request_rec *r)
+{
+    OM_uint32 major, minor;
+    auth_vas_rnote *rn;
+    const auth_vas_dir_config *dc;
+    auth_vas_server_config *sc;
+    vas_err_t vaserr;
+    krb5_context krb5ctx;
+    krb5_ccache ccache;
+    krb5_error_code krb5err;
+    char *path;
+
+    rn = GET_RNOTE(r);
+
+    /* Check if we delegated already */
+    if (rn->deleg_ccache)
+	return;
+
+    /* Check if a delegated cred is available */
+    if (rn->deleg_cred == GSS_C_NO_CREDENTIAL)
+	return;
+
+    /* Check if VasAuthExportDelegated is turned on */
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+    ASSERT(dc != NULL);
+    if (!USING_EXPORT_DELEGATED(dc))
+	return;
+
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+    ASSERT(sc != NULL);
+    ASSERT(sc->vas_ctx != NULL);
+
+    LOCK_VAS();
+
+    /* Pull the credential cache filename out */
+    if ((vaserr = vas_krb5_get_context(sc->vas_ctx, &krb5ctx))) {
+            LOG_RERROR(APLOG_ERR, 0, r,
+                       "vas_krb5_get_context(): %s",
+                       vas_err_get_string(sc->vas_ctx, 1));
+	    goto finish;
+    }
+
+    if ((krb5err = krb5_cc_new_unique(krb5ctx, "FILE", NULL, &ccache))) {
+            LOG_RERROR(APLOG_ERR, 0, r, "krb5_cc_gen_new: %.100s", 
+		    krb5_get_err_text(krb5ctx, krb5err));
+	    goto finish;
+    }
+
+    if ((major = gss_krb5_copy_ccache(&minor, rn->deleg_cred, ccache))) {
+	log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
+		    "gss_krb5_copy_ccache", major, minor);
+	(void)krb5_cc_destroy(krb5ctx, ccache);
+	goto finish;
+    }
+
+    rn->deleg_ccache = ccache;
+
+    /* Allow subprocesses see the cred cache path */
+    path = apr_pstrdup(r->pool, krb5_cc_get_name(krb5ctx, ccache));
+    TRACE_P(r->pool, "auth_vas: cred cache at %s", path);
+    apr_table_setn(r->subprocess_env, "KRB5CCNAME", path);
+
+    /* XXX for SUEXEC the file would have to be chowned */
+
+finish:
+    UNLOCK_VAS();
+}
+
+/**
+ * Fix up environment for any delegated credentials.
+ */
+static int
+auth_vas_fixup(request_rec *r)
+{
+    if (!is_our_auth_type(r))
+	return DECLINED;
+
+    TRACE_P(r->pool, "auth_vas_fixup");
+    export_cc(r);
+
+    return OK;
+}
+
+/**
  * Creates and initialises a directory configuration structure.
  * This function is called when a &lt;Directory&gt; configuration
  * entry is encountered during the path walk.
@@ -1618,6 +1742,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->auth_basic = FLAG_UNSET;
 	dc->auth_negotiate = FLAG_UNSET;
 	dc->auth_authoritative = FLAG_UNSET;
+	dc->export_delegated = FLAG_UNSET;
     }
     return (void *)dc;
 }
@@ -1647,6 +1772,8 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 		new_dc->auth_negotiate);
 	merged_dc->auth_authoritative = FLAG_MERGE(base_dc->auth_authoritative,
 		new_dc->auth_authoritative);
+	merged_dc->export_delegated = FLAG_MERGE(base_dc->export_delegated,
+		new_dc->export_delegated);
     }
     return (void *)merged_dc;
 }
@@ -1788,6 +1915,7 @@ auth_vas_register_hooks(apr_pool_t *p)
 #if HAVE_UNIX_SUEXEC
     ap_hook_get_suexec_identity(auth_vas_suexec, NULL, NULL, APR_HOOK_FIRST);
 #endif
+    ap_hook_fixups(auth_vas_fixup, NULL, NULL, APR_HOOK_MIDDLE);
 
     TRACE_P(p, "hooks registered");
 }
