@@ -1,5 +1,7 @@
 [unreleased]
 	- Enhancement bug 50: AuthVasExportDelegated
+	- Fixes bug 51 where 'apache -t' (configtest) would segfault
+	- Improve resource locking
 3.2.3
 	- Fixes bug 44 where an empty test directory caused configure to fail
 	- Fixes bug 46 where passwords were not checked properly
