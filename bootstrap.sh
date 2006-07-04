@@ -9,5 +9,6 @@ bootstrap () {
     )
 }
 
+set -e
 bootstrap .
 bootstrap test/http-get
