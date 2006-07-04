@@ -377,7 +377,7 @@ static const command_rec auth_vas_cmds[] =
     AP_INIT_FLAG(CMD_EXPORTDELEG, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, export_delegated),
 		ACCESS_CONF | OR_AUTHCFG,
-		"Write exported credentials to a file, setting KRB5CCNAME"),
+		"Write delegated credentials to a file, setting KRB5CCNAME"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -551,7 +551,7 @@ match_group(request_rec *r, const char *name, int log_level)
      * no available group information. */
     if (rnote->vas_authctx == NULL) {
         LOG_RERROR(log_level, 0, r,
-                   "match_group(): no available auth context for %s",
+                   "match_group: no available auth context for %s",
                    rnote->vas_pname);
         rval = HTTP_FORBIDDEN;
     }
@@ -576,7 +576,7 @@ match_group(request_rec *r, const char *name, int log_level)
         case VAS_ERR_NOT_FOUND: /* user not member of group */
             rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
-                       "match_group(): %s not member of %s",
+                       "match_group: %s not member of %s",
                        rnote->vas_pname,
                        name);
             break;
@@ -584,14 +584,14 @@ match_group(request_rec *r, const char *name, int log_level)
         case VAS_ERR_EXISTS: /* configured group not found */
             rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
-                       "match_group(): group %s does not exist",
+                       "match_group: group %s does not exist",
                        name);
             break;
             
         default: /* other type of error */
             rval = HTTP_INTERNAL_SERVER_ERROR;
             LOG_RERROR(log_level, 0, r,
-                       "match_group(): fatal vas error: %s",
+                       "match_group: fatal vas error: %s",
                        vas_err_get_string(sc->vas_ctx, 1));
             break;
     }
@@ -655,7 +655,7 @@ match_container(request_rec *r, const char *container, int log_level)
 		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
     {
         LOG_RERROR(log_level, 0, r,
-	       	"match_container(): fatal vas error for user_init: %d, %s",
+	       	"match_container: fatal vas error for user_init: %d, %s",
 	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
         rval = HTTP_FORBIDDEN;
         goto done;
@@ -665,7 +665,7 @@ match_container(request_rec *r, const char *container, int log_level)
 		    &dn )) != VAS_ERR_SUCCESS ) 
     {
 	LOG_RERROR(log_level, 0, r,
-	       	"match_container(): fatal vas error for user_get_dn: %d, %s",
+	       	"match_container: fatal vas error for user_get_dn: %d, %s",
 	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
         rval = HTTP_FORBIDDEN;
         goto done;
@@ -678,7 +678,7 @@ match_container(request_rec *r, const char *container, int log_level)
         rval = OK;
     else {
         LOG_RERROR(APLOG_DEBUG, 0, r,
-	       	"match_container(): user dn %s not in container %s",
+	       	"match_container: user dn %s not in container %s",
 	       	dn, container);
         rval = HTTP_FORBIDDEN;
     }
@@ -1341,7 +1341,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
     if (vaserr != VAS_ERR_SUCCESS) {
         LOG_ERROR(APLOG_ERR, vaserr, s, 
-		"vas_ctx_alloc() failed, err = %d",
+		"vas_ctx_alloc failed, err = %d",
 	       	vaserr);
 	return;
     }
@@ -1369,7 +1369,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                           &sc->vas_serverid);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
-                  "vas_id_alloc() failed on %s, err = %s",
+                  "vas_id_alloc failed on %s, err = %s",
                   sc->service_principal,
                   vas_err_get_string(sc->vas_ctx, 1));
     }
@@ -1382,7 +1382,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                                           NULL);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
-                  "vas_id_establish_cred_keytab() failed, err = %s",
+                  "vas_id_establish_cred_keytab failed, err = %s",
                   vas_err_get_string(sc->vas_ctx, 1));
     } else {
         TRACE_S(s, "successfully authenticated as %s", sc->service_principal);
@@ -1677,13 +1677,13 @@ export_cc(request_rec *r)
     /* Pull the credential cache filename out */
     if ((vaserr = vas_krb5_get_context(sc->vas_ctx, &krb5ctx))) {
             LOG_RERROR(APLOG_ERR, 0, r,
-                       "vas_krb5_get_context(): %s",
+                       "vas_krb5_get_context: %s",
                        vas_err_get_string(sc->vas_ctx, 1));
 	    goto finish;
     }
 
     if ((krb5err = krb5_cc_new_unique(krb5ctx, "FILE", NULL, &ccache))) {
-            LOG_RERROR(APLOG_ERR, 0, r, "krb5_cc_gen_new: %.100s", 
+            LOG_RERROR(APLOG_ERR, 0, r, "krb5_cc_new_unique: %.100s", 
 		    krb5_get_err_text(krb5ctx, krb5err));
 	    goto finish;
     }
@@ -1737,7 +1737,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
     auth_vas_dir_config *dc;
 
     dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *dc);
-    TRACE_P(p, "auth_vas_create_dir_config()");
+    TRACE_P(p, "auth_vas_create_dir_config");
     if (dc != NULL) {
 	dc->auth_basic = FLAG_UNSET;
 	dc->auth_negotiate = FLAG_UNSET;
@@ -1764,7 +1764,7 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     auth_vas_dir_config *merged_dc;
 
     merged_dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *merged_dc);
-    TRACE_P(p, "auth_vas_merge_dir_config()");
+    TRACE_P(p, "auth_vas_merge_dir_config");
     if (merged_dc != NULL) {
 	merged_dc->auth_basic = FLAG_MERGE(base_dc->auth_basic,
 		new_dc->auth_basic);
@@ -1825,7 +1825,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy,
 	    apr_pool_cleanup_null);
     
-    TRACE_S(s, "auth_vas_create_server_config()");
+    TRACE_S(s, "auth_vas_create_server_config");
     return (void *)sc;
 }
 
@@ -1849,7 +1849,7 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
     ap_add_version_component(p, "mod_auth_vas/" MODAUTHVAS_VERSION);
 #endif
 
-    TRACE_P(plog, "auth_vas_post_config() %s %s", MODAUTHVAS_VERSION,
+    TRACE_P(plog, "auth_vas_post_config %s %s", MODAUTHVAS_VERSION,
 	    module_info);
 
     /* Create a VAS context for each virtual host */
