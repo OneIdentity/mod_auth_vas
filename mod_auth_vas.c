@@ -158,7 +158,10 @@
 #endif
 
 /*
- * Diagnostic assertions that may degrade performance
+ * Diagnostic assertions that may degrade performance.
+ * Note: When an assertion fails, it indicates a *logical bug*. Do 
+ * not use this macro for checking external-supplied parameters or 
+ * preconditions, or for dealing with expected/possible runtime errors.
  */
 #if defined(MODAUTHVAS_DIAGNOSTIC)
 # define ASSERT(x)	   ap_assert(x)
@@ -314,31 +317,40 @@ static void auth_vas_init(server_rec *s, pool *p);
  * If a VAS operation takes too long, threads will suffer.
  * NOTE: This should really be moved into libvas; or the libvas
  * API should be made thread-safe.
+ *
+ * LOCK_VAS() returns either 0 (OK) on success or HTTP_*. 
+ * In diagnostic mode, errors will be logged.
  */
 static apr_thread_mutex_t *auth_vas_libvas_mutex;
 
 /* Intra-process lock around the VAS library. */
 #if defined(MODAUTHVAS_DIAGNOSTIC)
-# define LOCK_VAS()   auth_vas_lock()
-# define UNLOCK_VAS() auth_vas_unlock()
-static void auth_vas_lock(void);
-static void auth_vas_unlock(void);
+# define LOCK_VAS(r)   auth_vas_lock(r)
+# define UNLOCK_VAS(r) auth_vas_unlock(r)
+static apr_status_t auth_vas_lock(request_rec *r);
+static void auth_vas_unlock(request_rec *r);
 
-static void auth_vas_lock() {
-	apr_status_t error;
+static apr_status_t auth_vas_lock(request_rec *r) {
+    	apr_status_t error;
+
 	ASSERT(auth_vas_libvas_mutex != NULL);
 	error = apr_thread_mutex_lock(auth_vas_libvas_mutex);
-	ASSERT(error == OK);
+	if (error)
+	    LOG_RERROR(APLOG_ERR, error, r, "apr_thread_mutex_lock");
+	return error;
 }
-static void auth_vas_unlock() {
-	apr_status_t error;
+
+static void auth_vas_unlock(request_rec *r) {
+    	apr_status_t error;
+
 	ASSERT(auth_vas_libvas_mutex != NULL);
 	error = apr_thread_mutex_unlock(auth_vas_libvas_mutex);
-	ASSERT(error == OK);
+	if (error)
+	    LOG_RERROR(APLOG_WARNING, error, r, "apr_thread_mutex_unlock");
 }
 #else
-# define LOCK_VAS()   (void)apr_thread_mutex_lock(auth_vas_libvas_mutex)
-# define UNLOCK_VAS() (void)apr_thread_mutex_unlock(auth_vas_libvas_mutex)
+# define LOCK_VAS(r)   apr_thread_mutex_lock(auth_vas_libvas_mutex)
+# define UNLOCK_VAS(r) (void)apr_thread_mutex_unlock(auth_vas_libvas_mutex)
 #endif
 
 /* Sets a string slot in the server config */
@@ -540,11 +552,14 @@ match_group(request_rec *r, const char *name, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
 
-    LOCK_VAS();
-
-    if ((rval = rnote_get(sc, r, RUSER(r), &rnote))) {
-	goto finish;
+    if ((rval = LOCK_VAS(r))) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "match_group: unable to acquire lock");
+	return rval;
     }
+
+    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
+	goto finish;
 
     /* Make sure that we have a valid VAS authentication context.
      * If it's not there, then we'll just fail since there is
@@ -597,7 +612,7 @@ match_group(request_rec *r, const char *name, int log_level)
     }
 
 finish:
-    UNLOCK_VAS();
+    UNLOCK_VAS(r);
     return rval;
 }
 
@@ -630,7 +645,6 @@ static int
 match_container(request_rec *r, const char *container, int log_level)
 {
     int                       rval = 0;
-    int                       locked = 0;
     vas_err_t                 vaserr;
     auth_vas_server_config    *sc = NULL;
     auth_vas_rnote            *rnote = NULL;
@@ -645,8 +659,11 @@ match_container(request_rec *r, const char *container, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
     
-    LOCK_VAS();
-    locked = 1;
+    if ((rval = LOCK_VAS(r))) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "match_container: unable to acquire lock");
+	return rval;
+    }
 
     if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
 	goto done;
@@ -670,14 +687,12 @@ match_container(request_rec *r, const char *container, int log_level)
         rval = HTTP_FORBIDDEN;
         goto done;
     }
-    UNLOCK_VAS();
-    locked = 0;
 
     ASSERT(dn != NULL);
     if (dn_in_container(dn, container)) 
         rval = OK;
     else {
-        LOG_RERROR(APLOG_DEBUG, 0, r,
+        LOG_RERROR(APLOG_INFO, 0, r,
 	       	"match_container: user dn %s not in container %s",
 	       	dn, container);
         rval = HTTP_FORBIDDEN;
@@ -688,8 +703,7 @@ done:
     if (vasuser) vas_user_free(sc->vas_ctx, vasuser);
     if (dn)      free(dn);
 
-    if (locked)
-        UNLOCK_VAS();
+    UNLOCK_VAS(r);
 
     return rval;
 }
@@ -713,6 +727,7 @@ match_valid_user(request_rec *r, const char *ignored, int log_level)
 /*
  * A match table used during authorization phase.
  * Translates 'require' types into matcher functions.
+ * Match functions must assume the VAS context is UNLOCKED.
  */
 static const struct match {
     const char *name;
@@ -844,7 +859,7 @@ auth_vas_auth_checker(request_rec *r)
 		ASSERT(match != NULL);
 		ASSERT(match->func != NULL);
                 rval = (*match->func)(r, arg,
-                    USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_DEBUG);
+                    USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_NOTICE);
 		TRACE_R(r, "require %s \"%s\" -> %s", type, arg,
 			    rval == OK ? "OK" : "FAIL");
 		if (rval == OK)
@@ -857,7 +872,7 @@ auth_vas_auth_checker(request_rec *r)
 		    "Ignoring unexpected arguments to 'Require %s'", type);
 	    }
 	    rval = (*match->func)(r, NULL,
-                USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_DEBUG);
+                USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_NOTICE);
 	    TRACE_R(r, "require %s  -> %s", type, rval == OK ? "OK" : "FAIL");
 	    if (rval == OK)
 		return OK;
@@ -897,7 +912,11 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 
     TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
 
-    LOCK_VAS();
+    if ((rval = LOCK_VAS(r))) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "do_basic_accept: unable to acquire lock");
+	return rval;
+    }
 
     /* get the note record with the user's id */
     if ((rval = rnote_get(sc, r, user, &rn))) {
@@ -932,7 +951,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 
  done:
     /* Release resources */
-    UNLOCK_VAS();
+    UNLOCK_VAS(r);
 
     return rval;
 }
@@ -1001,7 +1020,14 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
-    LOCK_VAS();
+    if (rn->vas_pname)
+        free(rn->vas_pname);
+    
+    if (LOCK_VAS(r) != OK) {
+	LOG_RERROR(APLOG_WARNING, 0, r,
+	   "rnote_fini: unable to acquire lock to release resources");
+	return;
+    }
 
     if (rn->deleg_ccache) {
 	krb5_context krb5ctx;
@@ -1013,7 +1039,7 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 
     if (rn->deleg_cred != GSS_C_NO_CREDENTIAL) {
 	if ((gsserr = gss_release_cred(&minor, &rn->deleg_cred)))
-	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_release_cred", gsserr, minor);
     }
 
@@ -1021,20 +1047,17 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 	if (rn->client.value)
 	    (void)gss_release_buffer(&minor, &rn->client);
 	if ((gsserr = gss_delete_sec_context(&minor, &rn->gss_ctx, NULL)))
-	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_delete_sec_context", gsserr, minor);
     }
     
     if (rn->vas_userid)
         vas_id_free(sc->vas_ctx, rn->vas_userid);
 
-    if (rn->vas_pname)
-        free(rn->vas_pname);
-    
     if (rn->vas_authctx)
         vas_auth_free(sc->vas_ctx, rn->vas_authctx);
 
-    UNLOCK_VAS();
+    UNLOCK_VAS(r);
 }
 
 /** This function is called when the request pool is being released.
@@ -1152,22 +1175,26 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
-    LOCK_VAS();
-
-    /* Store negotiation context in the connection record */
-    if ((result = rnote_get(sc, r, NULL, &rn))) {
-	UNLOCK_VAS();
-	/* no other resources to free */
-	return result;
-    }
-
     /* setup the input token */
     in_token.length = strlen(auth_param);
     in_token.value = (void *)auth_param;
 
+    if ((result = LOCK_VAS(r))) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+	   "do_gss_spnego_accept: unable to acquire lock");
+	return result;
+    }
+
+    /* Store negotiation context in the connection record */
+    if ((result = rnote_get(sc, r, NULL, &rn))) {
+	UNLOCK_VAS(r);
+	/* no other resources to free */
+	return result;
+    }
+
     if (VAS_ERR_SUCCESS != vas_gss_initialize(sc->vas_ctx, sc->vas_serverid)) {
 	/* TODO: log cause */
-	UNLOCK_VAS();
+	UNLOCK_VAS(r);
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -1189,7 +1216,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 		NULL, NULL, NULL, NULL, NULL, NULL);
 	if (err != GSS_S_COMPLETE) {
 	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_inquire_context", err, minor_status);
 	    goto done;
 	}
@@ -1198,7 +1225,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	err = gss_export_name(&minor_status, client_name, &rn->client);
 	if (err != GSS_S_COMPLETE) {
 	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_export_name", err, minor_status);
 	}
 
@@ -1206,7 +1233,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	err = gss_display_name(&minor_status, client_name, &buf, NULL);
 	if (err != GSS_S_COMPLETE) {
 	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_NOTICE, 0, r,
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_display_name", err, minor_status);
 	    goto done;
 	}
@@ -1243,7 +1270,13 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
  done:
     vas_gss_deinitialize(sc->vas_ctx);
-    UNLOCK_VAS();
+
+    if (GSS_ERROR(gsserr))
+	LOG_RERROR(APLOG_ERR, 0, r,
+		   "vas_gss_spnego_accept: %s",
+		   vas_err_get_string(sc->vas_ctx, 1));
+
+    UNLOCK_VAS(r);
 
     /* If there is an out token we need to return it in the header -
      * it's already base64 encoded */
@@ -1278,23 +1311,20 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
         in_token.length >= 7 &&
         memcmp(in_token.value, "NTLMSSP", 7) == 0)
     {
-	LOG_RERROR(APLOG_ERR, 0, r,
+	LOG_RERROR(APLOG_NOTICE, 0, r,
 	    "Client used unsupported NTLMSSP authentication");
-    }
-    else if (GSS_ERROR(gsserr))
-    {
-	/* Log failures */
-	LOCK_VAS();
-	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_gss_spnego_accept: %s",
-                   vas_err_get_string(sc->vas_ctx, 1));
-	UNLOCK_VAS();
     }
 
  cleanup:
-    gss_release_buffer(&gsserr, &out_token);
-    if (client_name)
-        gss_release_name(NULL, &client_name);
+    if (LOCK_VAS(r))
+	LOG_RERROR(APLOG_WARNING, 0, r,
+	    "do_gss_spnego_accept: cannot acquire lock to release resources");
+    else {
+	gss_release_buffer(&gsserr, &out_token);
+	if (client_name)
+	    gss_release_name(NULL, &client_name);
+	UNLOCK_VAS(r);
+    }
 
     return result;
 }
@@ -1672,7 +1702,11 @@ export_cc(request_rec *r)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
 
-    LOCK_VAS();
+    if (LOCK_VAS(r) != OK) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+		   "export_cc: unable to acquire lock to export credentials");
+	return;
+    }
 
     /* Pull the credential cache filename out */
     if ((vaserr = vas_krb5_get_context(sc->vas_ctx, &krb5ctx))) {
@@ -1705,7 +1739,7 @@ export_cc(request_rec *r)
     /* XXX for SUEXEC the file would have to be chowned */
 
 finish:
-    UNLOCK_VAS();
+    UNLOCK_VAS(r);
 }
 
 /**
