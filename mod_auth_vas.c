@@ -630,7 +630,7 @@ static int
 match_container(request_rec *r, const char *container, int log_level)
 {
     int                       rval = 0;
-    int                       do_unlock = 0;
+    int                       locked = 0;
     vas_err_t                 vaserr;
     auth_vas_server_config    *sc = NULL;
     auth_vas_rnote            *rnote = NULL;
@@ -646,10 +646,10 @@ match_container(request_rec *r, const char *container, int log_level)
     ASSERT(sc->vas_ctx != NULL);
     
     LOCK_VAS();
-    do_unlock = 1;
+    locked = 1;
 
     if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
-        return rval;
+	goto done;
 
     if ((vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid,
 		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
@@ -671,7 +671,7 @@ match_container(request_rec *r, const char *container, int log_level)
         goto done;
     }
     UNLOCK_VAS();
-    do_unlock = 0;
+    locked = 0;
 
     ASSERT(dn != NULL);
     if (dn_in_container(dn, container)) 
@@ -688,7 +688,7 @@ done:
     if (vasuser) vas_user_free(sc->vas_ctx, vasuser);
     if (dn)      free(dn);
 
-    if (do_unlock)
+    if (locked)
         UNLOCK_VAS();
 
     return rval;
@@ -1057,7 +1057,7 @@ auth_vas_cleanup_request(void *data)
 
 /**
  * Retrieves the request note for holding VAS information.
- * VAS_LOCK() must have been called prior to calling this.
+ * LOCK_VAS() must have been called prior to calling this.
  * @return 0 on success, or an HTTP error code on failure
  */
 static int
@@ -1307,7 +1307,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
  * Sets the vas context to NULL if the service principal
  * name cannot be translated into a server key.
  * This function is called before the VAS mutex has
- * initialised, and should not call VAS_LOCK/VAS_UNLOCK
+ * initialised, and should not call LOCK_VAS/UNLOCK_VAS
  *
  *   @param s the server being initialised for VAS
  *   @param p memory pool associated with server instance
