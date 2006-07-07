@@ -4,12 +4,11 @@ description "Basic auth (bug 46)"
 
 TESTFILE=test-bug46-pid$$.txt
 OUTPUTFILE=/tmp/test-bug46-orig-$$
-STATUSFILE=/tmp/mav-bug46-status-$$
 
 cleanup () {
    ap_stop
    ap_conf_restore
-   rm -f $DOC_DIR/$TESTFILE $STATUSFILE $COMPAREFILE
+   rm -f $DOC_DIR/$TESTFILE $COMPAREFILE
 }
 
 trap cleanup 0 1 2
@@ -31,12 +30,12 @@ echo "test file for pid $$" > $DOC_DIR/$TESTFILE
 
 ap_start
 
-fetch_basic -e $STATUSFILE testuser:testuser $DOC_URL/$TESTFILE > $OUTPUTFILE
-if [ `cat $STATUSFILE` != 200 ] || ! cmp $OUTPUTFILE $DOC_DIR/$TESTFILE; then
+fetch_basic testuser:testuser $DOC_URL/$TESTFILE > $OUTPUTFILE
+if [ $FETCH_RES != 200 ] || ! cmp $OUTPUTFILE $DOC_DIR/$TESTFILE; then
 	fail "Resource not served for correct user & password"
 fi
 
-fetch_basic -e $STATUSFILE testuser:wrongpassword $DOC_URL/$TESTFILE > /dev/null
-if [ `cat $STATUSFILE` = 200 ]; then
+fetch_basic testuser:wrongpassword $DOC_URL/$TESTFILE > /dev/null
+if [ $FETCH_RES = 200 ]; then
 	fail "Password not checked properly"
 fi
