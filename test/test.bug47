@@ -5,11 +5,12 @@
 description "Empty username in basic auth (bug 47)"
 
 TESTFILE=test-bug47-pid$$.txt
+OUTPUTFILE=/tmp/bug47-output-$$.txt
 
 cleanup () {
    ap_stop
    ap_conf_restore
-   rm -f $DOC_DIR/$TESTFILE $COMPAREFILE
+   rm -f $DOC_DIR/$TESTFILE $OUTPUTFILE
 }
 
 trap cleanup 0 1 2
@@ -31,7 +32,7 @@ echo "test file for pid $$" > $DOC_DIR/$TESTFILE
 
 ap_start
 
-fetch_basic :testuser $DOC_URL/$TESTFILE > /dev/null &
+fetch_basic :testuser $DOC_URL/$TESTFILE > $OUTPUTFILE 2> /dev/null &
 
 pid=$!
 sleep 3
@@ -41,6 +42,6 @@ if kill -0 $pid 2>/dev/null; then
     fail "Apache took too long, probably hung"
 fi
 
-if [ $FETCH_RES = 200 ]; then
+if cmp $OUTPUTFILE $DOC_DIR/$TESTFILE; then
     fail "Resource served for empty username"
 fi
