@@ -1,0 +1,46 @@
+# Passing an empty username to the authentication function triggered an
+# assertion in VAS causing the server process to die.
+# MAV was modified to send an authentication failure if an empty username is
+# given.
+description "Empty username in basic auth (bug 47)"
+
+TESTFILE=test-bug47-pid$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $COMPAREFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-END
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		Require user testuser
+	</Directory>
+END
+
+ap_conf_check
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+
+ap_start
+
+fetch_basic :testuser $DOC_URL/$TESTFILE > /dev/null &
+
+pid=$!
+sleep 3
+
+if kill -0 $pid 2>/dev/null; then
+    kill $pid;
+    fail "Apache took too long, probably hung"
+fi
+
+if [ $FETCH_RES = 200 ]; then
+    fail "Resource served for empty username"
+fi
