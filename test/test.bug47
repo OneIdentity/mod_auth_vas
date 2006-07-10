@@ -35,13 +35,14 @@ ap_start
 fetch_basic :testuser $DOC_URL/$TESTFILE > $OUTPUTFILE 2> /dev/null &
 
 pid=$!
-sleep 3
+echo Waiting 2 seconds for the request to be served...
+sleep 2
 
 if kill -0 $pid 2>/dev/null; then
     kill $pid;
     fail "Apache took too long, probably hung"
 fi
 
-if cmp $OUTPUTFILE $DOC_DIR/$TESTFILE; then
+if cmp -s $OUTPUTFILE $DOC_DIR/$TESTFILE; then
     fail "Resource served for empty username"
 fi

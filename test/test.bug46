@@ -31,7 +31,7 @@ echo "test file for pid $$" > $DOC_DIR/$TESTFILE
 ap_start
 
 fetch_basic testuser:testuser $DOC_URL/$TESTFILE > $OUTPUTFILE
-if [ $FETCH_RES != 200 ] || ! cmp $OUTPUTFILE $DOC_DIR/$TESTFILE; then
+if [ $FETCH_RES != 200 ] || ! cmp -s $OUTPUTFILE $DOC_DIR/$TESTFILE; then
 	fail "Resource not served for correct user & password"
 fi
 
