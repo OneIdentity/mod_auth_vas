@@ -1011,7 +1011,9 @@ rnote_init(auth_vas_rnote *rn)
     rn->deleg_ccache = NULL;
 }
 
-/** Releases storage associated with the rnote. */
+/** Releases storage associated with the rnote.
+ * LOCK_VAS() must have been called prior to calling this.
+ */
 static void
 rnote_fini(request_rec *r, auth_vas_rnote *rn)
 {
@@ -1023,12 +1025,6 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
     if (rn->vas_pname)
         free(rn->vas_pname);
     
-    if (LOCK_VAS(r) != OK) {
-	LOG_RERROR(APLOG_WARNING, 0, r,
-	   "rnote_fini: unable to acquire lock to release resources");
-	return;
-    }
-
     if (rn->deleg_ccache) {
 	krb5_context krb5ctx;
         if (!vas_krb5_get_context(sc->vas_ctx, &krb5ctx)) {
@@ -1056,8 +1052,6 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 
     if (rn->vas_authctx)
         vas_auth_free(sc->vas_ctx, rn->vas_authctx);
-
-    UNLOCK_VAS(r);
 }
 
 /** This function is called when the request pool is being released.
@@ -1072,7 +1066,12 @@ auth_vas_cleanup_request(void *data)
     TRACE_P(r->pool, "auth_vas_cleanup_request");
     rn = GET_RNOTE(r);
     if (rn != NULL) {
+	if (LOCK_VAS(r))
+	    LOG_RERROR(APLOG_WARNING, 0, r,
+		    "auth_vas_cleanup_request: cannot acquire lock to release resources");
+
 	rnote_fini(r, rn);
+	UNLOCK_VAS(r);
 	SET_RNOTE(r, NULL);
     }
     CLEANUP_RETURN;
