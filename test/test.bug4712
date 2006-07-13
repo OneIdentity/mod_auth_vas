@@ -45,8 +45,6 @@ cat <<-. >$DOC_DIR/test.cgi
 .
 chmod 755 $DOC_DIR/test.cgi
 
-$DOC_DIR/test.cgi
-
 URL=$DOC_URL/test.cgi
 
 #-- put 'yes' into a file for comparison

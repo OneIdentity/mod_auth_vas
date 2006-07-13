@@ -35,7 +35,7 @@ ap_start
 fetch_basic :testuser $DOC_URL/$TESTFILE > $OUTPUTFILE 2> /dev/null &
 
 pid=$!
-echo Waiting 2 seconds for the request to be served...
+ifdebug Waiting 2 seconds for the request to be served...
 sleep 2
 
 if kill -0 $pid 2>/dev/null; then
