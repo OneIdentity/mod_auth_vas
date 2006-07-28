@@ -1346,8 +1346,8 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 {
     vas_err_t               vaserr;
     auth_vas_server_config *sc;
-    char* tmp_realm;
-   
+    char *tmp_realm;
+
     TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
 
     sc = GET_SERVER_CONFIG(s->module_config);
@@ -1374,6 +1374,9 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	       	vaserr);
 	return;
     }
+
+    vas_ctx_set_option(sc->vas_ctx,
+	    VAS_CTX_OPTION_SEPARATOR_IN_ERROR_MESSAGE_STRING, ".");
 
     vaserr = vas_info_joined_domain(sc->vas_ctx, &tmp_realm, NULL);
     if (vaserr == VAS_ERR_SUCCESS) {
