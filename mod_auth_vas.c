@@ -1407,7 +1407,8 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     vaserr = vas_id_establish_cred_keytab(sc->vas_ctx, 
                                           sc->vas_serverid, 
                                           VAS_ID_FLAG_USE_MEMORY_CCACHE |
-                                          VAS_ID_FLAG_KEEP_COPY_OF_CRED,
+                                          VAS_ID_FLAG_KEEP_COPY_OF_CRED |
+                                          VAS_ID_FLAG_NO_INITIAL_TGT,
                                           NULL);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
