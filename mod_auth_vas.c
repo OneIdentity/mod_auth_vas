@@ -1687,6 +1687,10 @@ export_cc(request_rec *r)
 
     rn = GET_RNOTE(r);
 
+    /* Check that an authentication was performed */
+    if (rn == NULL)
+        return;
+
     /* Check if we delegated already */
     if (rn->deleg_ccache)
 	return;
