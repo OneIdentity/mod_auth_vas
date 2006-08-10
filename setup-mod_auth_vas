@@ -170,13 +170,19 @@ else
 	Contact your systems administration staff if you do not.
 .
     if yesorno "Create the HTTP/ service account?"; then
-        echo "Please login with a domain account to create the HTTP/ service:"
+        
+        echo "Please specify the container DN in which to create the service:"
+        query "Service container DN" CONTAINER default
+        test x"$CONTAINER" = x"default" && CONTAINER=
+
+        echo "Please login with a domain account to create the service:"
         checkroot
         query "Username" USER Administrator
-        recordcmd $VASTOOL -u "$USER" service create HTTP/ || \
+
+        recordcmd $VASTOOL -u "$USER" service create ${CONTAINER:+-c "$CONTAINER"} HTTP/ || \
 	    die "Cannot create HTTP/ service key: contact your IT support"
 
-	label "looking for HTTP/ keytab"
+	label "checking new service keytab"
 	if test -f "$KEYTAB"; then 
 	    echo "found"
 	else
