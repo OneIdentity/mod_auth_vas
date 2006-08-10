@@ -32,7 +32,7 @@ dnl -- APXS is Apache's extension tool.
 dnl    We trust it completely to do the right thing.
 dnl    If it is busted, then the user is on their own.
 AC_ARG_WITH(apxs,
-	    AS_HELP_STRING([--with-apxs=path],
+	    AS_HELP_STRING([--with-apxs=program-path],
 	    		   [Specify location of Apache extension tool]),,
 	    [with_apxs=default])
 dnl -- Search path for finding apxs2/apxs
@@ -40,6 +40,7 @@ APXS_PATH="$PATH"
 APXS_PATH="$APXS_PATH:/opt/hpws/apache/bin"
 APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/opt/freeware/bin"
 APXS_PATH="$APXS_PATH:/usr/local/bin:/usr/sbin:/usr/bin"
+APXS_PATH="$APXS_PATH:/usr/local/apache2:/usr/local/apache"
 
 if test x"$with_apxs" = x"default"; then
     AC_PATH_PROG([APXS2], [apxs2], [no], [$APXS_PATH])
