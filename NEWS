@@ -1,5 +1,6 @@
 [unreleased]
-        - Fixes bug 66, where seg fault occurs during unauthenticated req
+	- Fixes auth_vas_create_server_config debug message going to stderr
+	- Fixes bug 66, where seg fault occurs during unauthenticated req
 	- Enhancement bug 50: AuthVasExportDelegated
 	- Fixes bug 51 where 'apache -t' (configtest) would segfault
 	- Improve resource locking
