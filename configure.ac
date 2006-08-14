@@ -1,7 +1,7 @@
 # (c) 2006 Quest Software. All right reserved.
 
 AC_INIT([mod_auth_vas], 
-        [3.2.3.]esyscmd((svnversion . /trunk || echo 0) | tr : _ | tr -d \\012),
+        [3.3.0.]esyscmd((svnversion . /trunk || echo 0) | tr : _ | tr -d \\012),
 	[apache@rc.vintela.com])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
@@ -235,5 +235,7 @@ VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
+
+AC_CHECK_FUNC([getgrnam_r])
 
 AC_OUTPUT

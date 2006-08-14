@@ -99,6 +99,8 @@
 	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,fmt , ## args)
 # define LOG_ERROR(l,x,s,fmt,args...) \
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,fmt , ## args)
+# define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
+	ap_log_rerror(APLOG_MARK,l,r,fmt , ## args)
 
 #define CLEANUP_RET_TYPE 	void
 #define CLEANUP_RETURN		return
@@ -115,6 +117,8 @@
 	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,fmt , ## args)
 # define LOG_ERROR(l,x,s,fmt,args...) \
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,fmt , ## args)
+# define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
+	ap_log_rerror(APLOG_MARK,l,x,r,fmt , ## args)
 
 #define CLEANUP_RET_TYPE 	apr_status_t
 #define CLEANUP_RETURN		return OK
@@ -266,6 +270,7 @@ static const char *server_set_string_slot(cmd_parms *cmd, void *ignored,
 static int server_ctx_is_valid(server_rec *s);
 static int match_user(request_rec *r, const char *name, int);
 static int match_group(request_rec *r, const char *nam, int);
+static int match_unix_group(request_rec *r, const char *nam, int);
 static int dn_in_container(const char *dn, const char *container);
 static int match_container(request_rec *r, const char *container, int);
 static int match_valid_user(request_rec *r, const char *ignored, int);
@@ -569,6 +574,7 @@ match_group(request_rec *r, const char *name, int log_level)
                    "match_group: no available auth context for %s",
                    rnote->vas_pname);
         rval = HTTP_FORBIDDEN;
+        goto finish;
     }
 
 #define VASVER ((VAS_API_VERSION_MAJOR * 10000) + \
@@ -615,6 +621,128 @@ finish:
     UNLOCK_VAS(r);
     return rval;
 }
+
+/**
+ * Checks if the authenticated user appears in a UNIX group
+ * Assumes the server config has been initialised.
+ *   @param r The authenticated request
+ *   @param name The name of the UNIX group to check membership of
+ *   @return OK if group contains user, otherwise HTTP_...
+ */
+static int
+match_unix_group(request_rec *r, const char *name, int log_level)
+{
+    vas_err_t                 vaserr;
+    int                       rval;
+    auth_vas_server_config   *sc;
+    auth_vas_rnote           *rnote;
+    struct group             *gr;
+    struct passwd            *pw = NULL;
+    vas_user_t               *user = NULL;
+    char **                   sp;
+
+    ASSERT(r != NULL);
+    ASSERT(name != NULL);
+    ASSERT(RUSER(r) != NULL);
+
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+    ASSERT(sc != NULL);
+    ASSERT(sc->vas_ctx != NULL);
+
+    if ((rval = LOCK_VAS(r))) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "match_group: unable to acquire lock");
+	return rval;
+    }
+
+    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
+	goto finish;
+
+    ASSERT(rnote->vas_userid != NULL);
+    vaserr = vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &user);
+    if (vaserr != VAS_ERR_SUCCESS) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "vas_id_get_user(): %s",
+                   vas_err_get_string(sc->vas_ctx, 1));
+        rval = HTTP_INTERNAL_SERVER_ERROR;
+	goto finish;
+    }
+
+    /* Determine the user's unix name */
+    vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, user, &pw);
+    if (vaserr == VAS_ERR_NOT_FOUND) {
+        /* User does not map to a unix user, so cannot be part of a group */
+        rval = HTTP_FORBIDDEN;
+        goto finish;
+    }
+    if (vaserr != VAS_ERR_SUCCESS) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "vas_user_get_pwinfo(): %s",
+                   vas_err_get_string(sc->vas_ctx, 1));
+        rval = HTTP_INTERNAL_SERVER_ERROR;
+	goto finish;
+    }
+
+    /* 
+     * Obtain the list of users in the unix group.
+     * Note that we deliberately cause a 500 error if the group
+     * is not found, because we assert 
+     */
+#if HAVE_GETGRNAM_R
+    {
+        char *buf;
+        size_t buflen = 16384;  /* GETGR_R_SIZE_MAX is not portable :( */
+        struct group *gbuf;
+        int ret;
+        
+        gbuf = (struct group *)apr_palloc(r->pool, 
+                sizeof (struct group));
+        if (gbuf)
+            buf = apr_palloc(r->pool, buflen);
+	if (gbuf == NULL || buf == NULL) {
+	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
+	    result = HTTP_INTERNAL_SERVER_ERROR;
+	    goto finish;
+	}
+        if ((ret = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
+            LOG_RERROR(log_level, ret, r,
+                       "getgrnam_r: cannot access group '%s'", name);
+            rval = HTTP_INTERNAL_SERVER_ERROR;
+            goto finish;
+        }
+    }
+#else
+    gr = getgrnam(name);
+    if (!gr) {
+	LOG_RERROR_ERRNO(log_level, 0, r,
+                   "getgrnam: cannot access group '%s'", name);
+        rval = HTTP_INTERNAL_SERVER_ERROR;
+        goto finish;
+    }
+#endif
+
+    /* Search the group list */
+    rval = HTTP_FORBIDDEN;
+    for (sp = gr->gr_mem; sp && *sp; sp++)
+        if (strcmp(pw->pw_name, *sp) == 0) {
+            rval = OK;
+            break;
+        }
+    if (rval)
+        LOG_RERROR(log_level, 0, r,
+                   "match_group: %s not member of %s",
+                   rnote->vas_pname,
+                   name);
+
+finish:
+    UNLOCK_VAS(r);
+    if (pw)
+        free(pw);
+    if (user)
+        (void)vas_user_free(sc->vas_ctx, user);
+    return rval;
+}
+
 
 /**
  * Checks if the given dn matches "*,container".
@@ -736,6 +864,7 @@ static const struct match {
 } matchtab[] = {
     { "user",	    match_user,	      1 },
     { "group",	    match_group,      1 },
+    { "unix-group", match_unix_group, 1 },
     { "container",  match_container,  1 },
     { "valid-user", match_valid_user, 0 },
     { NULL }
@@ -929,7 +1058,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_id_establish_cred_password(user=%s): error= %s",
+                   "vas_id_establish_cred_password(user=%s): %s",
                    user, vas_err_get_string(sc->vas_ctx, 1));
 	goto done;
     }

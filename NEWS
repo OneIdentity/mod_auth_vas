@@ -1,4 +1,5 @@
 [unreleased]
+	- Enhancement bug 64: 'Require unix-group <group>'
 	- Fixes auth_vas_create_server_config debug message going to stderr
 	- Fixes bug 66, where seg fault occurs during unauthenticated req
 	- Enhancement bug 50: AuthVasExportDelegated
