@@ -44,7 +44,8 @@ install-data-local:
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
 
-EXTRA_DIST=	NEWS README $(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
+EXTRA_DIST=	NEWS README LICENCE
+EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
 CLEANFILES=
 
 install-conf: auth_vas.conf
