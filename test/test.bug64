@@ -1,0 +1,51 @@
+# 'Require group' did not previously work for local unix groups.
+# MAV now has a 'local-group' option.
+description "local-group (bug 64)"
+
+TESTFILE=testbug64.txt
+OUTPUTFILE=/tmp/bug64.$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $OUTPUTFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		Require local-group local
+	</Directory>
+.
+
+ap_conf_check
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+
+ap_start
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` nearlocal:nearlocal $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as nearlocal"
+test 200 = "$FETCH_RES" || fail "nearlocal: expected 200 but got $FETCH_RES"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
+    fail "nearlocal: corrupt transfer"
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` local:local $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as local"
+test 200 = "$FETCH_RES" || fail "local: expected 200 but got $FETCH_RES"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
+    fail "local: corrupt transfer"
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` $USER_test:$PASSWD_test $DOC_URL/$TESTFILE \
+    > $OUTPUTFILE &&
+    fail "fetch with basic as testuser not protected"
+test 200 = "$FETCH_RES" || fail "local: expected 200 but got $FETCH_RES"
+

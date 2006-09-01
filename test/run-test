@@ -124,9 +124,14 @@ errormark () {
 showerrors () {
     if test x"$error_offset" != x""; then
 	error_offset=`expr $error_offset + 1`
-	echo "--start error_log:" >&2
-	$SUDO cat $AP_ERROR_LOG | tail -c +${error_offset} >&2
-	echo "--end error_log:" >&2
+        error_end_offset=`$SUDO cat $AP_ERROR_LOG 2>/dev/null | wc -c`
+        if test $error_offset -lt $error_end_offset; then
+            echo "--start error_log:" >&2
+            $SUDO cat $AP_ERROR_LOG | 
+                dd bs=1 skip=${error_offset} 2>/dev/null >&2 |
+                sed -e 's/^/    /'
+            echo "--end error_log:" >&2
+        fi
     fi
 }
 
@@ -177,9 +182,9 @@ case "$PLATFORM" in
 	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
 
 	test -x $FETCH || fail "$FETCH: not found"
-	rpm -q apache2-mod_auth_vas >/dev/null || 
-		fail "mod_auth_vas not installed"
-	VERSION=`rpm -q --queryformat '%{VERSION}' apache2-mod_auth_vas`
+#	rpm -q apache2-mod_auth_vas >/dev/null || 
+#		fail "mod_auth_vas not installed"
+#	VERSION=`rpm -q --queryformat '%{VERSION}' apache2-mod_auth_vas`
 	;;
 
     redhat)
