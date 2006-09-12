@@ -225,6 +225,8 @@ typedef struct {
 
 /*
  * Per-directory configuration data - computed while traversing htaccess.
+ * These fields should only be accessed using the USING_*() macros defined
+ * below. This is because they might be uninitialised.
  */
 typedef struct {
     int auth_negotiate;			/* AuthVasUseNegotiate (default on) */
@@ -233,19 +235,25 @@ typedef struct {
     int export_delegated;		/* AuthVasExportDelegated (default off) */
 } auth_vas_dir_config;
 
+/* Default behaviour if a flag is not set */
+#define DEFAULT_USING_AUTH_NEGOTIATE            FLAG_ON
+#define DEFAULT_USING_AUTH_BASIC                FLAG_OFF
+#define DEFAULT_USING_AUTH_AUTHORITATIVE        FLAG_ON
+#define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
+
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
 #define USING_AUTH_DEFAULT(dc, field, def) \
 		((dc) ? TEST_FLAG_DEFAULT((dc)->field, def) : def)
 
 /* Macros to safely test the per-directory flags, applying defaults. */
 #define USING_AUTH_NEGOTIATE(dc) \
-		USING_AUTH_DEFAULT(dc, auth_negotiate, FLAG_ON)
+    USING_AUTH_DEFAULT(dc, auth_negotiate,     DEFAULT_USING_AUTH_NEGOTIATE)
 #define USING_AUTH_BASIC(dc) \
-		USING_AUTH_DEFAULT(dc, auth_basic, FLAG_OFF)
+    USING_AUTH_DEFAULT(dc, auth_basic,         DEFAULT_USING_AUTH_BASIC)
 #define USING_AUTH_AUTHORITATIVE(dc) \
-		USING_AUTH_DEFAULT(dc, auth_authoritative, FLAG_ON)
+    USING_AUTH_DEFAULT(dc, auth_authoritative, DEFAULT_USING_AUTH_AUTHORITATIVE)
 #define USING_EXPORT_DELEGATED(dc) \
-		USING_AUTH_DEFAULT(dc, export_delegated, FLAG_OFF)
+    USING_AUTH_DEFAULT(dc, export_delegated,   DEFAULT_USING_EXPORT_DELEGATED)
 
 /*
  * Per-request note data - exists for lifetime of request only.
