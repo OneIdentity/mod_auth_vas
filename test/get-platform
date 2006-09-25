@@ -8,6 +8,8 @@ case "`uname -s`" in
 			echo "redhat"; exit 0
 		elif rpm -q fedora-release >/dev/null; then
 			echo "redhat"; exit 0
+		elif test -f /etc/debian_version; then
+			echo "debian"; exit 0
 		fi;;
 	HP-UX)	echo "hpux"; exit 0;;
 esac
