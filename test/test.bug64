@@ -19,7 +19,7 @@ ap_conf_append <<-.
 	<Directory "$DOC_DIR">
 		AuthType VAS
 		AuthVasUseBasic on
-		Require local-group local
+		Require unix-group local
 	</Directory>
 .
 
@@ -37,15 +37,15 @@ cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
     fail "nearlocal: corrupt transfer"
 
 rm -f $OUTPUTFILE
-fetch_basic `ifdebug -d` local:local $DOC_URL/$TESTFILE > $OUTPUTFILE ||
-    fail "couldn't fetch with basic as local"
-test 200 = "$FETCH_RES" || fail "local: expected 200 but got $FETCH_RES"
-cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
-    fail "local: corrupt transfer"
+# mod_auth_vas doesn't auth local users.
+fetch_basic `ifdebug -d` local:local $DOC_URL/$TESTFILE > $OUTPUTFILE &&
+    fail "Auth as a true local user succeeded but it was expected to fail"
+test 200 != "$FETCH_RES" || fail "local: expected failure code, not 200"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE > /dev/null &&
+    fail "local: request returned unexpected data"
 
 rm -f $OUTPUTFILE
 fetch_basic `ifdebug -d` $USER_test:$PASSWD_test $DOC_URL/$TESTFILE \
     > $OUTPUTFILE &&
     fail "fetch with basic as testuser not protected"
-test 200 = "$FETCH_RES" || fail "local: expected 200 but got $FETCH_RES"
-
+test 200 != "$FETCH_RES" || fail "fetch with basic as testuser not protected"
