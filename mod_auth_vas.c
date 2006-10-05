@@ -1512,8 +1512,11 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	return;
     }
 
+#if 0 /* Only available since about VAS 3.0.2.5.
+       * Disabled for now for backwards-compatability. */
     vas_ctx_set_option(sc->vas_ctx,
 	    VAS_CTX_OPTION_SEPARATOR_IN_ERROR_MESSAGE_STRING, ".");
+#endif
 
     vaserr = vas_info_joined_domain(sc->vas_ctx, &tmp_realm, NULL);
     if (vaserr == VAS_ERR_SUCCESS) {
