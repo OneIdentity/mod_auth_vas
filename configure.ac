@@ -137,9 +137,9 @@ AC_SUBST(APXSFLAGS)
 #-- check to see whether libgcc is required
 AC_MSG_CHECKING([for libgcc])
 if $CC -print-libgcc-file-name >/dev/null 2>/dev/null; then
-	libgccfilename=no
-else
 	libgccfilename=`$CC -print-libgcc-file-name`
+else
+	libgccfilename=no
 fi
 AC_MSG_RESULT([$libgccfilename])
 
