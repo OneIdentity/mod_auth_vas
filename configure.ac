@@ -9,7 +9,6 @@ AM_INIT_AUTOMAKE
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
 AC_CONFIG_FILES([Makefile])
 
-AC_PROG_CC
 AC_PREFIX_DEFAULT([/opt/quest])
 
 dnl -- platform detection
@@ -39,6 +38,7 @@ dnl -- Search path for finding apxs2/apxs
 APXS_PATH="$PATH"
 APXS_PATH="$APXS_PATH:/opt/hpws/apache/bin"
 APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/opt/freeware/bin"
+APXS_PATH="$APXS_PATH:/usr/apache2/bin"
 APXS_PATH="$APXS_PATH:/usr/local/bin:/usr/sbin:/usr/bin"
 APXS_PATH="$APXS_PATH:/usr/local/apache2:/usr/local/apache"
 
@@ -72,9 +72,15 @@ APXSFLAGS=
 # CC CFLAGS CFLAGS_SHLIB INCLUDEDIR LDFLAGS_SHLIB LD_SHLIB LIBEXECDIR
 # LIBS_SHLIB PREFIX SBINDIR SYSCONFDIR TARGET
 AC_CACHE_CHECK([what compiler apxs uses], [ac_cv_var_apxs_cc],
-	[apxs_cc=`$APXS -q CC || echo error`; test x"$apxs_cc" != x"error"],
-	[ac_cv_var_apxs_cc="$apxs_cc"], [ac_cv_var_apxs_cc=error])
+	[ac_cv_var_apxs_cc=`$APXS -q CC`])
 
+#-- Try to use the C compiler APXS recommends
+if test x"$ac_cv_var_apxs_cc" != x"" -a x"$CC" = x""; then
+    CC="$ac_cv_var_apxs_cc"
+fi
+AC_PROG_CC
+
+#-- Override CC if we found a different C compiler
 if test x"$ac_cv_var_apxs_cc" != x"$CC"; then
     APXSFLAGS="$APXSFLAGS -S CC='$CC'"
 fi
