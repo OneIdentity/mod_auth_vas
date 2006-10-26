@@ -95,12 +95,21 @@
 # define APR_OFFSETOF(t,f) 	(void *)XtOffsetOf(t,f)
 # define RUSER(r) 		(r)->connection->user
 # define RAUTHTYPE(r) 		(r)->connection->ap_auth_type
-# define LOG_RERROR(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,fmt , ## args)
-# define LOG_ERROR(l,x,s,fmt,args...) \
-	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,fmt , ## args)
-# define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l,r,fmt , ## args)
+# if __GNUC__
+#  define LOG_RERROR(l,x,r,fmt,args...) \
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,fmt ,##args)
+#  define LOG_ERROR(l,x,s,fmt,args...) \
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,fmt ,##args)
+#  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
+	ap_log_rerror(APLOG_MARK,l,r,fmt ,##args)
+# else /* C99 */
+#  define LOG_RERROR(l,x,r, ...) \
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,__VA_ARGS__)
+#  define LOG_ERROR(l,x,s, ...) \
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,__VA_ARGS__)
+#  define LOG_RERROR_ERRNO(l,x,r, ...) \
+	ap_log_rerror(APLOG_MARK,l,r,__VA_ARGS__)
+# endif
 
 #define CLEANUP_RET_TYPE 	void
 #define CLEANUP_RETURN		return
@@ -113,12 +122,22 @@
 # include <apr_general.h>
 # define RUSER(r) (r)->user
 # define RAUTHTYPE(r) (r)->ap_auth_type
-# define LOG_RERROR(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,fmt , ## args)
-# define LOG_ERROR(l,x,s,fmt,args...) \
-	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,fmt , ## args)
-# define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l,x,r,fmt , ## args)
+
+# if __GNUC__
+#  define LOG_RERROR(l,x,r,fmt,args...) \
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,fmt ,##args)
+#  define LOG_ERROR(l,x,s,fmt,args...) \
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,fmt ,##args)
+#  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
+	ap_log_rerror(APLOG_MARK,l,x,r,fmt ,##args)
+# else /* C99 */
+#  define LOG_RERROR(l,x,r,...) \
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,__VA_ARGS__)
+#  define LOG_ERROR(l,x,s,...) \
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,__VA_ARGS__)
+#  define LOG_RERROR_ERRNO(l,x,r,...) \
+	ap_log_rerror(APLOG_MARK,l,x,r,__VA_ARGS__)
+# endif
 
 #define CLEANUP_RET_TYPE 	apr_status_t
 #define CLEANUP_RETURN		return OK
@@ -148,17 +167,36 @@
  *  ap_log_perror() is not implemented on that platform.
  */
 #if defined(MODAUTHVAS_VERBOSE)
-# define TRACE_S(s,f,a...) LOG_ERROR(APLOG_DEBUG,OK,s,f ,##a)
-# define TRACE_R(r,f,a...) LOG_RERROR(APLOG_DEBUG,OK,r,f ,##a)
-# if defined(APXS1)
-#  define TRACE_P(p,f,a...) /* Cannot log */
+# if __GNUC__
+#  define TRACE_S(s,f,a...) LOG_ERROR(APLOG_DEBUG,OK,s,f ,##a)
+#  define TRACE_R(r,f,a...) LOG_RERROR(APLOG_DEBUG,OK,r,f ,##a)
+# else /* C99 */
+#  define TRACE_S(s,...) LOG_ERROR(APLOG_DEBUG,OK,s,__VA_ARGS__)
+#  define TRACE_R(r,...) LOG_RERROR(APLOG_DEBUG,OK,r,__VA_ARGS__)
+# endif
+# if !defined(APXS1)
+#  if __GNUC__
+#   define TRACE_P(p,f,a...) ap_log_perror(APLOG_MARK,APLOG_DEBUG,OK,p,f ,##a)
+#  else /* C99 */
+#   define TRACE_P(p,...) ap_log_perror(APLOG_MARK,APLOG_DEBUG,OK,p,__VA_ARGS__)
+#  endif
 # else
-#  define TRACE_P(p,f,a...) ap_log_perror(APLOG_MARK,APLOG_DEBUG,OK,p,f ,##a)
+#  if __GNUC__
+#   define TRACE_P(p,f,a...) /* Cannot log */
+#  else /* C99 */
+#   define TRACE_P(p,...) /* Cannot log */
+#  endif
 # endif
 #else
-# define TRACE_P(p,f,a...) /* nothing */
-# define TRACE_S(s,f,a...) /* nothing */
-# define TRACE_R(r,f,a...) /* nothing */
+# if __GNUC__
+#  define TRACE_P(p,f,a...) /* nothing */
+#  define TRACE_S(s,f,a...) /* nothing */
+#  define TRACE_R(r,f,a...) /* nothing */
+# else /* C99 */
+#  define TRACE_P(p,...) /* nothing */
+#  define TRACE_S(s,...) /* nothing */
+#  define TRACE_R(r,...) /* nothing */
+# endif
 #endif
 
 /*
