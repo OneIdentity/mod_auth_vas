@@ -4,6 +4,7 @@
 	- Prefer to use the compiler that apxs suggests
 	- #Enhancement bug 126: AuthVasLocalizeUserName
 	- #Enhancement bug 135: --enable-perf performance logging
+	- setup-mod_auth_vas now finds config files on Debian & Ubuntu
 3.3.0
 	- Enhancement bug 64: 'Require unix-group <group>'
 	- Fixes auth_vas_create_server_config debug message going to stderr
