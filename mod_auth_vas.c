@@ -2044,10 +2044,8 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy,
 	    apr_pool_cleanup_null);
     
-    TRACE_P(p, "auth_vas_create_server_config (%s%s%s)",
-	    s->server_hostname ? s->server_hostname : "<global>",
-	    s->port ? ":" : "",
-	    s->port ? s->port : "");
+    TRACE_P(p, "auth_vas_create_server_config (%s:%u)",
+	    s->server_hostname ? s->server_hostname : "<global>", s->port);
     return (void *)sc;
 }
 
