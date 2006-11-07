@@ -1,3 +1,6 @@
+
+	- Support C99 vararg macros (Sun CC)
+	- Prefer to use the compiler that apxs suggests
 3.3.0
 	- Enhancement bug 64: 'Require unix-group <group>'
 	- Fixes auth_vas_create_server_config debug message going to stderr
