@@ -104,6 +104,8 @@ fi
 label "looking for apache conf"
 AP_CF=
 for apxs in apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
+    AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/apache2.conf
+    test -f "$AP_CF" && break
     AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/httpd.conf
     test -f "$AP_CF" && break
     AP_CF=
@@ -111,11 +113,15 @@ done
 
 #-- if apxs isn't installed, then look in likely directories
 if test ! -n "$AP_CF"; then
-    for dir in /etc/httpd /etc/apache2 /etc/apache /etc/www /var/www \
-		/opt/IBMIHS
+    for dir in /etc/apache2 /etc/apache /etc/httpd/conf /etc/apache2/conf \
+	/etc/apache/conf /etc/www/conf /var/www/conf /opt/IBMIHS/conf
     do
-	if test -f $dir/conf/httpd.conf; then
-	    AP_CF=$dir/conf/httpd.conf
+	if test -f $dir/apache2.conf; then
+	    AP_CF=$dir/apache2.conf
+	    break
+	fi
+	if test -f $dir/httpd.conf; then
+	    AP_CF=$dir/httpd.conf
 	    break
 	fi
     done
