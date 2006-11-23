@@ -1125,6 +1125,12 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     rval = OK;
 
  done:
+
+    if (rval == HTTP_UNAUTHORIZED) {
+	/* Prompt the client to try again */
+	add_auth_headers(r);
+    }
+
     /* Release resources */
     UNLOCK_VAS(r);
 
