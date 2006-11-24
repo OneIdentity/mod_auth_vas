@@ -128,7 +128,7 @@ showerrors () {
         if test $error_offset -lt $error_end_offset; then
             echo "--start error_log:" >&2
             $SUDO cat $AP_ERROR_LOG | 
-                dd bs=1 skip=${error_offset} 2>/dev/null >&2 |
+                dd bs=1 skip=${error_offset} 2>/dev/null |
                 sed -e 's/^/    /'
             echo "--end error_log:" >&2
         fi
