@@ -123,7 +123,6 @@ errormark () {
 #-- dump the errors since the last mark
 showerrors () {
     if test x"$error_offset" != x""; then
-	error_offset=`expr $error_offset + 1`
         error_end_offset=`$SUDO cat $AP_ERROR_LOG 2>/dev/null | wc -c`
         if test $error_offset -lt $error_end_offset; then
             echo "--start error_log:" >&2
