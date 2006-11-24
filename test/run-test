@@ -153,7 +153,7 @@ case "$PLATFORM" in
 	    		   fail "bad conf"; }
 	ap_conf_restore () { $SUDO mv $CONF $CONF.$script &&
 			     $SUDO mv $CONF.save.$script $CONF ; }
-	ap_start () { errormark && $SUDO $APACHECTL start >/dev/null ; }
+	ap_start () { ap_stop; errormark && $SUDO $APACHECTL start >/dev/null ; }
 	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
 	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
 
@@ -177,7 +177,7 @@ case "$PLATFORM" in
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
 	ap_conf_check () { $SUDO $APACHECTL -t 2>/dev/null; }
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { errormark && $SUDO $APACHECTL start >/dev/null ; }
+	ap_start () { ap_stop; errormark && $SUDO $APACHECTL start >/dev/null ; }
 	ap_stop ()  { $SUDO $APACHECTL stop >/dev/null ; : ; }
 	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
 
@@ -203,7 +203,7 @@ case "$PLATFORM" in
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
 	ap_conf_check () { OPTIONS="${ap_options}" $SUDO $APACHECTL configtest 2>/dev/null; }  # use configtest or -t ?
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { cat $CONF; errormark && OPTIONS="${ap_options}" $SUDO /etc/init.d/httpd start ; sleep 2; }
+	ap_start () { cat $CONF; stop; errormark && OPTIONS="${ap_options}" $SUDO /etc/init.d/httpd start ; sleep 2; }
 	ap_stop ()  { $SUDO /etc/init.d/httpd stop >/dev/null ; : ; }
 	ap_restart () { $SUDO /etc/init.d/httpd restart >/dev/null ; }
 
@@ -237,7 +237,7 @@ case "$PLATFORM" in
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
 	ap_conf_check () { ( $SUDO $APACHECTL -t 2>/dev/null ) ; }
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { errormark && ($SUDO $APACHECTL start >/dev/null) ; }
+	ap_start () { ap_stop; errormark && ($SUDO $APACHECTL start >/dev/null) ; }
 	ap_stop ()  { ($SUDO $APACHECTL stop >/dev/null) ; : ; }
 	ap_restart () { ($SUDO $APACHECTL restart >/dev/null) ; }
 
@@ -260,7 +260,7 @@ case "$PLATFORM" in
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
 	ap_conf_check () { $APACHE -t > /dev/null 2>&1 ; }
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { ap_stop ; errormark && ($SUDO $APACHECTL start > /dev/null) ; }
+	ap_start () { ap_stop; errormark && ($SUDO $APACHECTL start > /dev/null) ; }
 	ap_stop () { ( $SUDO $APACHECTL stop > /dev/null) ; : ; }
 	ap_restart () { errormark && ( $SUDO $APACHECTL restart > /dev/null) ; }
 
