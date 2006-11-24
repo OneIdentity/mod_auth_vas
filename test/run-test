@@ -260,7 +260,7 @@ case "$PLATFORM" in
 	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
 	ap_conf_check () { $APACHE -t > /dev/null 2>&1 ; }
 	ap_conf_restore () { $SUDO rm -f $CONF; }
-	ap_start () { errormark && ($SUDO $APACHECTL start > /dev/null) ; }
+	ap_start () { ap_stop ; errormark && ($SUDO $APACHECTL start > /dev/null) ; }
 	ap_stop () { ( $SUDO $APACHECTL stop > /dev/null) ; : ; }
 	ap_restart () { errormark && ( $SUDO $APACHECTL restart > /dev/null) ; }
 
