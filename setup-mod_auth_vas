@@ -78,6 +78,47 @@ recordcmd () {
     "$@"
 }
 
+usage () {
+    cat <<-EOT
+	Usage: $0 [args]
+	-c <file>
+	    Use <file> as the config file. If unset, config file is automatically
+	    detected by querying the apxs2 or apxs program.
+	-h
+	    Display help (this information)
+EOT
+}
+
+#-- parse args
+
+AP_CF=''
+
+while getopts 'c:h' opt; do
+    case $opt in
+	'c')
+	    AP_CF="$OPTARG"
+	    if [ ! -f "$AP_CF" ]; then
+		echo Cannot find configuration file $AP_CF >&2
+		exit 1
+	    fi
+	    if [ ! -r "$AP_CF" ]; then
+		echo Configuration file $AP_CF is unreadable >&2
+		exit 1
+	    fi
+	    ;;
+	'?')
+	    usage >&2
+	    exit 1
+	    ;;
+	'h')
+	    usage
+	    exit 0
+	    ;;
+    esac
+done
+
+while [ $OPTIND -gt 1 ]; do shift; OPTIND="$(($OPTIND - 1))"; done
+
 #-- intro
 cat <<-.
 
@@ -102,14 +143,15 @@ else
 fi
 
 label "looking for apache conf"
-AP_CF=
-for apxs in apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
-    AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/apache2.conf
-    test -f "$AP_CF" && break
-    AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/httpd.conf
-    test -f "$AP_CF" && break
-    AP_CF=
-done
+if test ! -n "$AP_CF"; then
+    for apxs in apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
+	AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/apache2.conf
+	test -f "$AP_CF" && break
+	AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/httpd.conf
+	test -f "$AP_CF" && break
+	AP_CF=
+    done
+fi
 
 #-- if apxs isn't installed, then look in likely directories
 if test ! -n "$AP_CF"; then
