@@ -310,6 +310,35 @@ if test -f "$KEYTAB"; then
   esac
 fi
 
+#-- check that auth_vas module is loaded when config is parsed
+label "Checking mod_auth_vas is loaded"
+if test -n "$apxs"; then
+    sbindir=`$apxs -q SBINDIR`
+    target=`$apxs -q TARGET`
+    if zterp "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
+	grep 'loaded module.*auth_vas' >/dev/null
+    then
+	echo 'yes'
+    else
+	echo 'no'
+	cat <<-.
+	
+	It doesn't appear that the Apache web server is loading the VAS
+	authentication module. This could be a problem in the configuration
+	file (missing LoadModule or a syntax error), a mis-installation of 
+	mod_auth_vas or VAS, or perhaps this script is simply invoking a 
+	custmo web server in the wrong way.
+
+	The command I used to detect what modules were loaded was:
+
+	   $sbindir/$target ${AP_CF+-f "$AP_CF"} -t -e debug
+
+.
+    fi
+else
+    echo 'need -a flag'
+fi
+
 echo ""
 $logfile_written && echo "(Log written to $LOGFILE)"
 echo "Finished."
