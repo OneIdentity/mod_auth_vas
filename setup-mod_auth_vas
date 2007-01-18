@@ -79,45 +79,58 @@ recordcmd () {
 }
 
 usage () {
-    cat <<-EOT
-	Usage: $0 [args]
-	-c <file>
-	    Use <file> as the config file. If unset, config file is automatically
-	    detected by querying the apxs2 or apxs program.
-	-h
-	    Display help (this information)
-EOT
+    cat <<-.
+	Usage: $0 [-a apxs] [-c conf] [-h]
+	    -a apxs
+	          Use program 'apxs' to find the web server extension tool.
+	          If not specified, a built-in search path is used.
+	    -c conf
+	          Use file 'conf' as the main Apache configuration file. If
+	          not specified, the apxs extension tool is queried.
+	    -h
+	          Display this help text.
+.
 }
 
 #-- parse args
 
-AP_CF=''
+cflag=
+aflag=
+opterr=false
 
-while getopts 'c:h' opt; do
-    case $opt in
-	'c')
-	    AP_CF="$OPTARG"
-	    if [ ! -f "$AP_CF" ]; then
-		echo Cannot find configuration file $AP_CF >&2
-		exit 1
-	    fi
-	    if [ ! -r "$AP_CF" ]; then
-		echo Configuration file $AP_CF is unreadable >&2
-		exit 1
-	    fi
-	    ;;
-	'?')
-	    usage >&2
-	    exit 1
-	    ;;
-	'h')
-	    usage
-	    exit 0
-	    ;;
+while test $# -gt 0; do
+    case "$1" in
+	-c)  if test $# -lt 2; then 
+		echo "Missing argument to $1"; opterr=true; shift
+	     else
+		cflag="$2"; shift; shift
+	     fi;;
+	-c*) cflag=`echo " $1" | sed -e 's/^ -c//'`; shift;;
+	-a)  if test $# -lt 2; then 
+		echo "Missing argument to $1"; opterr=true; shift
+	     else
+		aflag="$2"; shift; shift
+	     fi;;
+	-a*) aflag=`echo " $1" | sed -e 's/^ -a//'`; shift;;
+	-h)  usage; exit 0;;
+	--)  shift; break;;
+	-?*) echo "Unknown option: $1"; opterr=true; shift;;
+	*)   break;;
     esac
 done
+if test $# -gt 0; then
+    # don't expect any further arguments
+    opterr=true
+fi
+if $opterr; then
+    usage
+    exit 1
+fi
 
-while [ $OPTIND -gt 1 ]; do shift; OPTIND="$(($OPTIND - 1))"; done
+if test -n "$aflag" -a -n "$cflag"; then
+    aflag=
+    echo "WARNING: Ignoring -a option when -c supplied" >&2
+fi
 
 #-- intro
 cat <<-.
@@ -142,19 +155,33 @@ else
     checkroot () { : ; }
 fi
 
-label "looking for apache conf"
-if test ! -n "$AP_CF"; then
-    for apxs in apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
-	AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/apache2.conf
-	test -f "$AP_CF" && break
-	AP_CF=`($apxs -q SYSCONFDIR) 2>/dev/null`/httpd.conf
-	test -f "$AP_CF" && break
+#-- look for apxs only if -c isn't supplied
+apxs=
+if test -z "$cflag"; then
+    label "looking for Apache extension tool"
+    for x in "$aflag" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
+	test -z "$x" && continue
+	AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/apache2.conf
+	test -f "$AP_CF" && apxs="$x" && break
+	AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/httpd.conf
+	test -f "$AP_CF" && apxs="$x" && break
 	AP_CF=
+	test x"$x" = x"$aflag" && break
     done
+    if test -z "$apxs" -a -n "$aflag"; then
+	echo "$aflag: not found or didn't work"
+	exit 1
+    elif test -z "$apxs"; then
+	echo "not found"
+    else
+	echo "$apxs"
+    fi
 fi
 
-#-- if apxs isn't installed, then look in likely directories
-if test ! -n "$AP_CF"; then
+label "looking for Apache configuration file"
+if test -n "$cflag"; then
+    AP_CF="$cflag"
+elif test -z "$AP_CF"; then
     for dir in /etc/apache2 /etc/apache /etc/httpd/conf /etc/apache2/conf \
 	/etc/apache/conf /etc/www/conf /var/www/conf /opt/IBMIHS/conf
     do
@@ -173,7 +200,7 @@ fi
 if test -f "$AP_CF"; then
     echo "$AP_CF"
     #echo "found"
-    label "looking for apache daemon group"
+    label "looking for Apache daemon group"
     APACHE_GROUP=`(sed -ne 's/^Group //p' < "$AP_CF"|sed -e 1q) 2>/dev/null`
     if test ! -n "$APACHE_GROUP"; then
 	#-- try harder 
@@ -190,10 +217,15 @@ if test -f "$AP_CF"; then
     fi
 else
     APACHE_GROUP=
-    echo "not found"
+    if test -z "$cflag"; then
+	echo "not found"
+    else
+	echo "$cflag: not found"
+	exit 1
+    fi
 fi
 
-#-- if the apache group is still unknown, look at existing groups and guess
+#-- if the Apache group is still unknown, look at existing groups and guess
 if test ! -n "$APACHE_GROUP"; then
     APACHE_GROUP_GUESS=nobody
     for u in apache httpd www nogroup; do
@@ -248,11 +280,12 @@ fi
 if test -f "$KEYTAB"; then
   if test ! -n "$APACHE_GROUP"; then
     echo ""
-    echo "The apache server process must be able to access the keytab."
-    echo "Tell me what group it will run as, and I'll correct the"
-    echo "keytab file permissions so that it is readable."
+    echo "The Apache server process must be able to access the keytab."
+    echo "I didn't find a httpd.conf file so I don't know what creds it uses."
+    echo "Tell me what unix group it will run as, and I'll check the"
+    echo "keytab file permissions so that it is readable by Apache."
     echo ""
-    query "Group for apache process" APACHE_GROUP $APACHE_GROUP_GUESS
+    query "Group for Apache httpd process" APACHE_GROUP $APACHE_GROUP_GUESS
     echo ""
   fi
 
