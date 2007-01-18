@@ -326,8 +326,8 @@ if test -n "$apxs"; then
 	It doesn't appear that the Apache web server is loading the VAS
 	authentication module. This could be a problem in the configuration
 	file (missing LoadModule or a syntax error), a mis-installation of 
-	mod_auth_vas or VAS, or perhaps this script is simply invoking a 
-	custmo web server in the wrong way.
+	mod_auth_vas or VAS, or perhaps this script is simply invoking the
+	web server in the wrong way.
 
 	The command I used to detect what modules were loaded was:
 
