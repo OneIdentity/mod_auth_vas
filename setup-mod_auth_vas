@@ -127,11 +127,6 @@ if $opterr; then
     exit 1
 fi
 
-if test -n "$aflag" -a -n "$cflag"; then
-    aflag=
-    echo "WARNING: Ignoring -a option when -c supplied" >&2
-fi
-
 #-- intro
 cat <<-.
 
@@ -155,27 +150,26 @@ else
     checkroot () { : ; }
 fi
 
-#-- look for apxs only if -c isn't supplied
+#-- look for apxs
 apxs=
-if test -z "$cflag"; then
-    label "looking for Apache extension tool"
-    for x in "$aflag" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
-	test -z "$x" && continue
-	AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/apache2.conf
-	test -f "$AP_CF" && apxs="$x" && break
-	AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/httpd.conf
-	test -f "$AP_CF" && apxs="$x" && break
-	AP_CF=
-	test x"$x" = x"$aflag" && break
-    done
-    if test -z "$apxs" -a -n "$aflag"; then
-	echo "$aflag: not found or didn't work"
-	exit 1
-    elif test -z "$apxs"; then
-	echo "not found"
-    else
-	echo "$apxs"
-    fi
+AP_CF=
+label "looking for Apache extension tool"
+for x in "$aflag" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
+    test -z "$x" && continue
+    AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/apache2.conf
+    test -f "$AP_CF" && apxs="$x" && break
+    AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/httpd.conf
+    test -f "$AP_CF" && apxs="$x" && break
+    AP_CF=
+    test x"$x" = x"$aflag" && break
+done
+if test -z "$apxs" -a -n "$aflag"; then
+    echo "$aflag: not found or didn't work"
+    exit 1
+elif test -z "$apxs"; then
+    echo "not found"
+else
+    echo "$apxs"
 fi
 
 label "looking for Apache configuration file"
@@ -312,10 +306,10 @@ fi
 
 #-- check that auth_vas module is loaded when config is parsed
 label "Checking mod_auth_vas is loaded"
-if test -n "$apxs"; then
-    sbindir=`$apxs -q SBINDIR`
-    target=`$apxs -q TARGET`
-    if zterp "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
+if test -n "${apxs-$aflag}"; then
+    sbindir=`${apxs-$aflag} -q SBINDIR`
+    target=`${apxs-$aflag} -q TARGET`
+    if "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
 	grep 'loaded module.*auth_vas' >/dev/null
     then
 	echo 'yes'
@@ -336,7 +330,7 @@ if test -n "$apxs"; then
 .
     fi
 else
-    echo 'need -a flag'
+    echo 'unknown (need -a flag)'
 fi
 
 echo ""
