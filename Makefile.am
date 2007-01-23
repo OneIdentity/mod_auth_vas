@@ -11,8 +11,8 @@ mod_auth_vas_SRCS=	mod_auth_vas.c
 abs_builddir=		@abs_builddir@
 
 # Use -Wc and -Wl to protect linker options that aren't already protected
-Wc:=-Wc,
-Wl:=-Wl,
+Wc=-Wc,
+Wl=-Wl,
 
 # NB: copy the sources locally so that apxs doesn't get confused
 mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
