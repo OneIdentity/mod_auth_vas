@@ -2077,6 +2077,7 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
 
     TRACE_P(plog, "auth_vas_post_config %s %s", MODAUTHVAS_VERSION,
 	    module_info);
+    TRACE_P(plog, "auth_vas_post_config VAS '%s'", vas_product_version(0,0,0));
 
     /* Create a VAS context for each virtual host */
     for (sp = s; sp; sp = sp->next) {
