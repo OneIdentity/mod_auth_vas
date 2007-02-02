@@ -102,7 +102,7 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,fmt ,##args)
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
 	ap_log_rerror(APLOG_MARK,l,r,fmt ,##args)
-#  define LOG_PERROR(l,x,p,fmt,args...) \
+#  define LOG_P_ERROR(l,x,p,fmt,args...) \
 	ap_log_printf(0, fmt, ##args)
 # else /* C99 */
 #  define LOG_RERROR(l,x,r, ...) \
@@ -111,7 +111,7 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,__VA_ARGS__)
 #  define LOG_RERROR_ERRNO(l,x,r, ...) \
 	ap_log_rerror(APLOG_MARK,l,r,__VA_ARGS__)
-#  define LOG_PERROR(l,x,p, ...) \
+#  define LOG_P_ERROR(l,x,p, ...) \
 	ap_log_printf(0, __VA_ARGS__)
 # endif
 
@@ -134,7 +134,7 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,fmt ,##args)
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
 	ap_log_rerror(APLOG_MARK,l,x,r,fmt ,##args)
-#  define LOG_PERROR(l,x,p,fmt,args...) \
+#  define LOG_P_ERROR(l,x,p,fmt,args...) \
 	ap_log_perror(APLOG_MARK,l,x,p,fmt ,##args)
 # else /* C99 */
 #  define LOG_RERROR(l,x,r,...) \
@@ -143,7 +143,7 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,__VA_ARGS__)
 #  define LOG_RERROR_ERRNO(l,x,r,...) \
 	ap_log_rerror(APLOG_MARK,l,x,r,__VA_ARGS__)
-#  define LOG_PERROR(l,x,p,...) \
+#  define LOG_P_ERROR(l,x,p,...) \
 	ap_log_perror(APLOG_MARK,l,x,p,__VA_ARGS__)
 # endif
 
@@ -2069,7 +2069,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
 static void
 auth_vas_print_version(apr_pool_t *plog)
 {
-    LOG_PERROR(APLOG_INFO, 0, plog, "mod_auth_vas version %s, VAS %s",
+    LOG_P_ERROR(APLOG_INFO, 0, plog, "mod_auth_vas version %s, VAS %s",
 	    MODAUTHVAS_VERSION, vas_product_version(0, 0, 0));
 }
 
