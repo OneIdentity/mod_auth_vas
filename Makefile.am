@@ -46,7 +46,13 @@ sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	NEWS README LICENCE
 EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
-CLEANFILES=
+CLEANFILES=	setup-mod_auth_vas
+
+
+setup-mod_auth_vas: setup-mod_auth_vas.in
+	sed -e 's,[@]PACKAGE_VERSION[@],$(PACKAGE_VERSION),g' \
+	    < $^ > $@
+	chmod +x $@
 
 install-conf: auth_vas.conf
 	test -z "$(confdir)" || $(mkdir_p) "$(DESTDIR)$(confdir)"
