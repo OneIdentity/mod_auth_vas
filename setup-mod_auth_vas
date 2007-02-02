@@ -11,6 +11,7 @@ KEYTAB=/etc/opt/quest/vas/HTTP.keytab
 VASTOOL=/opt/quest/bin/vastool
 KTUTIL=/opt/quest/bin/ktutil
 LOGFILE=/tmp/mod_auth_vas-setup.log.$$
+PACKAGE_VERSION='@PACKAGE_VERSION@'
 
 echo1 () { echo -n "$*"; }
 echo2 () { echo "$*\\c"; }
@@ -313,6 +314,28 @@ if test -n "${apxs-$aflag}"; then
 	grep 'loaded module.*auth_vas' >/dev/null
     then
 	echo 'yes'
+
+	label "Checking loaded mod_auth_vas version"
+	module_version=`"$sbindir/$target" ${AP_CF+-f "$AP_CF"} \
+	    -t -e debug 2>&1 | 
+	    sed -n -e 's/.*mod_auth_vas version \([^,]*\),.*/\1/p'`
+	echo "${module_version-not found}"
+
+	if test -z "$module_version"; then
+	    cat <<-.
+
+		WARNING: unable to detect the loaded mod_auth_vas's version!
+
+.
+	elif test x"$module_version" != x"$PACKAGE_VERSION"; then
+	    cat <<-.
+
+		WARNING: A different version of mod_auth_vas is being loaded 
+		by Apache as to what is expected by this script. I was
+		expecting to see version '$PACKAGE_VERSION'.
+
+.
+	fi
     else
 	echo 'no'
 	cat <<-.

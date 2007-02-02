@@ -102,6 +102,8 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,fmt ,##args)
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
 	ap_log_rerror(APLOG_MARK,l,r,fmt ,##args)
+#  define LOG_PERROR(l,x,p,fmt,args...) \
+	ap_log_printf(0, fmt, ##args)
 # else /* C99 */
 #  define LOG_RERROR(l,x,r, ...) \
 	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,__VA_ARGS__)
@@ -109,6 +111,8 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,__VA_ARGS__)
 #  define LOG_RERROR_ERRNO(l,x,r, ...) \
 	ap_log_rerror(APLOG_MARK,l,r,__VA_ARGS__)
+#  define LOG_PERROR(l,x,p, ...) \
+	ap_log_printf(0, __VA_ARGS__)
 # endif
 
 #define CLEANUP_RET_TYPE 	void
@@ -130,6 +134,8 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,fmt ,##args)
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
 	ap_log_rerror(APLOG_MARK,l,x,r,fmt ,##args)
+#  define LOG_PERROR(l,x,p,fmt,args...) \
+	ap_log_perror(APLOG_MARK,l,x,p,fmt ,##args)
 # else /* C99 */
 #  define LOG_RERROR(l,x,r,...) \
 	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,__VA_ARGS__)
@@ -137,6 +143,8 @@
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,__VA_ARGS__)
 #  define LOG_RERROR_ERRNO(l,x,r,...) \
 	ap_log_rerror(APLOG_MARK,l,x,r,__VA_ARGS__)
+#  define LOG_PERROR(l,x,p,...) \
+	ap_log_perror(APLOG_MARK,l,x,p,__VA_ARGS__)
 # endif
 
 #define CLEANUP_RET_TYPE 	apr_status_t
@@ -168,11 +176,11 @@
  */
 #if defined(MODAUTHVAS_VERBOSE)
 # if __GNUC__
-#  define TRACE_S(s,f,a...) LOG_ERROR(APLOG_DEBUG,OK,s,f ,##a)
-#  define TRACE_R(r,f,a...) LOG_RERROR(APLOG_DEBUG,OK,r,f ,##a)
+#  define TRACE_S(s,f,a...)	LOG_ERROR(APLOG_DEBUG,OK,s,f ,##a)
+#  define TRACE_R(r,f,a...)	LOG_RERROR(APLOG_DEBUG,OK,r,f ,##a)
 # else /* C99 */
-#  define TRACE_S(s,...) LOG_ERROR(APLOG_DEBUG,OK,s,__VA_ARGS__)
-#  define TRACE_R(r,...) LOG_RERROR(APLOG_DEBUG,OK,r,__VA_ARGS__)
+#  define TRACE_S(s,...)	LOG_ERROR(APLOG_DEBUG,OK,s,__VA_ARGS__)
+#  define TRACE_R(r,...)	LOG_RERROR(APLOG_DEBUG,OK,r,__VA_ARGS__)
 # endif
 # if !defined(APXS1)
 #  if __GNUC__
@@ -182,9 +190,9 @@
 #  endif
 # else
 #  if __GNUC__
-#   define TRACE_P(p,f,a...) /* Cannot log */
+#   define TRACE_P(p,f,a...)	ap_log_printf(0,f ,##a)
 #  else /* C99 */
-#   define TRACE_P(p,...) /* Cannot log */
+#   define TRACE_P(p,...)	ap_log_printf(0,__VA_ARGS__)
 #  endif
 # endif
 #else
@@ -2055,6 +2063,16 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     return (void *)sc;
 }
 
+/*
+ * Logs version information about this module.
+ */
+static void
+auth_vas_print_version(apr_pool_t *plog)
+{
+    LOG_PERROR(APLOG_INFO, 0, plog, "mod_auth_vas version %s, VAS %s",
+	    MODAUTHVAS_VERSION, vas_product_version(0, 0, 0));
+}
+
 /**
  * Performs post-configuration initialisation.
  * Called after all module config structures have been constructed,
@@ -2074,10 +2092,6 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
 #if !defined(APXS1)
     ap_add_version_component(p, "mod_auth_vas/" MODAUTHVAS_VERSION);
 #endif
-
-    TRACE_P(plog, "auth_vas_post_config %s %s", MODAUTHVAS_VERSION,
-	    module_info);
-    TRACE_P(plog, "auth_vas_post_config VAS '%s'", vas_product_version(0,0,0));
 
     /* Create a VAS context for each virtual host */
     for (sp = s; sp; sp = sp->next) {
@@ -2133,6 +2147,8 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
 static void
 auth_vas_register_hooks(apr_pool_t *p)
 {
+    auth_vas_print_version(p);
+
     ap_hook_post_config(auth_vas_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(auth_vas_child_init, NULL, NULL, APR_HOOK_MIDDLE);
 
