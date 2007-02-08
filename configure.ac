@@ -11,6 +11,15 @@ AC_CONFIG_FILES([Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
+AC_CACHE_CHECK([for GNU make], [ac_cv_prog_gnu_make], 
+    [AS_IF([(${MAKE-make} --version| grep '^GNU ' >/dev/null) 2>&AS_MESSAGE_LOG_FD],
+    [ac_cv_prog_gnu_make=yes], 
+    [ac_cv_prog_gnu_make=no])])
+if test $ac_cv_prog_gnu_make = no; then
+    dnl XXX should test for the features, not the product
+    AC_MSG_WARN([The included Makefile relies on GNU make extensions])
+fi
+
 dnl -- platform detection
 AC_CACHE_CHECK([platform type], [ac_cv_var_platform],
     [ac_cv_var_platform=unknown
