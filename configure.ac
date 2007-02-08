@@ -11,13 +11,20 @@ AC_CONFIG_FILES([Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
-AC_CACHE_CHECK([for GNU make], [ac_cv_prog_gnu_make], 
-    [AS_IF([(${MAKE-make} --version| grep '^GNU ' >/dev/null) 2>&AS_MESSAGE_LOG_FD],
+AC_CACHE_CHECK([if ${MAKE-make} understands patsubst], [ac_cv_prog_gnu_make], 
+[
+   cat <<'__EOF' >conftest.mk
+Wc=-Wc,
+CFLAGS=-foo -bar -Wc,-baz
+all:
+    test x"$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(CFLAGS:%=$(Wc)%))" = \
+	              x"-Wc,-foo -Wc,-bar -Wc,-baz"
+__EOF
+    AS_IF([(${MAKE-make} -f conftest.mk all) 2>&AS_MESSAGE_LOG_FD 1>&2],
     [ac_cv_prog_gnu_make=yes], 
     [ac_cv_prog_gnu_make=no])])
 if test $ac_cv_prog_gnu_make = no; then
-    dnl XXX should test for the features, not the product
-    AC_MSG_WARN([The included Makefile relies on GNU make extensions])
+    AC_MSG_FAILURE([${MAKE-make} does not understand GNU make patsubst])
 fi
 
 dnl -- platform detection
