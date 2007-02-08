@@ -1,11 +1,11 @@
-
-3.4.0 [unreleased]
-	- Support C99 vararg macros (Sun CC)
-	- Prefer to use the compiler that apxs suggests
-	- #Enhancement bug 126: AuthVasLocalizeUserName
-	- #Enhancement bug 135: --enable-perf performance logging
-	- setup-mod_auth_vas now finds config files on Debian & Ubuntu
-	- Added -c option to setup-mod_auth_vas to specify config file
+3.4.0
+	- Log version number, libvas version during startup
+        - Setup script tests that the module is loadable
+	- Setup script flags -a and -c for specifying apxs and/or httpd.conf
+	- Support C99 vararg macros (Sun CC) and non-GNU make
+	- Support using the compiler that apxs suggests
+	- Enhancement bug 126: AuthVasLocalizeUserName
+	- Support for Debian & Ubuntu apache configuration file locations
 3.3.0
 	- Enhancement bug 64: 'Require unix-group <group>'
 	- Fixes auth_vas_create_server_config debug message going to stderr
