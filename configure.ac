@@ -245,7 +245,7 @@ AC_SUBST(VAS_LIBS)
 # Try vasapi functions
 CFLAGS_save="$CFLAGS" LIBS_save="$LIBS"
 CFLAGS="$CFLAGS $VAS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
-AC_CHECK_FUNC([vas_ctx_alloc],,[AC_MSG_FAILURE([VAS 3.0 SDK required])])
+AC_CHECK_FUNC([vas_ctx_alloc],,[AC_MSG_FAILURE([VAS 3 SDK required])])
 CFLAGS="$CFLAGS_save" LIBS="$LIBS_save"
 
 AC_CHECK_FUNC([getgrnam_r])
