@@ -42,6 +42,7 @@
 #include <vas.h>
 #include <vas_gss.h>
 #include <gssapi_krb5.h>
+#include <pwd.h>
 
 #include <httpd.h>
 #include <http_config.h>
@@ -279,6 +280,7 @@ typedef struct {
     int auth_basic;			/* AuthVasUseBasic (default off) */
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
     int export_delegated;		/* AuthVasExportDelegated (default off) */
+    int localize_remote_user;		/* AuthVasLocalizeRemoteUser (default off) */
 } auth_vas_dir_config;
 
 /* Default behaviour if a flag is not set */
@@ -286,6 +288,7 @@ typedef struct {
 #define DEFAULT_USING_AUTH_BASIC                FLAG_OFF
 #define DEFAULT_USING_AUTH_AUTHORITATIVE        FLAG_ON
 #define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
+#define DEFAULT_USING_LOCALIZE_REMOTE_USER      FLAG_OFF
 
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
 #define USING_AUTH_DEFAULT(dc, field, def) \
@@ -300,6 +303,9 @@ typedef struct {
     USING_AUTH_DEFAULT(dc, auth_authoritative, DEFAULT_USING_AUTH_AUTHORITATIVE)
 #define USING_EXPORT_DELEGATED(dc) \
     USING_AUTH_DEFAULT(dc, export_delegated,   DEFAULT_USING_EXPORT_DELEGATED)
+#define USING_LOCALIZE_REMOTE_USER(dc) \
+    USING_AUTH_DEFAULT(dc, localize_remote_user, \
+					    DEFAULT_USING_LOCALIZE_REMOTE_USER)
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -429,6 +435,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_USEBASIC		"AuthVasUseBasic"
 #define CMD_AUTHORITATIVE	"AuthVasAuthoritative"
 #define CMD_EXPORTDELEG		"AuthVasExportDelegated"
+#define CMD_LOCALIZEREMOTEUSER	"AuthVasLocalizeRemoteUser"
 #define CMD_SPN			"AuthVasServicePrincipal"
 #define CMD_REALM		"AuthVasDefaultRealm"
 static const command_rec auth_vas_cmds[] =
@@ -449,6 +456,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_dir_config, export_delegated),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Write delegated credentials to a file, setting KRB5CCNAME"),
+    AP_INIT_FLAG(CMD_LOCALIZEREMOTEUSER, ap_set_flag_slot,
+		APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Set REMOTE_USER to a local username instead of a UPN"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -1942,16 +1953,60 @@ finish:
 }
 
 /**
+ * Convert the authenticated user name into a local username.
+ */
+static void
+localize_remote_user(request_rec *r)
+{
+    const char *p;
+    struct passwd *pw1, *pw2;
+
+    p = strchr(RUSER(r), '@');
+    if (!p) 
+	return;	/* Not a UPN */
+
+    /* Convert the UPN into a UID, then convert the UID back again */
+    pw1 = getpwnam(RUSER(r));
+    if (!pw1) {
+	LOG_RERROR_ERRNO(APLOG_ERR, 0, r, "getpwnam: %.100s", RUSER(r));
+	return;
+    }
+
+    pw2 = getpwuid(pw1->pw_uid);
+    if (!pw2) {
+	LOG_RERROR_ERRNO(APLOG_ERR, 0, r, "getpwuid: %.100s %d", RUSER(r),
+		pw1->pw_uid);
+	return;
+    }
+
+    /* Set the authorized username to the localized name */
+#if defined(APXS1)
+    /* http://httpd.apache.org/docs/misc/API.html */
+    RUSER(r) = apr_pstrdup(r->connection->pool, pw2->pw_name);
+#else
+    RUSER(r) = apr_pstrdup(r->pool, pw2->pw_name);
+#endif
+}
+
+/**
  * Fix up environment for any delegated credentials.
  */
 static int
 auth_vas_fixup(request_rec *r)
 {
+    const auth_vas_dir_config *dc;
+
     if (!is_our_auth_type(r))
 	return DECLINED;
 
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+    ASSERT(dc != NULL);
+
     TRACE_P(r->pool, "auth_vas_fixup");
     export_cc(r);
+
+    if (USING_LOCALIZE_REMOTE_USER(dc))
+	localize_remote_user(r);
 
     return OK;
 }
@@ -1976,6 +2031,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->auth_negotiate = FLAG_UNSET;
 	dc->auth_authoritative = FLAG_UNSET;
 	dc->export_delegated = FLAG_UNSET;
+	dc->localize_remote_user = FLAG_UNSET;
     }
     return (void *)dc;
 }
@@ -2007,6 +2063,9 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 		new_dc->auth_authoritative);
 	merged_dc->export_delegated = FLAG_MERGE(base_dc->export_delegated,
 		new_dc->export_delegated);
+	merged_dc->localize_remote_user = 
+	    FLAG_MERGE(base_dc->localize_remote_user,
+		new_dc->localize_remote_user);
     }
     return (void *)merged_dc;
 }
