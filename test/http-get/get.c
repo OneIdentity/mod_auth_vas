@@ -431,22 +431,30 @@ readbody(response, out)
 
     /* Try doing a chunked transfer */
     h = findheader(response->headers, "transfer-encoding");
+
     if (h && strcmp(h->value, "chunked") == 0) {
 	if (debug > 1) fprintf(stderr, "reading chunked data\n");
 	while (1) {
 	    int chunklen = 0;
 	    char *p;
-	    if (fdbuf_fgets(buf, sizeof buf, f) == NULL) {
-		warn("fgets");
-		break;
-	    }
-	    for (p = buf; *p; p++) {
-		int value;
-		if (*p >= '0' && *p <= '9') value = *p - '0';
-		else if (*p >= 'a' && *p <= 'f') value = *p - 'a' + 10;
-		else if (*p >= 'A' && *p <= 'F') value = *p - 'A' + 10;
+	    int ch;
+	    int value;
+
+	    ch = fdbuf_getc(f);
+	    while (ch != EOF && isspace(ch))
+		ch = fdbuf_getc(f);
+	    while (ch != EOF && !isspace(ch)) {
+		if (ch >= '0' && ch <= '9') value = ch - '0';
+		else if (ch >= 'a' && ch <= 'f') value = ch - 'a' + 10;
+		else if (ch >= 'A' && ch <= 'F') value = ch - 'A' + 10;
 		else break;
 		chunklen = chunklen * 16 + value;
+		ch = fdbuf_getc(f);
+	    }
+	    if (ch == '\r') {
+		ch = fdbuf_getc(f);
+		if (ch != '\n' && ch != EOF)
+		    fdbuf_ungetc(f, ch);
 	    }
 	    if (debug > 1) fprintf(stderr, "chunklen=%d\n", chunklen);
 	    if (chunklen == 0)
@@ -464,6 +472,9 @@ readbody(response, out)
 		if (out)
 		    fwrite(buf, rdlen, 1, out);
 		chunklen -= rdlen;
+		if (debug > 2)
+		    fprintf(stderr, "wrote %d, remaining %d\n", 
+			    rdlen, chunklen);
 	    }
 	}
     }
