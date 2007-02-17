@@ -303,6 +303,25 @@ if test -f "$KEYTAB"; then
        fi 
        ;;
   esac
+
+  label "checking keytab can authenticate"
+  tmpcc=/tmp/.mod_auth_vascc$$
+  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "HTTP/" kinit 2>/dev/null;
+  then
+    echo "yes"
+  else
+    echo "no"
+    echo ""
+    echo "The HTTP/ service keytab could not be used to authenticate"
+    echo "to Active Directory. This may mean that the service account"
+    echo "has expired, that the keytab has become corrupt, or that"
+    echo "the password has been changed without updating the keytab."
+    echo ""
+    echo "The error message was:"
+    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "HTTP/" kinit 2>&1 | sed -e 's/^/  /'
+    echo ""
+  fi
+  rm -f $tmpcc
 fi
 
 #-- check that auth_vas module is loaded when config is parsed
