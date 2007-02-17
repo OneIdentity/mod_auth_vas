@@ -50,6 +50,7 @@ VASTOOL=/opt/quest/bin/vastool
 SUDO=sudo
 TMPDIR=/var/tmp
 USER_test=testuser
+DOMAIN_test=RCDEV
 PASSWD_test=testuser
 USER_local=local
 PASSWD_local=local
@@ -73,10 +74,16 @@ fi
 
 $NDEBUG || echo " ==> $0 $PLATFORM $script" >&2
 
+tdir=`dirname "$0"`
+script_short=`echo "$script" | sed -e "s,^$tdir/,,"`
+
+PASS="[32mPASS[m"
+FAIL="[37;41mFAIL[m"
+
 #-- basic helpers
-pass () { (echo "PASS $platform $script" ${1+"($*)"} >&2); exit 0; }
-fail () { (echo "FAIL $platform $script" ${1+"($*)"} >&2); showerrors; exit 1; }
-ignore () { (echo "IGNORE $platform $script" ${1+"($*)"} >&2); exit 1; }
+pass () { (echo "$PASS $platform $script_short" ${1+"($*)"} >&2); exit 0; }
+fail () { (echo "$FAIL $platform $script_short" ${1+"($*)"} >&2); showerrors; exit 1; }
+ignore () { (echo "IGNORE $platform $script_short" ${1+"($*)"} >&2); exit 1; }
 ifdebug () { $NDEBUG || echo "$@"; }
 verbose () { echo "+ $*" >&2; "$@"; }
 vas_kinit () {
