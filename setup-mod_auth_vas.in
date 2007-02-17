@@ -306,16 +306,16 @@ if test -f "$KEYTAB"; then
 fi
 
 #-- check that auth_vas module is loaded when config is parsed
-label "Checking mod_auth_vas is loaded"
+label "checking mod_auth_vas is loaded"
 if test -n "${apxs-$aflag}"; then
     sbindir=`${apxs-$aflag} -q SBINDIR`
     target=`${apxs-$aflag} -q TARGET`
-    if "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
+    if recordcmd "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
 	grep 'loaded module.*auth_vas' >/dev/null
     then
 	echo 'yes'
 
-	label "Checking loaded mod_auth_vas version"
+	label "checking loaded mod_auth_vas version"
 	module_version=`"$sbindir/$target" ${AP_CF+-f "$AP_CF"} \
 	    -t -e debug 2>&1 | 
 	    sed -n -e 's/.*mod_auth_vas version \([^,]*\),.*/\1/p'`
