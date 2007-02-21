@@ -52,6 +52,7 @@ EXTRA_DIST+=	setup-mod_auth_vas.in
 CLEANFILES+=	setup-mod_auth_vas
 setup-mod_auth_vas: setup-mod_auth_vas.in
 	sed -e 's,[@]PACKAGE_VERSION[@],$(PACKAGE_VERSION),g' \
+	    -e 's,[@]APXS[@],$(APXS),g' \
 	    < $^ > $@
 	chmod +x $@
 

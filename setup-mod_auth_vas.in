@@ -151,43 +151,62 @@ else
     checkroot () { : ; }
 fi
 
+# 
+# We must handle the following cases:
+# 1) apxs not found (regardless of -a flag)
+#  1a) no -c flag given: ask apxs where the cf file is
+#  1b) -c flag given: trust -c flag
+# 2) apxs is not found
+#  2a) no -c flag given: search for config file in likely spots
+#  2b) -c flag given: trust -c flag
+#
+
 #-- look for apxs
 apxs=
-AP_CF=
 label "looking for Apache extension tool"
-for x in "$aflag" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
+for x in ${aflag:-"@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs}; do
     test -z "$x" && continue
-    AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/apache2.conf
-    test -f "$AP_CF" && apxs="$x" && break
-    AP_CF=`("$x" -q SYSCONFDIR) 2>/dev/null`/httpd.conf
-    test -f "$AP_CF" && apxs="$x" && break
-    AP_CF=
-    test x"$x" = x"$aflag" && break
+    ap_prefix=`($x -q PREFIX) 2>/dev/null` || continue
+    if test -n "$ap_prefix"; then
+	apxs="$x"
+	break;
+    fi
 done
-if test -z "$apxs" -a -n "$aflag"; then
-    echo "$aflag: not found or didn't work"
-    exit 1
-elif test -z "$apxs"; then
-    echo "not found"
-else
+if test -n "$apxs"; then
     echo "$apxs"
+else
+    echo "not found"
+    if test -n "$aflag"; then
+	echo "$aflag: not found or didn't work"
+	exit 1
+    fi
 fi
 
 label "looking for Apache configuration file"
 if test -n "$cflag"; then
     AP_CF="$cflag"
-elif test -z "$AP_CF"; then
-    for dir in /etc/apache2 /etc/apache /etc/httpd/conf /etc/apache2/conf \
+else
+    if test -n "$apxs"; then
+	sysconfdir=`$apxs -q SYSCONFDIR`
+	target=`$apxs -q TARGET`
+    else
+	sysconfdir=
+	target=
+    fi
+
+    #-- look for a likely configuration file
+    AP_CF=
+    for dir in $sysconfdir \
+	/etc/apache2 /etc/apache /etc/httpd/conf /etc/apache2/conf \
 	/etc/apache/conf /etc/www/conf /var/www/conf /opt/IBMIHS/conf
     do
-	if test -f $dir/apache2.conf; then
-	    AP_CF=$dir/apache2.conf
-	    break
-	fi
-	if test -f $dir/httpd.conf; then
-	    AP_CF=$dir/httpd.conf
-	    break
-	fi
+	for t in $target apache2 httpd; do
+	    if test -f $dir/$t.conf; then
+		AP_CF="$dir/$t.conf"
+		break
+	    fi
+	    test -n "$AP_CF" && break
+	done
     done
 fi
 
@@ -326,9 +345,9 @@ fi
 
 #-- check that auth_vas module is loaded when config is parsed
 label "checking mod_auth_vas is loaded"
-if test -n "${apxs-$aflag}"; then
-    sbindir=`${apxs-$aflag} -q SBINDIR`
-    target=`${apxs-$aflag} -q TARGET`
+if test -n "$apxs"; then
+    sbindir=`$apxs -q SBINDIR`
+    target=`$apxs -q TARGET`
     if recordcmd "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
 	grep 'loaded module.*auth_vas' >/dev/null
     then
