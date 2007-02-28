@@ -52,6 +52,7 @@ query () {
     done
 }
 
+#-- prompt for a yes/no question
 yesorno () {
     echo "";
     while :; do
@@ -64,6 +65,7 @@ yesorno () {
     done
 }
 
+#-- record and execute a shell command
 logfile_written=false
 recordcmd () {
     if ! $logfile_written; then
@@ -79,6 +81,20 @@ recordcmd () {
     "$@"
 }
 
+#-- get a TGT for some operations
+kinit () {
+    ccname=/tmp/.mav_setup_$$
+    if test ! -s $ccname; then
+	echo
+        echo "Please login with a sufficiently privileged domain account."
+        query "Username" USER Administrator
+	KRB5CCNAME=FILE:$ccname; export KRB5CCNAME
+	trap "rm -f $ccname" 0
+	vastool kinit "$USER" || die "Unable to acquire admin credentials"
+    fi
+}
+
+#-- show usage (does not exit)
 usage () {
     cat <<-.
 	Usage: $0 [-a apxs] [-c conf] [-h]
@@ -269,11 +285,11 @@ else
         query "Service container DN" CONTAINER default
         test x"$CONTAINER" = x"default" && CONTAINER=
 
-        echo "Please login with a domain account to create the service:"
         checkroot
-        query "Username" USER Administrator
+	kinit
 
-        recordcmd $VASTOOL -u "$USER" service create ${CONTAINER:+-c "$CONTAINER"} HTTP/ || \
+        recordcmd $VASTOOL \
+	    service create ${CONTAINER:+-c "$CONTAINER"} HTTP/ || \
 	    die "Cannot create HTTP/ service key: contact your IT support"
 
 	label "checking new service keytab"
@@ -284,11 +300,65 @@ else
 	    die "Cannot find $KEYTAB"
 	fi
 	echo ""
-	$KTUTIL -k "$KEYTAB" list
-	echo ""
     else
 	echo "(Not creating HTTP/ service account)"
     fi
+fi
+
+# KB899417
+if test -f "$KEYTAB"; then
+    spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
+    primary=`$KTUTIL -k "$KEYTAB" list | awk 'NR==4 {print $3}'`
+    cat <<.
+
+If you have clients using Internet Explorer, a known issue (KB899417)
+can see them suddenly being unable to authenticate after only 30 minutes.
+A workaround is to create SPN aliases with all the possible 'short-names' 
+that the client could use to access this server (i.e http://short-name/).
+SPN aliases can also be useful for servers with multiple DNS identities.
+.
+    while :; do
+	    cat <<.
+
+The HTTP/ service is currently known by these SPNs (service principal names):
+
+.
+	    $VASTOOL attrs -s HTTP/ servicePrincipalName | 
+		awk '{print "\t" $2 }'
+	    echo
+	    query "Enter a new SPN alias, or 'none' to finish" SPN "none"
+	    [ x"$SPN" = x"none" ] && break
+
+	    case "$SPN" in
+		-*)
+		    kinit
+		    newspns=
+		    found=false
+		    for spn in `$VASTOOL attrs -s HTTP/ servicePrincipalName | 
+			awk '{print $2}'`; do
+			if [ x"-$spn" = x"$SPN" ]; then found=true
+			else newspns="$newspns $spn"; fi
+		    done
+		    if $found; then
+			$VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
+			    $newspns 
+			$VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
+			    remove -p ${SPN#-}
+		    else
+			echo "'${SPN#-}' not found" >&2
+		    fi
+		    ;;
+		*)
+		    oldspns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | 
+			awk '{print $2}'`
+		    kinit
+		    $VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
+			$oldspns $SPN &&\
+		    $VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
+			alias $primary $SPN
+		    ;;
+	    esac
+    done
 fi
 
 if test -f "$KEYTAB"; then
