@@ -1459,6 +1459,11 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
 	TRACE_R(r, "waiting for more tokens from client");
 	result = HTTP_UNAUTHORIZED;
+    } else if (memcmp(auth_line, "TlRM", 4) == 0) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+		    "NTLM authentication attempted");
+	/* TODO: Set a location header to redirect to a NTLM page (bug 210) */
+	result = HTTP_UNAUTHORIZED;
     } else {
 	/* Any other result means we send back an Unauthorized result */
 	LOG_RERROR(APLOG_ERR, 0, r,
