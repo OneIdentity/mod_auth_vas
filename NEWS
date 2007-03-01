@@ -1,6 +1,6 @@
-3.4.0
+3.4.0 (unreleased)
 	- Log version number, libvas version during startup
-        - Setup script changes:
+	- Setup script changes:
 	    * checks that the module is loadable and is the right version
 	    * allows specifying location of apxs and/or httpd.conf (-a/-c flag)
 	    * warns if the HTTP/ account has expired
@@ -9,6 +9,7 @@
 	- Support using the compiler that apxs suggests
 	- Enhancement bug 126: AuthVasLocalizeUserName
 	- Support for Debian & Ubuntu apache configuration file locations
+	- Log NTLM requests clearly
 3.3.0
 	- Enhancement bug 64: 'Require unix-group <group>'
 	- Fixes auth_vas_create_server_config debug message going to stderr
