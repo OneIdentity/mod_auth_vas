@@ -169,7 +169,7 @@ fi
 
 # 
 # We must handle the following cases:
-# 1) apxs not found (regardless of -a flag)
+# 1) apxs is found (regardless of -a flag)
 #  1a) no -c flag given: ask apxs where the cf file is
 #  1b) -c flag given: trust -c flag
 # 2) apxs is not found
