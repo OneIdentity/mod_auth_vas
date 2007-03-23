@@ -331,6 +331,7 @@ if test "$keytab_readable" = "no"; then
     echo "Re-run $0 as root to do SPN aliasing." >&2
     echo >&2
 else
+    kinit
     spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
     primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
 
@@ -348,7 +349,6 @@ The HTTP/ service is currently known by these SPNs (service principal names):
 
 	    case "$SPN" in
 		-*)
-		    kinit
 		    newspns=
 		    found=false
 		    for spn in `$VASTOOL attrs -s HTTP/ servicePrincipalName | 
@@ -368,7 +368,6 @@ The HTTP/ service is currently known by these SPNs (service principal names):
 		*)
 		    oldspns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | 
 			awk '{print $2}'`
-		    kinit
 		    $VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
 			$oldspns $SPN &&\
 		    $VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
