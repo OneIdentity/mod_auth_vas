@@ -418,6 +418,7 @@ if test "$keytab_readable" = "no"; then
 else # Keytab is readable
   label "checking keytab can authenticate"
   tmpcc=/tmp/.mod_auth_vascc$$
+  old_KRB5CCNAME="${KRB5CCNAME}"
   if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "HTTP/" kinit 2>/dev/null;
   then
     echo "yes"
@@ -433,7 +434,30 @@ else # Keytab is readable
     KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "HTTP/" kinit 2>&1 | sed -e 's/^/  /'
     echo ""
   fi
+  KRB5CCNAME="${old_KRB5CCNAME}"
   rm -f $tmpcc
+fi
+
+# Bug 213: HTTP/ keytab will expire by default
+if test -f "$KEYTAB"; then
+    kinit
+    label Testing whether service password expires
+    uac=`$VASTOOL attrs -q HTTP/ userAccountControl`
+    noexpire_flag=65536 # "Password never expires" (KB305144)
+    if test $(($uac & $noexpire_flag)) -eq 0; then
+	echo yes
+	echo >&2
+	cat <<-. >&2
+	Unless the group policy is configured otherwise, the HTTP/ service
+	account password will expire at some point, leading to authentication
+	failures.
+.
+	if yesorno "Disable password expiry for the service account? (recommended)"; then
+	    recordcmd $VASTOOL setattrs -s HTTP/ userAccountControl $(($uac | $noexpire_flag))
+	fi
+    else
+	echo "no (good)"
+    fi
 fi
 
 #-- check that auth_vas module is loaded when config is parsed
