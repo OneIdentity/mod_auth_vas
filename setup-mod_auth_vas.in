@@ -87,7 +87,7 @@ kinit () {
     if test ! -s $ccname; then
 	echo
         echo "Please login with a sufficiently privileged domain account."
-        query "Username" USER Administrator
+        query "Username" USER ${SUDO_USER:-Administrator}
 	KRB5CCNAME=FILE:$ccname; export KRB5CCNAME
 	trap "rm -f $ccname" 0
 	vastool kinit "$USER" || die "Unable to acquire admin credentials"
