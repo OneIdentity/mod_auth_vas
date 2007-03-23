@@ -266,9 +266,19 @@ if test ! -n "$APACHE_GROUP"; then
     done
 fi
 
+# These flags indicate access control for the current user, not for apache
+keytab_readable=no
+keytab_readwrite=no
+
 label "looking for HTTP/ keytab"
 if test -f "$KEYTAB"; then
     echo "$KEYTAB"
+    if test -r "$KEYTAB" || test `id -u` -eq 0; then
+	keytab_readable=yes
+	if test -w "$KEYTAB" || test `id -u` -eq 0; then
+	    keytab_readwrite=yes
+	fi
+    fi
 else
     echo "keytab not found"
     cat <<-.
@@ -306,10 +316,7 @@ else
 fi
 
 # KB899417
-if test -f "$KEYTAB"; then
-    spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
-    primary=`$KTUTIL -k "$KEYTAB" list | awk 'NR==4 {print $3}'`
-    cat <<.
+cat <<.
 
 If you have clients using Internet Explorer, a known issue (KB899417)
 can see them suddenly being unable to authenticate after only 30 minutes.
@@ -317,6 +324,16 @@ A workaround is to create SPN aliases with all the possible 'short-names'
 that the client could use to access this server (i.e http://short-name/).
 SPN aliases can also be useful for servers with multiple DNS identities.
 .
+
+if test "$keytab_readable" = "no"; then
+    echo >&2
+    echo "Keytab is not readable. Skipping Service Principal Name (SPN) aliasing." >&2
+    echo "Re-run $0 as root to do SPN aliasing." >&2
+    echo >&2
+else
+    spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
+    primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
+
     while :; do
 	    cat <<.
 
@@ -361,6 +378,7 @@ The HTTP/ service is currently known by these SPNs (service principal names):
     done
 fi
 
+# Keytab only has to exist for permission checks
 if test -f "$KEYTAB"; then
   if test ! -n "$APACHE_GROUP"; then
     echo ""
@@ -392,7 +410,13 @@ if test -f "$KEYTAB"; then
        fi 
        ;;
   esac
+fi
 
+if test "$keytab_readable" = "no"; then
+  echo >&2
+  echo "Skipping keytab validity check (keytab is unreadable)." >&2
+  echo >&2
+else # Keytab is readable
   label "checking keytab can authenticate"
   tmpcc=/tmp/.mod_auth_vascc$$
   if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "HTTP/" kinit 2>/dev/null;
