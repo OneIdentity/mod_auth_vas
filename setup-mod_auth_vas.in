@@ -83,11 +83,14 @@ recordcmd () {
 
 #-- get a TGT for some operations
 kinit () {
+    local USER="$USER"
     ccname=/tmp/.mav_setup_$$
     if test ! -s $ccname; then
+	USER="${SUDO_USER:-${USER}}"
+	if [ z"$USER" = z"root" ]; then USER=Administrator; fi
 	echo
         echo "Please login with a sufficiently privileged domain account."
-        query "Username" USER ${SUDO_USER:-Administrator}
+        query "Username" USER ${USER}
 	KRB5CCNAME=FILE:$ccname; export KRB5CCNAME
 	trap "rm -f $ccname" 0
 	vastool kinit "$USER" || die "Unable to acquire admin credentials"
