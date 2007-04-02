@@ -5,6 +5,7 @@
 	    * allows specifying location of apxs and/or httpd.conf (-a/-c flag)
 	    * warns if the HTTP/ account has expired
 	    * allows adding of principal name aliases
+	    * allows disabling password expiry on the service account (bug #213)
 	- Support C99 vararg macros (Sun CC) and non-GNU make
 	- Support using the compiler that apxs suggests
 	- Enhancement bug 126: AuthVasLocalizeUserName
