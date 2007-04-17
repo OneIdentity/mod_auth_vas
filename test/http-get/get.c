@@ -36,12 +36,16 @@
 #include "fdbuf.h"
 #include "base64.h"
 
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
 int debug = 0;
 int use_gssapi = 0;
 const char *spn = NULL;	/* service principal name override */
+int print_body = 1;
+const char *header_outfile_name = NULL;
+FILE *header_outfile = NULL;
 
 /* A URL, split into its component parts, and maybe with a FILE* attachment */
 struct url {
@@ -78,6 +82,7 @@ int	readresponse(struct response *response, struct url *url);
 void	freeresponse(struct response *response);
 void	sendrequest(char *method, struct url *url, struct header *headers);
 void	readbody(struct response *response, FILE *out);
+static void	dumpheaders(const struct response *response);
 
 /*------------------------------------------------------------
  * URL functions
@@ -407,6 +412,32 @@ sendrequest(method, url, headers)
 }
 
 /**
+ * Prints the headers to a given file stream.
+ * The output is not from the server's response verbatim, it is reconstructed.
+ * The output will be finished with an empty line.
+ *
+ * @param response  The response to read headers from. Must not be NULL.
+ */
+void
+dumpheaders(response)
+    const struct response *response;
+{
+    const struct header *hdr;
+
+    if (!header_outfile)
+	return;
+
+    assert(response);
+
+    for (hdr = response->headers; hdr; hdr = hdr->next)
+	fprintf(header_outfile, "%s: %s\n", hdr->name, hdr->value);
+
+    fprintf(header_outfile, "\n");
+
+    fflush(header_outfile);
+}
+
+/**
  * Reads the body from the URL stream, and writes it to out if its not NULL.
  * @param response  The response to read from. The URL's i/o stream is
  *                  used for data, and the headers are searched for a
@@ -424,6 +455,9 @@ readbody(response, out)
     struct header *h;
     char buf[8192];
     struct fdbuf *f = &response->url->fdbuf;
+
+    if (!print_body)
+	out = NULL;
 
     /* half-shutdown the socket now to speed up transfer completion */
     if (shutdown(f->fd, SHUT_WR) < 0)
@@ -778,6 +812,7 @@ again_spnego:
 #endif
     }
 
+    dumpheaders(&response);
     readbody(&response, stdout);
     return response.result;
 }
@@ -811,6 +846,7 @@ again:
 	goto again;
     }
 
+    dumpheaders(&response);
     readbody(&response, stdout);
     return response.result;
 }
@@ -876,6 +912,7 @@ again:
 	} 
     }
 
+    dumpheaders(&response);
     readbody(&response, stdout);
     return response.result;
 }
@@ -893,6 +930,8 @@ usage(char *prog)
 		    "  The generic options are:\n"
 		    "       -e outfile    - where to write HTTP response code\n"
 		    "       -d            - enable debugging\n"
+		    "       -H outfile    - where to write the HTTP headers ('-' for stdout)\n"
+		    "       -B            - supress output of the response body\n"
 		    "  The negotiate-specific (-n) options are:\n"
 		    "       -u user       - use principal name override\n"
 		    "       -S spn        - service principal name override\n"
@@ -941,6 +980,12 @@ main(argc, argv)
 	    optind++;
 	    if (optind >= argc) usage(argv[0]);
 	    spn = argv[optind];
+	} else if (strcmp(argv[optind], "-B") == 0) {
+	    print_body = 0;
+	} else if (strcmp(argv[optind], "-H") == 0) {
+	    optind++;
+	    if (optind >= argc) usage(argv[0]);
+	    header_outfile_name = argv[optind];
 	} else if (strcmp(argv[optind], "-u") == 0) {
 	    optind++;
 	    if (optind >= argc) usage(argv[0]);
@@ -952,6 +997,18 @@ main(argc, argv)
 	    fprintf(stderr, "unknown option %s\n", argv[optind]);
 	    usage(argv[0]);
 	}
+
+    if (header_outfile_name) {
+	if (strcmp(header_outfile_name, "-") == 0) {
+	    header_outfile = stdout;
+	} else {
+	    header_outfile = fopen(header_outfile_name, "w");
+	    if (!header_outfile) {
+		fprintf(stderr, "Cannot open outfile %s: %s\n",
+			header_outfile_name, strerror(errno));
+	    }
+	}
+    }
 
     switch (mode) {
 	default:
@@ -972,6 +1029,9 @@ main(argc, argv)
 	    ret = get_simple(argv[optind]);
 	    break;
     }
+
+    if (header_outfile && header_outfile != stdout)
+	fclose(header_outfile);
 
     if (codef && ret >= 0) {
 	fprintf(codef, "%03d\n", ret);
