@@ -45,7 +45,6 @@ int use_gssapi = 0;
 const char *spn = NULL;	/* service principal name override */
 int print_body = 1;
 const char *header_outfile_name = NULL;
-FILE *header_outfile = NULL;
 
 /* A URL, split into its component parts, and maybe with a FILE* attachment */
 struct url {
@@ -423,18 +422,31 @@ dumpheaders(response)
     const struct response *response;
 {
     const struct header *hdr;
-
-    if (!header_outfile)
-	return;
+    FILE *header_outfile;
 
     assert(response);
+
+    if (!header_outfile_name)
+	return;
+
+    if (strcmp(header_outfile_name, "-") == 0) {
+	header_outfile = stdout;
+    } else {
+	header_outfile = fopen(header_outfile_name, "w");
+	if (!header_outfile) {
+	    fprintf(stderr, "Cannot open header output file %s: %s\n",
+		    header_outfile_name, strerror(errno));
+	    return;
+	}
+    }
 
     for (hdr = response->headers; hdr; hdr = hdr->next)
 	fprintf(header_outfile, "%s: %s\n", hdr->name, hdr->value);
 
     fprintf(header_outfile, "\n");
 
-    fflush(header_outfile);
+    if (header_outfile != stdout)
+	fclose(header_outfile);
 }
 
 /**
@@ -998,18 +1010,6 @@ main(argc, argv)
 	    usage(argv[0]);
 	}
 
-    if (header_outfile_name) {
-	if (strcmp(header_outfile_name, "-") == 0) {
-	    header_outfile = stdout;
-	} else {
-	    header_outfile = fopen(header_outfile_name, "w");
-	    if (!header_outfile) {
-		fprintf(stderr, "Cannot open outfile %s: %s\n",
-			header_outfile_name, strerror(errno));
-	    }
-	}
-    }
-
     switch (mode) {
 	default:
 	case UNSET:
@@ -1029,9 +1029,6 @@ main(argc, argv)
 	    ret = get_simple(argv[optind]);
 	    break;
     }
-
-    if (header_outfile && header_outfile != stdout)
-	fclose(header_outfile);
 
     if (codef && ret >= 0) {
 	fprintf(codef, "%03d\n", ret);
