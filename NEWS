@@ -11,6 +11,8 @@
 	- Enhancement bug 126: AuthVasLocalizeRemoteUser
 	- Support for Debian & Ubuntu apache configuration file locations
 	- Log NTLM requests clearly
+	- Resend auth challenge in failed Basic auth requests
+	  (fixes #167: Users get locked out when using Basic auth)
 3.3.0
 	- Enhancement bug 64: 'Require unix-group <group>'
 	- Fixes auth_vas_create_server_config debug message going to stderr
