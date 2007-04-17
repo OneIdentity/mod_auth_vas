@@ -1,0 +1,34 @@
+# 401 Unauthorized responses were missing the WWW-Authenticate header,
+# so users were not given the chance to re-enter an incorrect password
+description "basic auth lockout (bug 167)"
+
+OUTPUTFILE=/tmp/bug167.$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $OUTPUTFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		Require user somebody
+	</Directory>
+.
+
+ap_conf_check
+
+ap_start
+
+fetch_basic `ifdebug -d` -H - -B BogusUser:BogusPassword $DOC_URL/somefile > $OUTPUTFILE || true
+test 401 = "$FETCH_RES" || fail "Unexpected response $FETCH_RES, 401 expected"
+grep '^WWW-Authenticate: Basic' $OUTPUTFILE >/dev/null 2>&1 ||
+    fail "No 'WWW-Authenticate: Basic' header in 401 response"
+
+# hey vim: syntax=sh
