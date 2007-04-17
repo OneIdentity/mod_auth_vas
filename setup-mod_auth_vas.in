@@ -9,6 +9,8 @@
 # (if not done), and changes ownerships on the resulting keytab.
 #
 
+set -e
+
 KEYTAB=/etc/opt/quest/vas/HTTP.keytab
 VASTOOL=/opt/quest/bin/vastool
 KTUTIL=/opt/quest/bin/ktutil
@@ -95,7 +97,7 @@ kinit () {
         query "Username" USER ${USER}
 	KRB5CCNAME=FILE:$ccname; export KRB5CCNAME
 	trap "rm -f $ccname" 0
-	vastool kinit "$USER" || die "Unable to acquire admin credentials"
+	$VASTOOL kinit "$USER" || die "Unable to acquire admin credentials"
     fi
 }
 
