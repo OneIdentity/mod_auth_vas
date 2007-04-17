@@ -433,11 +433,8 @@ dumpheaders(response)
 	header_outfile = stdout;
     } else {
 	header_outfile = fopen(header_outfile_name, "w");
-	if (!header_outfile) {
-	    fprintf(stderr, "Cannot open header output file %s: %s\n",
-		    header_outfile_name, strerror(errno));
-	    return;
-	}
+	if (!header_outfile)
+	    err(1, "Cannot open header output file %s", header_outfile_name);
     }
 
     for (hdr = response->headers; hdr; hdr = hdr->next)
