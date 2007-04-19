@@ -94,7 +94,7 @@ kinit () {
     local USER="$USER"
     ccname=/tmp/.mav_setup_$$
     if test ! -s $ccname; then
-	if [ z"$1" != z"" ]; then
+	if [ $# -eq 1 ]; then
 	    echo "Credentials required to $1"
 	fi
 	USER="${SUDO_USER:-${USER}}"
