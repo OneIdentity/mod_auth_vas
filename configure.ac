@@ -33,11 +33,11 @@ AC_CACHE_CHECK([platform type], [ac_cv_var_platform],
      case `uname -s 2>/dev/null` in
        AIX)	ac_cv_var_platform=aix;;
        HP-UX)	ac_cv_var_platform=hpux;;
-       Linux)	if rpm -q suse-release >/dev/null; then
+       Linux)	if rpm -q suse-release >/dev/null 2>&1; then
        		    ac_cv_var_platform=suse
-		elif rpm -q redhat-release >/dev/null; then
+		elif rpm -q redhat-release >/dev/null 2>&1; then
 		    ac_cv_var_platform=redhat
-		elif rpm -q fedora-release >/dev/null; then
+		elif rpm -q fedora-release >/dev/null 2>&1; then
 		    ac_cv_var_platform=fedora
 		fi;;
        SunOS)	ac_cv_var_platform=solaris;;
