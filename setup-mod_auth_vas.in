@@ -407,7 +407,12 @@ if test -f "$KEYTAB"; then
   label "checking keytab is readable by $APACHE_GROUP"
   set -- `/bin/ls -l "$KEYTAB"`
   case "$1:$4" in
-    -??????r??:*) echo "yes" ;;
+    -??????r??:*)
+	echo "yes"
+	echo
+	echo "WARNING: keytab is world-readable. This is a security risk."
+	echo
+	;;
     -???r?????:$APACHE_GROUP) echo "yes" ;;
     *) echo "no"
        if yesorno "Change group of $KEYTAB to $APACHE_GROUP?"; then
