@@ -39,6 +39,7 @@ label () {
 #-- prints an error message and dies
 die () {
     echo "  -> Failed: $1" >&2
+    $logfile_written && echo "(Log written to $LOGFILE)"
     exit 1
 }
 
@@ -87,9 +88,15 @@ recordcmd () {
 
 #-- get a TGT for some operations
 kinit () {
+    if test -r ${KRB5CCNAME:=/tmp/krb5cc_`id -u`}; then
+	return
+    fi
     local USER="$USER"
     ccname=/tmp/.mav_setup_$$
     if test ! -s $ccname; then
+	if [ z"$1" != z"" ]; then
+	    echo "Credentials required to $1"
+	fi
 	USER="${SUDO_USER:-${USER}}"
 	if [ z"$USER" = z"root" ]; then USER=Administrator; fi
 	echo
@@ -265,7 +272,7 @@ fi
 #-- if the Apache group is still unknown, look at existing groups and guess
 if test ! -n "$APACHE_GROUP"; then
     APACHE_GROUP_GUESS=nobody
-    for u in apache httpd www nogroup; do
+    for u in apache httpd www www-data nogroup; do
 	if test x`eval echo "~$u"` != x"~$u"; then
 	    APACHE_GROUP_GUESS=$u
 	    break
@@ -303,7 +310,7 @@ else
         test x"$CONTAINER" = x"default" && CONTAINER=
 
         checkroot
-	kinit
+	kinit "create the service account"
 
         recordcmd $VASTOOL \
 	    service create ${CONTAINER:+-c "$CONTAINER"} HTTP/ || \
@@ -338,7 +345,7 @@ if test "$keytab_readable" = "no"; then
     echo "Re-run $0 as root to do SPN aliasing." >&2
     echo >&2
 else
-    kinit
+    kinit "run tests on the service account"
     spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
     primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
 
@@ -447,7 +454,7 @@ fi
 
 # Bug 213: HTTP/ keytab will expire by default
 if test -f "$KEYTAB"; then
-    kinit
+    kinit "check that the service account is usable"
     label Testing whether service password expires
     # vastool attrs '-q' flag was only added in 3.2, so use sed magic.
     uac=`$VASTOOL attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]\+\),\1,'`
@@ -462,6 +469,7 @@ if test -f "$KEYTAB"; then
 .
 	if yesorno "Disable password expiry for the service account? (recommended)"; then
 	    recordcmd $VASTOOL setattrs -s HTTP/ userAccountControl $(($uac | $noexpire_flag))
+	    echo
 	fi
     else
 	echo "no (good)"
@@ -514,6 +522,7 @@ if test -n "$apxs"; then
 	   $sbindir/$target ${AP_CF+-f "$AP_CF"} -t -e debug
 
 .
+	die "Module not loaded."
     fi
 else
     echo 'unknown (need -a flag)'
