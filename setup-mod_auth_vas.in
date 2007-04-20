@@ -88,7 +88,17 @@ recordcmd () {
 
 #-- get a TGT for some operations
 kinit () {
-    if test -r ${KRB5CCNAME:=/tmp/krb5cc_`id -u`}; then
+    if [ "z$KRB5CCNAME" != "z" ]; then
+	# Not checking whether the file is readable. If you want to do that,
+	# be sure to strip the possible preceding "FILE:"
+	return
+    fi
+    if test -r /tmp/krb5cc_`id -u`; then
+	KRB5CCNAME=/tmp/krb5cc_`id -u`; export KRB5CCNAME
+	return
+    fi
+    if [ "z$SUDO_UID" != "z" ] && [ -r /tmp/krb5cc_${SUDO_UID} ]; then
+	KRB5CCNAME=/tmp/krb5cc_${SUDO_UID}; export KRB5CCNAME
 	return
     fi
     local USER="$USER"
