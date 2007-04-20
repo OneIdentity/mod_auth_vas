@@ -1392,7 +1392,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     }
 
     if (VAS_ERR_SUCCESS != vas_gss_initialize(sc->vas_ctx, sc->vas_serverid)) {
-	/* TODO: log cause */
+	LOG_RERROR(APLOG_ERR, 0, r, "Unable to initialize GSS: %s",
+		vas_err_get_string(sc->vas_ctx, 1));
 	UNLOCK_VAS(r);
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
