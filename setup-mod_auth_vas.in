@@ -485,7 +485,7 @@ if test -f "$KEYTAB"; then
     uac=`$VASTOOL attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]\+\),\1,'`
     if [ "z$uac" = "z" ]; then
 	die "Unable to retrieve service account attributes, does the service exist?\
- Delete the keytab file ($KEYTAB) and re-run $0 to re-create the service account."
+ Delete $KEYTAB and re-run $0 to re-create the service account."
     fi
     noexpire_flag=65536 # "Password never expires" (KB305144)
     if test $(($uac & $noexpire_flag)) -eq 0; then
