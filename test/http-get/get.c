@@ -757,7 +757,7 @@ again_spnego:
 #if VAS_API_VERSION_MAJOR >= 4
 		{
 		    /* VAS 3.0 */
-		    gss_buffer_desc inbuf, outbuf;
+		    gss_buffer_desc inbuf = GSS_C_EMPTY_BUFFER, outbuf;
 
 		    if (*token) {
 			inbuf.value = token;
