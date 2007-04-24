@@ -133,6 +133,25 @@ usage () {
 .
 }
 
+determine_keytab_access () {
+    # These flags indicate access control for the current user, not for apache
+    keytab_exists=no
+    keytab_readable=no
+    keytab_readwrite=no
+
+    label "looking for HTTP/ keytab"
+    if test -f "$KEYTAB"; then
+	keytab_exists=yes
+	echo "$KEYTAB"
+	if test -r "$KEYTAB"; then
+	    keytab_readable=yes
+	    if test -w "$KEYTAB"; then
+		keytab_readwrite=yes
+	    fi
+	fi
+    fi
+}
+
 #-- parse args
 
 cflag=
@@ -290,21 +309,9 @@ if test ! -n "$APACHE_GROUP"; then
     done
 fi
 
-# These flags indicate access control for the current user, not for apache
-keytab_readable=no
-keytab_readwrite=no
+determine_keytab_access
 
-label "looking for HTTP/ keytab"
-if test -f "$KEYTAB"; then
-    echo "$KEYTAB"
-    if test -r "$KEYTAB" || test `id -u` -eq 0; then
-	keytab_readable=yes
-	if test -w "$KEYTAB" || test `id -u` -eq 0; then
-	    keytab_readwrite=yes
-	fi
-    fi
-else
-    echo "keytab not found"
+if [ $keytab_exists = no ]; then
     cat <<-.
 
 	This step creates a service object in Active Directory so 
@@ -334,6 +341,9 @@ else
 	    die "Cannot find $KEYTAB"
 	fi
 	echo ""
+
+	# Update keytab availability
+	determine_keytab_access
     else
 	echo "(Not creating HTTP/ service account)"
     fi
