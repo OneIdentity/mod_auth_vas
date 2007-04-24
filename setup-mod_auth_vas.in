@@ -349,68 +349,6 @@ if [ $keytab_exists = no ]; then
     fi
 fi
 
-# KB899417
-cat <<.
-
-If you have clients using Internet Explorer, a known issue (KB899417)
-can see them suddenly being unable to authenticate after only 30 minutes.
-A workaround is to create SPN aliases with all the possible 'short-names' 
-that the client could use to access this server (i.e http://short-name/).
-SPN aliases can also be useful for servers with multiple DNS identities.
-.
-
-if test "$keytab_readable" = "no"; then
-    echo >&2
-    echo "Keytab is not readable. Skipping Service Principal Name (SPN) aliasing." >&2
-    echo "Re-run $0 as root to do SPN aliasing." >&2
-    echo >&2
-else
-    kinit "run tests on the service account"
-    spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
-    primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
-
-    while :; do
-	    cat <<.
-
-The HTTP/ service is currently known by these SPNs (service principal names):
-
-.
-	    $VASTOOL attrs -s HTTP/ servicePrincipalName | 
-		awk '{print "\t" $2 }'
-	    echo
-	    query "Enter a new SPN alias, or 'none' to finish" SPN "none"
-	    [ x"$SPN" = x"none" ] && break
-
-	    case "$SPN" in
-		-*)
-		    newspns=
-		    found=false
-		    for spn in `$VASTOOL attrs -s HTTP/ servicePrincipalName | 
-			awk '{print $2}'`; do
-			if [ x"-$spn" = x"$SPN" ]; then found=true
-			else newspns="$newspns $spn"; fi
-		    done
-		    if $found; then
-			$VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
-			    $newspns 
-			$VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
-			    remove -p ${SPN#-}
-		    else
-			echo "'${SPN#-}' not found" >&2
-		    fi
-		    ;;
-		*)
-		    oldspns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | 
-			awk '{print $2}'`
-		    $VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
-			$oldspns $SPN &&\
-		    $VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
-			alias $primary $SPN
-		    ;;
-	    esac
-    done
-fi
-
 # Keytab only has to exist for permission checks
 if test -f "$KEYTAB"; then
   if test ! -n "$APACHE_GROUP"; then
@@ -472,9 +410,72 @@ else # Keytab is readable
     echo "The error message was:"
     KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "HTTP/" kinit 2>&1 | sed -e 's/^/  /'
     echo ""
+    die "Keytab is not usable. Try deleting $KEYTAB and re-running $0"
   fi
   KRB5CCNAME="${old_KRB5CCNAME}"
   rm -f $tmpcc
+fi
+
+# KB899417
+cat <<.
+
+If you have clients using Internet Explorer, a known issue (KB899417)
+can see them suddenly being unable to authenticate after only 30 minutes.
+A workaround is to create SPN aliases with all the possible 'short-names' 
+that the client could use to access this server (i.e http://short-name/).
+SPN aliases can also be useful for servers with multiple DNS identities.
+.
+
+if test "$keytab_readable" = "no"; then
+    echo >&2
+    echo "Keytab is not readable. Skipping Service Principal Name (SPN) aliasing." >&2
+    echo "Re-run $0 as root to do SPN aliasing." >&2
+    echo >&2
+else
+    kinit "run tests on the service account"
+    spns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | wc -l`
+    primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
+
+    while :; do
+	    cat <<.
+
+The HTTP/ service is currently known by these SPNs (service principal names):
+
+.
+	    $VASTOOL attrs -s HTTP/ servicePrincipalName | 
+		awk '{print "\t" $2 }'
+	    echo
+	    query "Enter a new SPN alias, or 'none' to finish" SPN "none"
+	    [ x"$SPN" = x"none" ] && break
+
+	    case "$SPN" in
+		-*)
+		    newspns=
+		    found=false
+		    for spn in `$VASTOOL attrs -s HTTP/ servicePrincipalName | 
+			awk '{print $2}'`; do
+			if [ x"-$spn" = x"$SPN" ]; then found=true
+			else newspns="$newspns $spn"; fi
+		    done
+		    if $found; then
+			$VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
+			    $newspns 
+			$VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
+			    remove -p ${SPN#-}
+		    else
+			echo "'${SPN#-}' not found" >&2
+		    fi
+		    ;;
+		*)
+		    oldspns=`$VASTOOL attrs -s HTTP/ servicePrincipalName | 
+			awk '{print $2}'`
+		    $VASTOOL setattrs -m -s HTTP/ servicePrincipalName \
+			$oldspns $SPN &&\
+		    $VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
+			alias $primary $SPN
+		    ;;
+	    esac
+    done
 fi
 
 # Bug 213: HTTP/ keytab will expire by default
