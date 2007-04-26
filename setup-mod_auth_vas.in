@@ -483,7 +483,7 @@ if test -f "$KEYTAB"; then
     kinit "check that the service account is usable"
     label Testing whether service password expires
     # vastool attrs '-q' flag was only added in 3.2, so use sed magic.
-    uac=`$VASTOOL attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]\+\),\1,'`
+    uac=`$VASTOOL attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]*\),\1,'`
     if [ "z$uac" = "z" ]; then
 	die "Unable to retrieve service account attributes, does the service exist?\
  Delete $KEYTAB and re-run $0 to re-create the service account."
