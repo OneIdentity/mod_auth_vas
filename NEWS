@@ -1,4 +1,4 @@
-3.4.0 (unreleased)
+3.4.0
 	- Log version number, libvas version during startup
 	- Setup script changes:
 	    * checks that the module is loadable and is the right version
