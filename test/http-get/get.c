@@ -768,7 +768,7 @@ again_spnego:
 			    name,
 			    0 /* GSS_C_DELEG_FLAG */,
 			    VAS_GSS_SPNEGO_ENCODING_BASE64,
-			    &inbuf,
+			    *token ? &inbuf : GSS_C_NO_BUFFER,
 			    &outbuf);
 		    if (GSS_ERROR(ret))
 			errx(1, "vas_gss_spnego_initiate: %s", 
