@@ -1551,6 +1551,7 @@ static void
 auth_vas_server_init(apr_pool_t *p, server_rec *s)
 {
     vas_err_t               vaserr;
+    vas_auth_t             *vasauth;
     auth_vas_server_config *sc;
     char *tmp_realm;
 
@@ -1613,9 +1614,12 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                   "vas_id_alloc failed on %s, err = %s",
                   sc->service_principal,
                   vas_err_get_string(sc->vas_ctx, 1));
+	return;
     }
 
     /* Establish our credentials using the service keytab */
+    /* Don't try getting a TGT yet. SPNs that are not also UPNs cannot
+     * get a TGT and would cause this to fail. */
     vaserr = vas_id_establish_cred_keytab(sc->vas_ctx, 
                                           sc->vas_serverid, 
                                           VAS_ID_FLAG_USE_MEMORY_CCACHE |
@@ -1626,8 +1630,44 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	LOG_ERROR(APLOG_ERR, 0, s,
                   "vas_id_establish_cred_keytab failed, err = %s",
                   vas_err_get_string(sc->vas_ctx, 1));
+	return;
     } else {
-        TRACE_S(s, "successfully authenticated as %s", sc->service_principal);
+        TRACE_S(s, "successfully established creds for %s", sc->service_principal);
+    }
+
+    /* If this SPN is also a UPN, it should be able to authenticate against
+     * itself and prove that the keytab works (eg. not expired). If it is just
+     * an SPN (that usually means it's a service alias), it will return
+     * unknown principal. */
+    vaserr = vas_auth(sc->vas_ctx,
+                      sc->vas_serverid,
+                      sc->vas_serverid,
+                      &vasauth);
+
+    if (vaserr != VAS_ERR_SUCCESS) {
+	vas_err_info_t *errinfo;
+
+	errinfo = vas_err_get_cause_by_type(sc->vas_ctx, VAS_ERR_TYPE_KRB5);
+
+	if (errinfo && errinfo->code == KRB5KDC_ERR_C_PRINCIPAL_UNKNOWN) {
+	    LOG_ERROR(APLOG_INFO, 0, s,
+		      "Credential test for %s failed with %s, "
+		      "it is probably an alias",
+		      sc->service_principal,
+		      krb5_get_error_name(errinfo->code));
+	} else {
+	    LOG_ERROR(APLOG_ERR, 0, s,
+		      "vas_auth failed, err = %s",
+		      vas_err_get_string(sc->vas_ctx, 1));
+	}
+
+	if (errinfo)
+	    vas_err_info_free(errinfo);
+
+    } else {
+        TRACE_S(s, "Successfully authenticated to %s with keytab",
+		sc->service_principal);
+        vas_auth_free(sc->vas_ctx, vasauth);
     }
 }
 
