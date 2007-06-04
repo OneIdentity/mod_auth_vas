@@ -236,7 +236,7 @@
 #if defined(APXS1) /* Apache 1.3.x */
 # if defined(EAPI) /* extended API available */
 #  include "ap_ctx.h"
-#  define RNOTE_KEY "rc.vintela.com/mod_auth_vas/request_note"
+#  define RNOTE_KEY "rc.quest.com/mod_auth_vas/request_note"
 #  define GET_RNOTE(r) 						\
     (auth_vas_rnote *)((r)->ctx					\
 	? ap_ctx_get((r)->ctx, RNOTE_KEY)			\

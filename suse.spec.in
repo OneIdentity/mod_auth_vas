@@ -16,7 +16,7 @@ Requires:	libvas.so.4
 BuildRequires:	%{apache}-devel
 BuildRequires:	vasdev
 Summary:	Enables the Apache web server to authenticate users against Active Directory
-URL:		http://rc.vintela.com/topics/mod_auth_vas/
+URL:		http://rc.quest.com/topics/mod_auth_vas/
 BuildRoot:	%{_tmppath}/%{name}-%{version}-build
 Prefix:		/opt/quest
 
