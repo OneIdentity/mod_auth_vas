@@ -469,7 +469,7 @@ static const command_rec auth_vas_cmds[] =
     AP_INIT_FLAG(CMD_USESUEXEC, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, use_suexec),
 		ACCESS_CONF | OR_AUTHCFG,
-		"Execute CGI scripts as the authenticated remote user (if suexec is loaded)"),
+		"Execute CGI scripts as the authenticated remote user (if suEXEC is active)"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
