@@ -281,6 +281,7 @@ typedef struct {
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
     int export_delegated;		/* AuthVasExportDelegated (default off) */
     int localize_remote_user;		/* AuthVasLocalizeRemoteUser (default off) */
+    int use_suexec;			/* AuthVasSuexecAsRemoteUser (default off) */
 } auth_vas_dir_config;
 
 /* Default behaviour if a flag is not set */
@@ -289,6 +290,7 @@ typedef struct {
 #define DEFAULT_USING_AUTH_AUTHORITATIVE        FLAG_ON
 #define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
 #define DEFAULT_USING_LOCALIZE_REMOTE_USER      FLAG_OFF
+#define DEFAULT_USING_SUEXEC                    FLAG_OFF
 
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
 #define USING_AUTH_DEFAULT(dc, field, def) \
@@ -306,6 +308,8 @@ typedef struct {
 #define USING_LOCALIZE_REMOTE_USER(dc) \
     USING_AUTH_DEFAULT(dc, localize_remote_user, \
 					    DEFAULT_USING_LOCALIZE_REMOTE_USER)
+#define USING_SUEXEC(dc) \
+    USING_AUTH_DEFAULT(dc, use_suexec,         DEFAULT_USING_SUEXEC)
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -438,6 +442,8 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_LOCALIZEREMOTEUSER	"AuthVasLocalizeRemoteUser"
 #define CMD_SPN			"AuthVasServicePrincipal"
 #define CMD_REALM		"AuthVasDefaultRealm"
+#define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
+
 static const command_rec auth_vas_cmds[] =
 {
     AP_INIT_FLAG(CMD_USENEGOTIATE, ap_set_flag_slot,
@@ -460,6 +466,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Set REMOTE_USER to a local username instead of a UPN"),
+    AP_INIT_FLAG(CMD_USESUEXEC, ap_set_flag_slot,
+		APR_OFFSETOF(auth_vas_dir_config, use_suexec),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Execute CGI scripts as the authenticated remote user (if suexec is loaded)"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -1893,8 +1903,13 @@ static ap_unix_identity_t *
 auth_vas_suexec(const request_rec *r)
 {
     ap_unix_identity_t *id;
+    auth_vas_dir_config *dc;
 
     if (!is_our_auth_type(r) || RUSER(r) == NULL)
+	return NULL;
+
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+    if (!USING_SUEXEC(dc))
 	return NULL;
 
     if ((id = apr_palloc(r->pool, sizeof (ap_unix_identity_t))) == NULL)
@@ -2078,6 +2093,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->auth_authoritative = FLAG_UNSET;
 	dc->export_delegated = FLAG_UNSET;
 	dc->localize_remote_user = FLAG_UNSET;
+	dc->use_suexec = FLAG_UNSET;
     }
     return (void *)dc;
 }
@@ -2109,6 +2125,8 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 		new_dc->auth_authoritative);
 	merged_dc->export_delegated = FLAG_MERGE(base_dc->export_delegated,
 		new_dc->export_delegated);
+	merged_dc->use_suexec = FLAG_MERGE(base_dc->use_suexec,
+		new_dc->use_suexec);
 	merged_dc->localize_remote_user = 
 	    FLAG_MERGE(base_dc->localize_remote_user,
 		new_dc->localize_remote_user);
