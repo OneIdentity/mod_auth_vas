@@ -1,0 +1,41 @@
+# Ensure basic auth is not case-sensitive on usernames
+description "case-insensitive basic auth (bug #214)"
+
+OUTPUTFILE=/tmp/bug214.$$.txt
+TESTFILE="$DOC_DIR/testfile"
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f -- $OUTPUTFILE "$TESTFILE"
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		AuthVasUseNegotiate Off
+		Require user TESTuser
+	</Directory>
+.
+
+ap_conf_check
+
+ap_start
+
+echo "Testing $$" > "$TESTFILE"
+
+fetch_basic `ifdebug -d` testUSER:testuser $DOC_URL/testfile > $OUTPUTFILE || true
+test 200 = "$FETCH_RES" || fail "Unexpected response $FETCH_RES, 200 expected"
+
+if ! cmp -- "$TESTFILE" $OUTPUTFILE >/dev/null; then
+    echo "Output file differs from original file:"
+    diff -u -- "$TESTFILE" "$OUTPUTFILE"
+    fail "Test file and received file do not match"
+fi
+
+# hey vim: syntax=sh
