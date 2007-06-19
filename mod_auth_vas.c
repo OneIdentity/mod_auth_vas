@@ -316,6 +316,7 @@ typedef struct {
  */
 typedef struct {
     vas_id_t *vas_userid;		/* The user's identity */
+    vas_user_t *vas_user_obj;		/* The remote user object (lazy initialisation - possibly NULL) */
     char *vas_pname;			/* The user's principal name */
     vas_auth_t *vas_authctx;		/* The VAS authentication context */
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
@@ -579,7 +580,6 @@ match_user(request_rec *r, const char *name, int log_level)
     int                       user_matches = 0;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
-    vas_user_t *remote_user = NULL;
     vas_user_t *required_user = NULL;
 
     ASSERT(r != NULL);
@@ -604,14 +604,17 @@ match_user(request_rec *r, const char *name, int log_level)
 	goto finish;
     }
 
-    /* Create a user object from the remote user id. */
-    /* XXX: Cache the result? */
-    if (vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &remote_user)) {
-	LOG_RERROR(log_level, 0, r,
-		   "vas_id_get_user: %s",
-		   vas_err_get_string(sc->vas_ctx, 1));
-	goto finish;
-    }
+    if (!rnote->vas_user_obj) {
+	/* Create a user object from the remote user id. */
+	if (vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &rnote->vas_user_obj)) {
+	    rnote->vas_user_obj = NULL; /* VAS does not guarantee this */
+
+	    LOG_RERROR(log_level, 0, r,
+		       "vas_id_get_user: %s",
+		       vas_err_get_string(sc->vas_ctx, 1));
+	    goto finish;
+	}
+    } 
 
     /* Convert the required user name into a user obj */
     if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, 
@@ -622,25 +625,25 @@ match_user(request_rec *r, const char *name, int log_level)
 	goto finish;
     }
 
-    if (vas_user_compare(sc->vas_ctx, remote_user, required_user) == VAS_ERR_SUCCESS) {
+    if (vas_user_compare(sc->vas_ctx, rnote->vas_user_obj, required_user) == VAS_ERR_SUCCESS) {
 	user_matches = 1;
 	TRACE_R(r, "match_user: name=%s RUSER=%s", name, RUSER(r));
     }
 
+#if defined(MODAUTHVAS_VERBOSE)
     { 
 	char *adn = NULL;
 	char *bdn = NULL;
-	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, remote_user, &adn);
+	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, rnote->vas_user_obj, &adn);
 	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &bdn);
 	TRACE_R(r, "match_user: <%s> <%s> %s", adn?adn:"ERROR",
 		bdn?bdn:"ERROR", user_matches ? "match" : "no-match");
 	if (adn) free(adn);
 	if (bdn) free(bdn);
     }
+#endif
 
 finish:
-    if (remote_user)
-	vas_user_free(sc->vas_ctx, remote_user);
     if (required_user)
 	vas_user_free(sc->vas_ctx, required_user);
 
@@ -756,7 +759,6 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     auth_vas_rnote           *rnote;
     struct group             *gr;
     struct passwd            *pw = NULL;
-    vas_user_t               *user = NULL;
     char **                   sp;
 
     ASSERT(r != NULL);
@@ -777,17 +779,21 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 	goto finish;
 
     ASSERT(rnote->vas_userid != NULL);
-    vaserr = vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &user);
-    if (vaserr != VAS_ERR_SUCCESS) {
-	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_id_get_user(): %s",
-                   vas_err_get_string(sc->vas_ctx, 1));
-        rval = HTTP_INTERNAL_SERVER_ERROR;
-	goto finish;
+    if (!rnote->vas_user_obj) {
+	vaserr = vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &rnote->vas_user_obj);
+	if (vaserr != VAS_ERR_SUCCESS) {
+	    rnote->vas_user_obj = NULL; /* VAS does not guarantee this */
+
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		       "vas_id_get_user(): %s",
+		       vas_err_get_string(sc->vas_ctx, 1));
+	    rval = HTTP_INTERNAL_SERVER_ERROR;
+	    goto finish;
+	}
     }
 
     /* Determine the user's unix name */
-    vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, user, &pw);
+    vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, rnote->vas_user_obj, &pw);
     if (vaserr == VAS_ERR_NOT_FOUND) {
         /* User does not map to a unix user, so cannot be part of a group */
         rval = HTTP_FORBIDDEN;
@@ -856,8 +862,6 @@ finish:
     UNLOCK_VAS(r);
     if (pw)
         free(pw);
-    if (user)
-        (void)vas_user_free(sc->vas_ctx, user);
     return rval;
 }
 
@@ -1085,6 +1089,7 @@ auth_vas_auth_checker(request_rec *r)
 	for (match = matchtab; match->name; match++)
 	    if (strcmp(type, match->name) == 0)
 		break;
+
 	if (!match->name) {
 	    LOG_RERROR(APLOG_ERR, 0, r,
 		"auth_vas_auth_checker: Unknown requirement '%s'" , type);
@@ -1256,6 +1261,7 @@ static void
 rnote_init(auth_vas_rnote *rn)
 {
     rn->vas_userid   = NULL;
+    rn->vas_user_obj = NULL;
     rn->vas_pname    = NULL;
     rn->vas_authctx  = NULL;
     rn->gss_ctx = GSS_C_NO_CONTEXT;
@@ -1299,6 +1305,9 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_delete_sec_context", gsserr, minor);
     }
+
+    if (rn->vas_user_obj)
+	vas_user_free(sc->vas_ctx, rn->vas_user_obj);
     
     if (rn->vas_userid)
         vas_id_free(sc->vas_ctx, rn->vas_userid);
