@@ -566,8 +566,7 @@ server_ctx_is_valid(server_rec *s)
 
 /**
  * Checks if the previously authenticated user matches a particular name.
- * The check is partially case-sensitive. 
- * (XXX Should it be completely case insensitive?)
+ * Name comparison is done by libvas.
  *   @param r The authenticated request
  *   @param name The name of the user to check
  *   @return OK if the user has the same name, otherwise HTTP_...
@@ -575,8 +574,13 @@ server_ctx_is_valid(server_rec *s)
 static int
 match_user(request_rec *r, const char *name, int log_level)
 {
-    const auth_vas_server_config *sc;
-    const char *p;
+    int                       err; /*< Temporary storage */
+    int                       result = HTTP_FORBIDDEN; /*< This function's return code */
+    int                       user_matches = 0;
+    auth_vas_server_config   *sc;
+    auth_vas_rnote           *rnote;
+    vas_user_t *remote_user = NULL;
+    vas_user_t *required_user = NULL;
 
     ASSERT(r != NULL);
     ASSERT(name != NULL);
@@ -586,26 +590,64 @@ match_user(request_rec *r, const char *name, int log_level)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
+    ASSERT(sc->vas_ctx != NULL);
 
-    if (strcmp(RUSER(r), name) == 0)
-	return OK;
-
-    /* Return OK if RUSER(r) == name + '@' + sc->default_realm */
-    if (sc->default_realm && (p = strchr(RUSER(r), '@')) != NULL) {
-	int namelen = strlen(name);
-	int userlen = p - RUSER(r);
-
-	ASSERT(RUSER(r)[userlen] == '@');
-	if (namelen == userlen &&
-	    strncmp(RUSER(r), name, namelen) == 0 &&
-	    strcasecmp(RUSER(r) + namelen + 1, sc->default_realm) == 0)
-	{
-		TRACE_R(r, "match_user: RUSER=%s name=%s realm=%s",
-			 name, RUSER(r), sc->default_realm);
-		return OK;
-	}
+    if ((err = LOCK_VAS(r))) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+                   "match_group: unable to acquire lock");
+	result = err;
+	goto finish;
     }
-    return HTTP_FORBIDDEN;
+
+    if ((err = rnote_get(sc, r, RUSER(r), &rnote))) {
+	result = err;
+	goto finish;
+    }
+
+    /* Convert the userid from the spnego auth into a user obj */
+    if (vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &remote_user)) {
+	LOG_RERROR(log_level, 0, r,
+		   "vas_id_get_user: %s",
+		   vas_err_get_string(sc->vas_ctx, 1));
+	goto finish;
+    }
+
+    /* Convert the required user name into a user obj */
+    if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, 
+		&required_user) != VAS_ERR_SUCCESS) {
+	LOG_RERROR(log_level, 0, r,
+		   "vas_user_init(%.100s): %s", name,
+		   vas_err_get_string(sc->vas_ctx, 1));
+	goto finish;
+    }
+
+    if (vas_user_compare(sc->vas_ctx, remote_user, required_user) == VAS_ERR_SUCCESS) {
+	user_matches = 1;
+	TRACE_R(r, "match_user: name=%s RUSER=%s", name, RUSER(r));
+    }
+
+    { 
+	char *adn = NULL;
+	char *bdn = NULL;
+	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, remote_user, &adn);
+	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &bdn);
+	TRACE_R(r, "match_user: <%s> <%s> %s", adn?adn:"ERROR",
+		bdn?bdn:"ERROR", user_matches ? "match" : "no-match");
+	if (adn) free(adn);
+	if (bdn) free(bdn);
+    }
+
+finish:
+    if (remote_user)
+	vas_user_free(sc->vas_ctx, remote_user);
+    if (required_user)
+	vas_user_free(sc->vas_ctx, required_user);
+
+    UNLOCK_VAS(r);
+
+    ASSERT(user_matches || result != OK);
+
+    return user_matches ? OK : result;
 }
 
 
