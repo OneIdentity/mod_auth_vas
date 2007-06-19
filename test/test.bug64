@@ -30,7 +30,7 @@ echo "test file for pid $$" > $DOC_DIR/$TESTFILE
 ap_start
 
 rm -f $OUTPUTFILE
-fetch_basic `ifdebug -d` nearloca:nearlocal $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+fetch_basic `ifdebug -d` nearloca:nearloca $DOC_URL/$TESTFILE > $OUTPUTFILE ||
     fail "couldn't fetch with basic as nearloca"
 test 200 = "$FETCH_RES" || fail "nearlocal: expected 200 but got $FETCH_RES"
 cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
