@@ -604,7 +604,8 @@ match_user(request_rec *r, const char *name, int log_level)
 	goto finish;
     }
 
-    /* Convert the userid from the spnego auth into a user obj */
+    /* Create a user object from the remote user id. */
+    /* XXX: Cache the result? */
     if (vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &remote_user)) {
 	LOG_RERROR(log_level, 0, r,
 		   "vas_id_get_user: %s",
