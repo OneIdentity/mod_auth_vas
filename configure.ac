@@ -135,7 +135,7 @@ AC_CACHE_CHECK([apxs intermediate extension], [ac_cv_var_apxs_mod_ext], [
  ])
 if test -z "$ac_cv_var_apxs_mod_ext"; then
    AC_MSG_WARN([assuming intermediate .so extension for modules])
-   DSO=.so
+   DSOEXT=.so
 else
    DSOEXT=$ac_cv_var_apxs_mod_ext
 fi
