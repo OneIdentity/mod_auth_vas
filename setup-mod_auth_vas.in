@@ -443,13 +443,13 @@ if test "$keytab_readable" = "no"; then
     echo >&2
 else
     kinit "run tests on the service account"
-    spns=`$VASTOOL -u HTTP/ attrs -s HTTP/ servicePrincipalName | wc -l`
+    spns=`$VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | wc -l`
     primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
 
     #-- change the default to a suggested short spn
     default_spn=none
     if test 1 -eq "$spns"; then
-	nbname=`$VASTOOL -u HTTP/ attrs -s host/ sAMAccountName | sed -e 's/^.*: //;s/\$$//'`
+	nbname=`$VASTOOL ${uflag+-u "$uflag"} attrs -s host/ sAMAccountName | sed -e 's/^.*: //;s/\$$//'`
 	if test x"HTTP/$nbname" != x"`$VASTOOL -u HTTP/ attrs -s HTTP/ servicePrincipalName | sed -e 's/.*: //'`"; then
 	    default_spn="HTTP/$nbname"
 	fi
@@ -461,7 +461,7 @@ else
 The HTTP/ service is currently known by these SPNs (service principal names):
 
 .
-	    $VASTOOL -u HTTP/ attrs -s HTTP/ servicePrincipalName | 
+	    $VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | 
 		awk '{print "\t" $2 }'
 	    echo
 	    query "Enter a new SPN alias, or 'none' to finish" SPN "$default_spn"
@@ -471,7 +471,7 @@ The HTTP/ service is currently known by these SPNs (service principal names):
 		-*)
 		    newspns=
 		    found=false
-		    for spn in `$VASTOOL -u HTTP/ attrs -s HTTP/ servicePrincipalName | 
+		    for spn in `$VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | 
 			awk '{print $2}'`; do
 			if [ x"-$spn" = x"$SPN" ]; then found=true
 			else newspns="$newspns $spn"; fi
@@ -487,7 +487,7 @@ The HTTP/ service is currently known by these SPNs (service principal names):
 		    fi
 		    ;;
 		*)
-		    oldspns=`$VASTOOL -u HTTP/ attrs -s HTTP/ servicePrincipalName | 
+		    oldspns=`$VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | 
 			awk '{print $2}'`
 		    recordcmd $VASTOOL ${uflag+-u "$uflag"} \
 			    setattrs -m -s HTTP/ servicePrincipalName \
@@ -509,7 +509,7 @@ if test -f "$KEYTAB"; then
     kinit "check that the service account is usable"
     label Testing whether service password expires
     # vastool attrs '-q' flag was only added in 3.2, so use sed magic.
-    uac=`$VASTOOL -u HTTP/ attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]*\),\1,'`
+    uac=`$VASTOOL ${uflag+-u "$uflag"} attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]*\),\1,'`
     if [ "z$uac" = "z" ]; then
 	die "Unable to retrieve service account attributes, does the service exist?\
  Delete $KEYTAB and re-run $0 to re-create the service account."
