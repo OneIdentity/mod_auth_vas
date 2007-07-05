@@ -6,7 +6,7 @@
 	    * warns if the HTTP/ account has expired
 	    * allows adding of principal name aliases
 	    * allows disabling password expiry on the service account (bug #213)
-            * allow specifying privileged user with -u option
+	    * allow specifying privileged user with -u option
 	- Support C99 vararg macros (Sun CC) and non-GNU make
 	- Support using the compiler that apxs suggests
 	- Enhancement bug 126: AuthVasLocalizeRemoteUser
