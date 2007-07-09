@@ -1199,7 +1199,10 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	goto done;
     }
 
+    /* Authenticated */
     rval = OK;
+    RAUTHTYPE(r) = "Basic";
+    RUSER(r) = apr_pstrdup(r->pool, rn->vas_pname);
 
  done:
 
@@ -1928,8 +1931,7 @@ auth_vas_check_user_id(request_rec *r)
 
 	/* Attempt to authenticate using username and password */
 	if ((result = do_basic_accept(r, user, password)) == OK) {
-	     RAUTHTYPE(r) = "Basic";
-	     RUSER(r) = apr_pstrdup(r->pool, user);
+	     ASSERT(RAUTHTYPE(r) != NULL);
 	     ASSERT(RUSER(r) != NULL);
 	}
 	return (result == OK || USING_AUTH_AUTHORITATIVE(dc)) ?
