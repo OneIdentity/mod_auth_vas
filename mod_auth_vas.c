@@ -2176,17 +2176,36 @@ finish:
 static void
 localize_remote_user(request_rec *r)
 {
-    const char *p;
+    char *p, *user_realm;
     struct passwd *pw1, *pw2;
+
+    ASSERT(r != NULL);
 
     p = strchr(RUSER(r), '@');
     if (!p) 
 	return;	/* Not a UPN */
+    user_realm = p + 1;
 
     /* Convert the UPN into a UID, then convert the UID back again */
     pw1 = getpwnam(RUSER(r));
     if (!pw1) {
-	LOG_RERROR_ERRNO(APLOG_ERR, 0, r, "getpwnam: %.100s", RUSER(r));
+	/* User is probably not Unix-enabled. Strip the realm if it is the same
+	 * as the server's for consitency */
+	const auth_vas_server_config *sc;
+
+	LOG_RERROR_ERRNO(APLOG_DEBUG, 0, r, "getpwnam: %.100s", RUSER(r));
+
+	ASSERT(r->server != NULL);
+	sc = GET_SERVER_CONFIG(r->server->module_config);
+
+	ASSERT(sc->default_realm != NULL);
+
+	if (strcasecmp(user_realm, sc->default_realm) == 0) {
+	    LOG_RERROR(APLOG_DEBUG, 0, r, "stripping matching realm from "
+		    "non-Unix user %s", RUSER(r));
+	    *p = '\0';
+	}
+
 	return;
     }
 
