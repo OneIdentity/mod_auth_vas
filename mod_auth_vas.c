@@ -191,9 +191,9 @@
 #  endif
 # else
 #  if __GNUC__
-#   define TRACE_P(p,f,a...)	ap_log_printf(0,f ,##a)
+#   define TRACE_P(p,f,a...)	LOG_ERROR(APLOG_DEBUG,OK,0,f ,##a)
 #  else /* C99 */
-#   define TRACE_P(p,...)	ap_log_printf(0,__VA_ARGS__)
+#   define TRACE_P(p,...)	LOG_ERROR(APLOG_DEBUG,OK,0,__VA_ARGS__)
 #  endif
 # endif
 #else
@@ -1351,7 +1351,7 @@ auth_vas_cleanup_request(void *data)
     auth_vas_rnote *rn;
 
     /* XXX Really shouldn't draw from the pool while cleaning it up! */
-    TRACE_P(r->pool, "auth_vas_cleanup_request");
+    TRACE_R(r, "auth_vas_cleanup_request");
     rn = GET_RNOTE(r);
     if (rn != NULL) {
 	if (LOCK_VAS(r))
@@ -2081,7 +2081,7 @@ export_cc(request_rec *r)
 
     /* Allow subprocesses see the cred cache path */
     path = apr_pstrdup(r->pool, krb5_cc_get_name(krb5ctx, ccache));
-    TRACE_P(r->pool, "auth_vas: cred cache at %s", path);
+    TRACE_R(r, "auth_vas: cred cache at %s", path);
     apr_table_setn(r->subprocess_env, "KRB5CCNAME", path);
 
     /* XXX for SUEXEC the file would have to be chowned */
@@ -2234,7 +2234,7 @@ auth_vas_fixup(request_rec *r)
     dc = GET_DIR_CONFIG(r->per_dir_config);
     ASSERT(dc != NULL);
 
-    TRACE_P(r->pool, "auth_vas_fixup");
+    TRACE_R(r, "auth_vas_fixup");
     export_cc(r);
 
     if (dc->remote_user_attr) {
@@ -2369,7 +2369,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy,
 	    apr_pool_cleanup_null);
     
-    TRACE_P(p, "auth_vas_create_server_config (%s:%u)",
+    TRACE_S(s, "auth_vas_create_server_config (%s:%u)",
 	    s->server_hostname ? s->server_hostname : "<global>", s->port);
     return (void *)sc;
 }
