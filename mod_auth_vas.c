@@ -476,7 +476,7 @@ static const command_rec auth_vas_cmds[] =
     AP_INIT_FLAG(CMD_LOCALIZEREMOTEUSER, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
 		ACCESS_CONF | OR_AUTHCFG,
-		"Set REMOTE_USER to a local username instead of a UPN"),
+		"Set REMOTE_USER to a local username instead of a UPN (deprecated in favor of "CMD_REMOTEUSERATTR")"),
     AP_INIT_FLAG(CMD_USESUEXEC, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, use_suexec),
 		ACCESS_CONF | OR_AUTHCFG,
