@@ -87,6 +87,7 @@
 # define apr_table_add		ap_table_add
 # define apr_table_get		ap_table_get
 # define apr_table_set		ap_table_set
+# define apr_table_setn		ap_table_setn
 # define apr_thread_mutex_t	mutex
 # define apr_thread_mutex_lock ap_acquire_mutex
 # define apr_thread_mutex_unlock ap_release_mutex
@@ -620,6 +621,8 @@ match_user(request_rec *r, const char *name, int log_level)
 
     if (!rnote->vas_user_obj) {
 	/* Create a user object from the remote user id. */
+	ASSERT(rnote->vas_userid != NULL);
+
 	if (vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &rnote->vas_user_obj)) {
 	    rnote->vas_user_obj = NULL; /* VAS does not guarantee this */
 
@@ -792,8 +795,8 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
 	goto finish;
 
-    ASSERT(rnote->vas_userid != NULL);
     if (!rnote->vas_user_obj) {
+	ASSERT(rnote->vas_userid != NULL);
 	vaserr = vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &rnote->vas_user_obj);
 	if (vaserr != VAS_ERR_SUCCESS) {
 	    rnote->vas_user_obj = NULL; /* VAS does not guarantee this */
@@ -1401,7 +1404,15 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
         if (vaserr == VAS_ERR_SUCCESS) {
             vaserr = vas_id_get_name(sc->vas_ctx, rn->vas_userid,
 		    &rn->vas_pname, NULL);
-        }
+	    if (vaserr != VAS_ERR_SUCCESS) {
+		LOG_RERROR(APLOG_ERR, 0, r, "Failed to get name from vas_id_t for user %s: %s",
+			user, vas_err_get_string(sc->vas_ctx, 1));
+	    }
+        } else {
+	    LOG_RERROR(APLOG_ERR, 0, r, "Failed to convert %s into a vas_id_t: %s",
+		    user, vas_err_get_string(sc->vas_ctx, 1));
+	    rn->vas_userid = NULL;
+	}
     }
 
     if (vaserr != VAS_ERR_SUCCESS) {
@@ -1522,6 +1533,16 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	gss_release_buffer(&minor_status, &buf);
 	if (RUSER(r) == NULL) {
 	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_pstrmemdup");
+	    result = HTTP_INTERNAL_SERVER_ERROR;
+	    goto done;
+	}
+
+	/* Ensure the vas_userid is set.
+	 * Other mechs do this by passing the username into rnote_get() */
+	if (vas_id_alloc(sc->vas_ctx, RUSER(r), &rn->vas_userid) != VAS_ERR_SUCCESS) {
+	    rn->vas_userid = NULL;
+	    LOG_RERROR(APLOG_ERR, 0, r, "Error turning %s into a vas_id_t: %s",
+		    RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
 	    result = HTTP_INTERNAL_SERVER_ERROR;
 	    goto done;
 	}
@@ -2086,7 +2107,7 @@ set_remote_user(request_rec *r)
     auth_vas_dir_config *dc;
     const char *old_ruser = RUSER(r);
     auth_vas_server_config *sc;
-    const char *const anames[] = { dc->remote_user_attr, NULL };
+    const char *anames[2] = { NULL, NULL };
     vas_attrs_t *attrs;
     auth_vas_rnote *rn;
 
@@ -2101,6 +2122,8 @@ set_remote_user(request_rec *r)
     ASSERT(dc != NULL);
     ASSERT(dc->remote_user_attr != NULL);
 
+    anames[0] = dc->remote_user_attr;
+
     /* Ensure the auth mechanism (SPNEGO/Basic) set RUSER to the full UPN */
     ASSERT(strchr(RUSER(r), '@') != NULL);
 
@@ -2111,6 +2134,8 @@ set_remote_user(request_rec *r)
 
     if (!rn->vas_user_obj) {
 	/* Create a user object from the remote user id. */
+	ASSERT(rn->vas_userid != NULL);
+
 	if (vas_id_get_user(sc->vas_ctx, rn->vas_userid, &rn->vas_user_obj)) {
 	    rn->vas_user_obj = NULL; /* VAS does not guarantee this */
 
@@ -2529,7 +2554,7 @@ module MODULE_VAR_EXPORT auth_vas_module =
     auth_vas_auth_checker,		/* auth_checker */
     NULL,				/* access_checker */
     NULL,				/* type_checker */
-    NULL,				/* fixer_upper */
+    auth_vas_fixup,			/* fixer_upper */
     NULL,				/* logger */
     NULL,				/* header_parser */
 
