@@ -281,6 +281,7 @@ typedef struct {
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
     int export_delegated;		/* AuthVasExportDelegated (default off) */
     int localize_remote_user;		/* AuthVasLocalizeRemoteUser (default off) */
+    char *remote_user_attr;		/* AuthVasRemoteUserAttr */
     int use_suexec;			/* AuthVasSuexecAsRemoteUser (default off) */
 } auth_vas_dir_config;
 
@@ -375,6 +376,7 @@ static void auth_vas_register_hooks(apr_pool_t *p);
 static void auth_vas_child_init(server_rec *s, pool *p);
 static void auth_vas_init(server_rec *s, pool *p);
 #endif
+static void set_remote_user(request_rec *r);
 
 /*
  * The per-process VAS mutex.
@@ -440,7 +442,8 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_USEBASIC		"AuthVasUseBasic"
 #define CMD_AUTHORITATIVE	"AuthVasAuthoritative"
 #define CMD_EXPORTDELEG		"AuthVasExportDelegated"
-#define CMD_LOCALIZEREMOTEUSER	"AuthVasLocalizeRemoteUser"
+#define CMD_LOCALIZEREMOTEUSER	"AuthVasLocalizeRemoteUser" /**< Deprecated */
+#define CMD_REMOTEUSERATTR	"AuthVasRemoteUserAttr"
 #define CMD_SPN			"AuthVasServicePrincipal"
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
@@ -471,6 +474,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_dir_config, use_suexec),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Execute CGI scripts as the authenticated remote user (if suEXEC is active)"),
+    AP_INIT_TAKE1(CMD_REMOTEUSERATTR, ap_set_string_slot,
+		APR_OFFSETOF(auth_vas_dir_config, remote_user_attr),
+		ACCESS_CONF | OR_AUTHCFG,
+		"LDAP attribute to use for the REMOTE_USER environment variable"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -2068,6 +2075,86 @@ finish:
 }
 
 /**
+ * Set the remote username (REMOTE_USER variable) to the chosen attribute.
+ * Only call this if the remote_user_attr is not NULL.
+ */
+static void
+set_remote_user(request_rec *r)
+{
+    auth_vas_dir_config *dc;
+    const char *old_ruser = RUSER(r);
+    auth_vas_server_config *sc;
+    const char *const anames[] = { dc->remote_user_attr, NULL };
+    vas_attrs_t *attrs;
+    auth_vas_rnote *rn;
+
+    ASSERT(r != NULL);
+
+    if (LOCK_VAS(r)) {
+	LOG_RERROR(APLOG_ERR, 0, r, "Failed to lock VAS");
+	return;
+    }
+
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+    ASSERT(dc != NULL);
+    ASSERT(dc->remote_user_attr != NULL);
+
+    /* Ensure the auth mechanism (SPNEGO/Basic) set RUSER to the full UPN */
+    ASSERT(strchr(RUSER(r), '@') != NULL);
+
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+    ASSERT(sc != NULL);
+
+    rn = GET_RNOTE(r);
+
+    if (!rn->vas_user_obj) {
+	/* Create a user object from the remote user id. */
+	if (vas_id_get_user(sc->vas_ctx, rn->vas_userid, &rn->vas_user_obj)) {
+	    rn->vas_user_obj = NULL; /* VAS does not guarantee this */
+
+	    LOG_RERROR(LOG_ERR, 0, r,
+		       "vas_id_get_user: %s",
+		       vas_err_get_string(sc->vas_ctx, 1));
+	    goto finish;
+	}
+    } 
+
+    if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj, anames, &attrs)
+	    == VAS_ERR_SUCCESS) {
+	char **strvals;
+	int count;
+	vas_err_t vaserr;
+
+	vaserr = vas_vals_get_string(sc->vas_ctx, attrs, dc->remote_user_attr, &strvals, &count);
+	if (vaserr == VAS_ERR_SUCCESS || vaserr == VAS_ERR_MORE_VALS) {
+	    ASSERT(count > 0);
+	    ASSERT(strvals);
+	    ASSERT(strvals[0]);
+
+	    RUSER(r) = apr_pstrdup(r->pool, strvals[0]);
+
+	    (void) vas_vals_free_string(sc->vas_ctx, strvals, count);
+	} else {
+	    LOG_RERROR(APLOG_ERR, 0, r, "Failed getting %s attribute values: %s",
+		    dc->remote_user_attr, vas_err_get_string(sc->vas_ctx, 1));
+	}
+
+	vas_attrs_free(sc->vas_ctx, attrs);
+    }
+    else {
+	LOG_RERROR(APLOG_ERR, 0, r, "vas_user_get_attrs() failed to get attribute %s: %s",
+		dc->remote_user_attr, vas_err_get_string(sc->vas_ctx, 1));
+    }
+
+finish:
+    UNLOCK_VAS(r);
+
+    LOG_RERROR(APLOG_INFO, 0, r, "Remote user set from %s to %s (attribute %s)",
+	    old_ruser, RUSER(r), dc->remote_user_attr);
+}
+
+
+/**
  * Convert the authenticated user name into a local username.
  */
 static void
@@ -2120,8 +2207,19 @@ auth_vas_fixup(request_rec *r)
     TRACE_P(r->pool, "auth_vas_fixup");
     export_cc(r);
 
-    if (USING_LOCALIZE_REMOTE_USER(dc))
+    if (dc->remote_user_attr) {
+	/* Access localize_remote_user directly so this doesn't evaluate true
+	 * because of a default setting */
+	if (dc->localize_remote_user == FLAG_ON) {
+	    LOG_RERROR(APLOG_NOTICE, 0, r, "Ignoring "CMD_LOCALIZEREMOTEUSER
+		    " because "CMD_REMOTEUSERATTR" is set");
+	}
+	set_remote_user(r);
+    } else if (USING_LOCALIZE_REMOTE_USER(dc)) {
+	LOG_RERROR(APLOG_INFO, 0, r, CMD_LOCALIZEREMOTEUSER" is deprecated, "
+		"consider using \""CMD_REMOTEUSERATTR" sAMAccountName\"");
 	localize_remote_user(r);
+    }
 
     return OK;
 }
@@ -2147,6 +2245,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->auth_authoritative = FLAG_UNSET;
 	dc->export_delegated = FLAG_UNSET;
 	dc->localize_remote_user = FLAG_UNSET;
+	dc->remote_user_attr = NULL;
 	dc->use_suexec = FLAG_UNSET;
     }
     return (void *)dc;
@@ -2184,6 +2283,11 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 	merged_dc->localize_remote_user = 
 	    FLAG_MERGE(base_dc->localize_remote_user,
 		new_dc->localize_remote_user);
+
+	if (new_dc->remote_user_attr)
+	    merged_dc->remote_user_attr = new_dc->remote_user_attr;
+	else
+	    merged_dc->remote_user_attr = apr_pstrdup(p, base_dc->remote_user_attr);
     }
     return (void *)merged_dc;
 }
