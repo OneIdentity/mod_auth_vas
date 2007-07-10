@@ -94,7 +94,10 @@
 # define AP_INIT_TAKE1(d,f,m,w,h) {d,f,m,w,TAKE1,h}
 # define AP_METHOD_BIT		1
 # define APR_OFFSETOF(t,f) 	(void *)XtOffsetOf(t,f)
+/* Always allocate RUSER(r) from RUSER_POOL(r)
+ * see http://httpd.apache.org/docs/1.3/misc/API.html#pools-used */
 # define RUSER(r) 		(r)->connection->user
+# define RUSER_POOL(r)		(r)->connection->pool
 # define RAUTHTYPE(r) 		(r)->connection->ap_auth_type
 # if __GNUC__
 #  define LOG_RERROR(l,x,r,fmt,args...) \
@@ -125,7 +128,10 @@
 # include <apr_tables.h>
 # include <apr_base64.h>
 # include <apr_general.h>
+/* Always allocate RUSER(r) from RUSER_POOL(r) for the sake of Apache 1.3.
+ * see http://httpd.apache.org/docs/1.3/misc/API.html#pools-used */
 # define RUSER(r) (r)->user
+# define RUSER_POOL(r) (r)->pool
 # define RAUTHTYPE(r) (r)->ap_auth_type
 
 # if __GNUC__
@@ -377,7 +383,6 @@ static void auth_vas_child_init(server_rec *s, pool *p);
 static void auth_vas_init(server_rec *s, pool *p);
 #endif
 static void set_remote_user(request_rec *r);
-static void set_ruser_pstrdup(request_rec *r, const char *name);
 static void localize_remote_user_strcmp(request_rec *r);
 
 /*
@@ -1211,7 +1216,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     /* Authenticated */
     rval = OK;
     RAUTHTYPE(r) = "Basic";
-    set_ruser_pstrdup(r, rn->vas_pname);
+    RUSER(r) = apr_pstrdup(RUSER_POOL(r), rn->vas_pname);
 
  done:
 
@@ -1224,21 +1229,6 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     UNLOCK_VAS(r);
 
     return rval;
-}
-
-/**
- * Sets the RUSER (REMOTE_USER) for the request to a copy of the specified
- * name. This function should be used to ensure the string is allocated from
- * the correct memory pool. This is particularly important on Apache 1.3.
- * See http://httpd.apache.org/docs/1.3/misc/API.html#pools-used
- */
-static void
-set_ruser_pstrdup(request_rec *r, const char *name) {
-#if defined(APXS1)
-    RUSER(r) = apr_pstrdup(r->connection->pool, name);
-#else
-    RUSER(r) = apr_pstrdup(r->pool, name);
-#endif
 }
 
 /**
@@ -1527,13 +1517,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    goto done;
 	}
 
-	/* Copy out the authenticated user's name.
-	 * This is a special case that does not use set_ruser_pstrdup(). */
-#if defined(APXS1)
-	RUSER(r) = apr_pstrmemdup(r->connection->pool, buf.value, buf.length);
-#else
-	RUSER(r) = apr_pstrmemdup(r->pool, buf.value, buf.length);
-#endif
+	/* Copy out the authenticated user's name. */
+	RUSER(r) = apr_pstrmemdup(RUSER_POOL(r), buf.value, buf.length);
 	gss_release_buffer(&minor_status, &buf);
 	if (RUSER(r) == NULL) {
 	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_pstrmemdup");
@@ -2148,7 +2133,7 @@ set_remote_user(request_rec *r)
 	    ASSERT(strvals);
 	    ASSERT(strvals[0]);
 
-	    set_ruser_pstrdup(r, strvals[0]);
+	    RUSER(r) = apr_pstrdup(RUSER_POOL(r), strvals[0]);
 
 	    (void) vas_vals_free_string(sc->vas_ctx, strvals, count);
 	} else {
@@ -2200,14 +2185,14 @@ localize_remote_user(request_rec *r)
     }
 
     /* Unix-enabled user, convert back to their name */
-    if ((aprst = apr_uid_name_get(&username, uid, r->pool)) != OK) {
+    if ((aprst = apr_uid_name_get(&username, uid, RUSER_POOL(r))) != OK) {
 	LOG_RERROR(LOG_ERR, aprst, r, "apr_uid_name_get failed for uid %d", uid);
 	return;
     }
 
     /* Set the authorized username to the localized name.
-     * (Unnecessarily duplicates the username) */
-    set_ruser_pstrdup(r, username);
+     * username was allocated out of the right pool. */
+    RUSER(r) = username;
     return;
 
 #else /* !APR_HAS_USER */
