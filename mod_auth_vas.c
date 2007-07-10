@@ -378,6 +378,7 @@ static void auth_vas_init(server_rec *s, pool *p);
 #endif
 static void set_remote_user(request_rec *r);
 static void set_ruser_pstrdup(request_rec *r, const char *name);
+static void localize_remote_user_strcmp(request_rec *r);
 
 /*
  * The per-process VAS mutex.
@@ -2176,48 +2177,69 @@ finish:
 static void
 localize_remote_user(request_rec *r)
 {
-    char *p, *user_realm;
-    struct passwd *pw1, *pw2;
+#ifdef APR_HAS_USER
+    apr_status_t aprst;
+    apr_uid_t uid, gid;
+    char *username;
 
     ASSERT(r != NULL);
-
-    p = strchr(RUSER(r), '@');
-    if (!p) 
-	return;	/* Not a UPN */
-    user_realm = p + 1;
+    TRACE_R(r, __FUNCTION__);
 
     /* Convert the UPN into a UID, then convert the UID back again */
-    pw1 = getpwnam(RUSER(r));
-    if (!pw1) {
-	/* User is probably not Unix-enabled. Strip the realm if it is the same
-	 * as the server's for consitency */
-	const auth_vas_server_config *sc;
 
-	LOG_RERROR_ERRNO(APLOG_DEBUG, 0, r, "getpwnam: %.100s", RUSER(r));
+    if ((aprst = apr_uid_get(&uid, &gid, RUSER(r), r->pool) != OK)) {
+	/* User is probably not Unix-enabled. Try stripping the realm anyway
+	 * for consistency */
 
-	ASSERT(r->server != NULL);
-	sc = GET_SERVER_CONFIG(r->server->module_config);
+	LOG_RERROR(LOG_DEBUG, aprst, r,
+		"apr_uid_get failed for %s, falling back to strcmp method",
+		RUSER(r));
 
-	ASSERT(sc->default_realm != NULL);
-
-	if (strcasecmp(user_realm, sc->default_realm) == 0) {
-	    LOG_RERROR(APLOG_DEBUG, 0, r, "stripping matching realm from "
-		    "non-Unix user %s", RUSER(r));
-	    *p = '\0';
-	}
-
+	localize_remote_user_strcmp(r);
 	return;
     }
 
-    pw2 = getpwuid(pw1->pw_uid);
-    if (!pw2) {
-	LOG_RERROR_ERRNO(APLOG_ERR, 0, r, "getpwuid: %.100s %d", RUSER(r),
-		pw1->pw_uid);
+    /* Unix-enabled user, convert back to their name */
+    if ((aprst = apr_uid_name_get(&username, uid, r->pool)) != OK) {
+	LOG_RERROR(LOG_ERR, aprst, r, "apr_uid_name_get failed for uid %d", uid);
 	return;
     }
 
-    /* Set the authorized username to the localized name */
-    set_ruser_pstrdup(r, pw2->pw_name);
+    /* Set the authorized username to the localized name.
+     * (Unnecessarily duplicates the username) */
+    set_ruser_pstrdup(r, username);
+    return;
+
+#else /* !APR_HAS_USER */
+    localize_remote_user_strcmp(r);
+    return;
+#endif /* !APR_HAS_USER */
+}
+
+static void
+localize_remote_user_strcmp(request_rec *r)
+{
+    const auth_vas_server_config *sc;
+    char *at, *user_realm;
+
+    ASSERT(r != NULL);
+    TRACE_R(r, __FUNCTION__);
+
+    at = strchr(RUSER(r), '@');
+    if (!at)
+	return; /* Not a UPN */
+
+    user_realm = at + 1;
+
+    ASSERT(r->server != NULL);
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+
+    ASSERT(sc->default_realm != NULL);
+    if (strcasecmp(user_realm, sc->default_realm) == 0) {
+	LOG_RERROR(APLOG_DEBUG, 0, r, "stripping matching realm from "
+		"user %s", RUSER(r));
+	*at = '\0'; /* Trimming RUSER(r) directly */
+    }
 }
 
 /**
