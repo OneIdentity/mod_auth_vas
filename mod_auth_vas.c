@@ -377,6 +377,7 @@ static void auth_vas_child_init(server_rec *s, pool *p);
 static void auth_vas_init(server_rec *s, pool *p);
 #endif
 static void set_remote_user(request_rec *r);
+static void set_ruser_pstrdup(request_rec *r, const char *name);
 
 /*
  * The per-process VAS mutex.
@@ -1209,7 +1210,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     /* Authenticated */
     rval = OK;
     RAUTHTYPE(r) = "Basic";
-    RUSER(r) = apr_pstrdup(r->pool, rn->vas_pname);
+    set_ruser_pstrdup(r, rn->vas_pname);
 
  done:
 
@@ -1222,6 +1223,21 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     UNLOCK_VAS(r);
 
     return rval;
+}
+
+/**
+ * Sets the RUSER (REMOTE_USER) for the request to a copy of the specified
+ * name. This function should be used to ensure the string is allocated from
+ * the correct memory pool. This is particularly important on Apache 1.3.
+ * See http://httpd.apache.org/docs/1.3/misc/API.html#pools-used
+ */
+static void
+set_ruser_pstrdup(request_rec *r, const char *name) {
+#if defined(APXS1)
+    RUSER(r) = apr_pstrdup(r->connection->pool, name);
+#else
+    RUSER(r) = apr_pstrdup(r->pool, name);
+#endif
 }
 
 /**
@@ -1510,9 +1526,9 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    goto done;
 	}
 
-	/* Copy out the authenticated user's name */
+	/* Copy out the authenticated user's name.
+	 * This is a special case that does not use set_ruser_pstrdup(). */
 #if defined(APXS1)
-	/* http://httpd.apache.org/docs/misc/API.html */
 	RUSER(r) = apr_pstrmemdup(r->connection->pool, buf.value, buf.length);
 #else
 	RUSER(r) = apr_pstrmemdup(r->pool, buf.value, buf.length);
@@ -2131,7 +2147,7 @@ set_remote_user(request_rec *r)
 	    ASSERT(strvals);
 	    ASSERT(strvals[0]);
 
-	    RUSER(r) = apr_pstrdup(r->pool, strvals[0]);
+	    set_ruser_pstrdup(r, strvals[0]);
 
 	    (void) vas_vals_free_string(sc->vas_ctx, strvals, count);
 	} else {
@@ -2182,12 +2198,7 @@ localize_remote_user(request_rec *r)
     }
 
     /* Set the authorized username to the localized name */
-#if defined(APXS1)
-    /* http://httpd.apache.org/docs/misc/API.html */
-    RUSER(r) = apr_pstrdup(r->connection->pool, pw2->pw_name);
-#else
-    RUSER(r) = apr_pstrdup(r->pool, pw2->pw_name);
-#endif
+    set_ruser_pstrdup(r, pw2->pw_name);
 }
 
 /**
