@@ -1600,8 +1600,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	/* Construct the header value string */
 	strcpy(auth_out, NEGOTIATE_TEXT);
-	strncpy(auth_out, out_token.value, out_token.length);
-        auth_out[NEGOTIATE_SIZE + out_token.length] = '\0';
+	strncat(auth_out, out_token.value, out_token.length);
 
 	/* Add to the outgoing header set */
 	apr_table_set(r->err_headers_out, "WWW-Authenticate", auth_out);
