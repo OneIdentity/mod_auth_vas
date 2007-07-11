@@ -39,6 +39,8 @@
  *  MODAUTHVAS_DIAGNOSTIC - define this to enable assertions
  */
 
+#include <string.h>
+
 #include <vas.h>
 #include <vas_gss.h>
 #include <gssapi_krb5.h>
@@ -1598,7 +1600,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	/* Construct the header value string */
 	strcpy(auth_out, NEGOTIATE_TEXT);
-        strcat(auth_out, out_token.value);
+	strncpy(auth_out, out_token.value, out_token.length);
         auth_out[NEGOTIATE_SIZE + out_token.length] = '\0';
 
 	/* Add to the outgoing header set */
