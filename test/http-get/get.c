@@ -826,10 +826,12 @@ again_spnego:
     return response.result;
 }
 
-/* Use simple (unauthenticated) GET */
+/* Use simple (unauthenticated) GET
+ * Sends a fake NTLM packet if fake_ntlm is nonzero */
 int
-get_simple(urlarg)
+get_simple(urlarg, fake_ntlm)
     char *urlarg;
+    int fake_ntlm;
 {
     struct url url;
     struct header *h;
@@ -837,6 +839,9 @@ get_simple(urlarg)
     struct response response;
 
     parseurl(&url, urlarg);
+
+    if (fake_ntlm) /* Negotiate base64("NTLMSSP") */
+	appendheader(&sendheaders, "Authorization", "Negotiate TlRMTVNTUA==");
 
 again:
 
@@ -931,10 +936,12 @@ usage(char *prog)
 {
     fprintf(stderr, "usage: %s [options] -s url\n"
 	    	    "       %s [options] -n [-S spn] [-g] url\n"
+		    "       %s [options] -f url\n"
 		    "       %s [options] -b user:pass url\n"
 		    "  where the authentication modes are\n"
 		    "       -s - simple (no authentication)\n"
 		    "       -n - Negotiate (SPNEGO)\n"
+		    "       -f - Fake NTLM\n"
 		    "       -b - Basic\n"
 		    "  The generic options are:\n"
 		    "       -e outfile    - where to write HTTP response code\n"
@@ -957,7 +964,7 @@ main(argc, argv)
     int optind;
     int ret;
     FILE *codef = NULL;
-    enum { UNSET, NEGOTIATE, BASIC, SIMPLE } mode = UNSET;
+    enum { UNSET, NEGOTIATE, BASIC, SIMPLE, FAKE_NTLM } mode = UNSET;
     char *principal = NULL;
 
     /* Can't use getopt; it's not portable :( */
@@ -984,6 +991,9 @@ main(argc, argv)
 	} else if (strcmp(argv[optind], "-s") == 0) {
 	    if (mode != UNSET) usage(argv[0]);
 	    mode = SIMPLE;
+	} else if (strcmp(argv[optind], "-f") == 0) {
+	    if (mode != UNSET) usage(argv[0]);
+	    mode = FAKE_NTLM;
 	} else if (strcmp(argv[optind], "-S") == 0) {
 	    if (mode != NEGOTIATE) usage(argv[0]);
 	    optind++;
@@ -1023,7 +1033,11 @@ main(argc, argv)
 	    break;
 	case SIMPLE:
 	    if (optind + 1 != argc) usage(argv[0]);
-	    ret = get_simple(argv[optind]);
+	    ret = get_simple(argv[optind], 0);
+	    break;
+	case FAKE_NTLM:
+	    if (optind + 1 != argc) usage(argv[0]);
+	    ret = get_simple(argv[optind], 1);
 	    break;
     }
 
