@@ -18,6 +18,7 @@
 #  fetch_nego   - fetch an URL to stdout using HTTP/SPNEGO
 #  fetch_basic  - fetch an URL to stdout using Basic auth
 #  fetch_simple - fetch an URL to stdout using no authentication
+#  fetch_fake_ntlm - fetch an URL to stdout using a fake NTLM auth header
 #  pass		- signals a test pass (and exits)
 #  fail		- signals a test fail (and exits)
 #  ignore	- signals this test is not valid (and exits)
@@ -114,6 +115,7 @@ _fetch () {
 fetch_nego ()   { _fetch -n "$@" && (ifdebug "Negotiate auth: success" >&2) ; }
 fetch_basic ()  { _fetch -b "$@" && (ifdebug "Basic auth: success" >&2) ; }
 fetch_simple () { _fetch -s "$@" && (ifdebug "No auth: success" >&2) ; }
+fetch_fake_ntlm () { _fetch -f "$@" && (ifdebug "Fake NTLM auth: success" >&2) ; }
 
 #-- cleanup management
 _CLEANUPS='cleanup'
