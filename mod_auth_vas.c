@@ -95,6 +95,7 @@
 # define apr_thread_mutex_unlock ap_release_mutex
 # define AP_INIT_FLAG(d,f,m,w,h)  {d,f,m,w,FLAG,h}
 # define AP_INIT_TAKE1(d,f,m,w,h) {d,f,m,w,TAKE1,h}
+# define AP_INIT_RAW_ARGS(d,f,m,w,h) {d,f,m,w,RAW_ARGS,h}
 # define AP_METHOD_BIT		1
 # define APR_OFFSETOF(t,f) 	(void *)XtOffsetOf(t,f)
 /* Always allocate RUSER(r) from RUSER_POOL(r)
@@ -281,7 +282,7 @@ typedef struct {
 
 /*
  * Per-directory configuration data - computed while traversing htaccess.
- * These fields should only be accessed using the USING_*() macros defined
+ * The int types should only be accessed using the USING_*() macros defined
  * below. This is because they might be uninitialised.
  */
 typedef struct {
@@ -290,7 +291,8 @@ typedef struct {
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
     int export_delegated;		/* AuthVasExportDelegated (default off) */
     int localize_remote_user;		/* AuthVasLocalizeRemoteUser (default off) */
-    char *remote_user_attr;		/* AuthVasRemoteUserAttr */
+    char *remote_user_map;		/* AuthVasRemoteUserMap (NULL if unset) */
+    char *remote_user_map_args;		/* Argument to AuthVasRemoteUserMap (NULL if none) */
     int use_suexec;			/* AuthVasSuexecAsRemoteUser (default off) */
 } auth_vas_dir_config;
 
@@ -342,6 +344,8 @@ module AP_MODULE_DECLARE_DATA auth_vas_module;
 /* Prototypes */
 static const char *server_set_string_slot(cmd_parms *cmd, void *ignored, 
 	const char *arg);
+static const char *set_remote_user_map_conf(cmd_parms *cmd, void *ignored,
+	const char *args);
 static int server_ctx_is_valid(server_rec *s);
 static int match_user(request_rec *r, const char *name, int);
 static int match_group(request_rec *r, const char *nam, int);
@@ -386,6 +390,8 @@ static void auth_vas_child_init(server_rec *s, pool *p);
 static void auth_vas_init(server_rec *s, pool *p);
 #endif
 static void set_remote_user(request_rec *r);
+static void set_remote_user_attr(request_rec *r, const char *line);
+static void localize_remote_user(request_rec *r, const char *line);
 static void localize_remote_user_strcmp(request_rec *r);
 
 /*
@@ -453,7 +459,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_AUTHORITATIVE	"AuthVasAuthoritative"
 #define CMD_EXPORTDELEG		"AuthVasExportDelegated"
 #define CMD_LOCALIZEREMOTEUSER	"AuthVasLocalizeRemoteUser" /**< Deprecated */
-#define CMD_REMOTEUSERATTR	"AuthVasRemoteUserAttr"
+#define CMD_REMOTEUSERMAP	"AuthVasRemoteUserMap"
 #define CMD_SPN			"AuthVasServicePrincipal"
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
@@ -479,15 +485,15 @@ static const command_rec auth_vas_cmds[] =
     AP_INIT_FLAG(CMD_LOCALIZEREMOTEUSER, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
 		ACCESS_CONF | OR_AUTHCFG,
-		"Set REMOTE_USER to a local username instead of a UPN (deprecated in favor of "CMD_REMOTEUSERATTR")"),
+		"Set REMOTE_USER to a local username instead of a UPN (deprecated in favor of "CMD_REMOTEUSERMAP")"),
     AP_INIT_FLAG(CMD_USESUEXEC, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, use_suexec),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Execute CGI scripts as the authenticated remote user (if suEXEC is active)"),
-    AP_INIT_TAKE1(CMD_REMOTEUSERATTR, ap_set_string_slot,
-		APR_OFFSETOF(auth_vas_dir_config, remote_user_attr),
+    AP_INIT_RAW_ARGS(CMD_REMOTEUSERMAP, set_remote_user_map_conf,
+		APR_OFFSETOF(auth_vas_dir_config, remote_user_map),
 		ACCESS_CONF | OR_AUTHCFG,
-		"LDAP attribute to use for the REMOTE_USER environment variable"),
+		"How to map the remote user identity to the REMOTE_USER environment variable"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -1557,11 +1563,9 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
 	TRACE_R(r, "waiting for more tokens from client");
 	result = HTTP_UNAUTHORIZED;
-    } else if (memcmp(auth_param, "TlRM", 4) == 0) {
+    } else if (memcmp(auth_line, "TlRM", 4) == 0) {
 	LOG_RERROR(APLOG_ERR, 0, r,
 		    "NTLM authentication attempted");
-	/* Already logged the failure cause */
-	gsserr = 0;
 	/* TODO: Set a location header to redirect to a NTLM page (bug 210) */
 	result = HTTP_UNAUTHORIZED;
     } else {
@@ -2105,27 +2109,24 @@ finish:
  * Only call this if the remote_user_attr is not NULL.
  */
 static void
-set_remote_user(request_rec *r)
+set_remote_user_attr(request_rec *r, const char *attr)
 {
-    auth_vas_dir_config *dc;
     const char *old_ruser = RUSER(r);
     auth_vas_server_config *sc;
-    const char *anames[2] = { NULL, NULL };
+    const char *const anames[2] = { attr, NULL };
     vas_attrs_t *attrs;
     auth_vas_rnote *rn;
 
     ASSERT(r != NULL);
 
+    /* Depends on the remote_user_map_methods having the right info */
+    ASSERT(attr != NULL);
+    ASSERT(attr[0]);
+
     if (LOCK_VAS(r)) {
 	LOG_RERROR(APLOG_ERR, 0, r, "Failed to lock VAS");
 	return;
     }
-
-    dc = GET_DIR_CONFIG(r->per_dir_config);
-    ASSERT(dc != NULL);
-    ASSERT(dc->remote_user_attr != NULL);
-
-    anames[0] = dc->remote_user_attr;
 
     /* Ensure the auth mechanism (SPNEGO/Basic) set RUSER to the full UPN */
     ASSERT(strchr(RUSER(r), '@') != NULL);
@@ -2149,13 +2150,14 @@ set_remote_user(request_rec *r)
 	}
     } 
 
-    if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj, anames, &attrs)
-	    == VAS_ERR_SUCCESS) {
+    if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj,
+		anames, &attrs) == VAS_ERR_SUCCESS) {
 	char **strvals;
 	int count;
 	vas_err_t vaserr;
 
-	vaserr = vas_vals_get_string(sc->vas_ctx, attrs, dc->remote_user_attr, &strvals, &count);
+	vaserr = vas_vals_get_string(sc->vas_ctx, attrs, attr, &strvals,
+		&count);
 	if (vaserr == VAS_ERR_SUCCESS || vaserr == VAS_ERR_MORE_VALS) {
 	    ASSERT(count > 0);
 	    ASSERT(strvals);
@@ -2165,22 +2167,25 @@ set_remote_user(request_rec *r)
 
 	    (void) vas_vals_free_string(sc->vas_ctx, strvals, count);
 	} else {
-	    LOG_RERROR(APLOG_ERR, 0, r, "Failed getting %s attribute values: %s",
-		    dc->remote_user_attr, vas_err_get_string(sc->vas_ctx, 1));
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "Failed getting %s attribute values: %s",
+		    attr, vas_err_get_string(sc->vas_ctx, 1));
 	}
 
 	vas_attrs_free(sc->vas_ctx, attrs);
     }
     else {
-	LOG_RERROR(APLOG_ERR, 0, r, "vas_user_get_attrs() failed to get attribute %s: %s",
-		dc->remote_user_attr, vas_err_get_string(sc->vas_ctx, 1));
+	LOG_RERROR(APLOG_ERR, 0, r,
+		"vas_user_get_attrs() failed to get attribute %s: %s",
+		attr, vas_err_get_string(sc->vas_ctx, 1));
     }
 
 finish:
     UNLOCK_VAS(r);
 
-    LOG_RERROR(APLOG_INFO, 0, r, "Remote user set from %s to %s (attribute %s)",
-	    old_ruser, RUSER(r), dc->remote_user_attr);
+    LOG_RERROR(APLOG_INFO, 0, r,
+	    "Remote user set from %.100s to %.100s (attribute %s)",
+	    old_ruser, RUSER(r), attr);
 }
 
 
@@ -2188,7 +2193,7 @@ finish:
  * Convert the authenticated user name into a local username.
  */
 static void
-localize_remote_user(request_rec *r)
+localize_remote_user(request_rec *r, const char *unused)
 {
 #ifdef APR_HAS_USER
     apr_status_t aprst;
@@ -2229,6 +2234,10 @@ localize_remote_user(request_rec *r)
 #endif /* !APR_HAS_USER */
 }
 
+/**
+ * Strips "@DEFAULT-REALM" from the end of RUSER(r) if it is there.
+ * If the realm does not match, it is not stripped.
+ */
 static void
 localize_remote_user_strcmp(request_rec *r)
 {
@@ -2255,6 +2264,93 @@ localize_remote_user_strcmp(request_rec *r)
     }
 }
 
+static struct {
+    const char *name;
+    void (*method)(request_rec *r, const char *line);
+    /** Human-readable name of the kind of argument expected by this method.
+     * NULL means no argument expected. */
+    const char *require_arg_type;
+} remote_user_map_methods[] = {
+    { "ldap-attr", set_remote_user_attr, "LDAP attribute" },
+    { "local", localize_remote_user, NULL },
+    { "default", NULL, NULL }
+};
+
+static const size_t num_remote_user_map_methods =
+	sizeof(remote_user_map_methods) / sizeof(remote_user_map_methods[0]);
+
+/**
+ * Processes the RemoteUserMap option, ensuring that required arguments are
+ * provided.
+ * \return \c NULL on success or an error message.
+ */
+static const char *
+set_remote_user_map_conf(cmd_parms *cmd, void *struct_ptr, const char *args)
+{
+    auth_vas_server_config *sc;
+    auth_vas_dir_config *dc = (auth_vas_dir_config*)struct_ptr;
+    char *optval1, *optval2;
+    int i;
+
+    sc = GET_SERVER_CONFIG(cmd->server->module_config);
+    ASSERT(sc != NULL);
+
+    optval1 = ap_getword_white(cmd->pool, &args);
+
+    if (!optval1)
+	return CMD_REMOTEUSERMAP" option requires at least one argument";
+
+    optval2 = ap_getword_white(cmd->pool, &args);
+
+    ASSERT(dc != NULL);
+
+    dc->remote_user_map = optval1;
+    dc->remote_user_map_args = optval2;
+
+    for (i = 0; i < num_remote_user_map_methods; ++i) {
+	if (strcasecmp(optval1, remote_user_map_methods[i].name) == 0) {
+	    if (remote_user_map_methods[i].require_arg_type && !optval2)
+		return apr_psprintf(cmd->pool,
+			CMD_REMOTEUSERMAP" %s requires an argument of type %s",
+			optval1, remote_user_map_methods[i].require_arg_type);
+	    return NULL; /* Option is valid. */
+	}
+    }
+
+    return apr_psprintf(cmd->pool,
+	    "Unrecognised parameter to "CMD_REMOTEUSERMAP": %s", optval1);
+}
+
+/**
+ * Sets RUSER(r) according to the remote_user_map configuration.
+ */
+static void
+set_remote_user(request_rec *r)
+{
+    auth_vas_dir_config *dc;
+    const char *method_name, *args;
+    int i;
+
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+    ASSERT(dc != NULL);
+
+    if (dc->remote_user_map == NULL)
+	dc->remote_user_map = "default";
+
+    method_name = dc->remote_user_map;
+    args = dc->remote_user_map_args;
+
+    for (i = 0; i < num_remote_user_map_methods; ++i) {
+	if (strcasecmp(method_name, remote_user_map_methods[i].name) == 0) {
+	    if (remote_user_map_methods[i].method)
+		(*remote_user_map_methods[i].method)(r, args);
+	    return;
+	}
+    }
+    /* XXX: This should already have been detected and flagged as an error */
+    LOG_RERROR(APLOG_ERR, 0, r, "Unknown " CMD_REMOTEUSERMAP " \"%s\"", method_name);
+}
+
 /**
  * Fix up environment for any delegated credentials.
  */
@@ -2272,19 +2368,7 @@ auth_vas_fixup(request_rec *r)
     TRACE_R(r, "auth_vas_fixup");
     export_cc(r);
 
-    if (dc->remote_user_attr) {
-	/* Access localize_remote_user directly so this doesn't evaluate true
-	 * because of a default setting */
-	if (dc->localize_remote_user == FLAG_ON) {
-	    LOG_RERROR(APLOG_NOTICE, 0, r, "Ignoring "CMD_LOCALIZEREMOTEUSER
-		    " because "CMD_REMOTEUSERATTR" is set");
-	}
-	set_remote_user(r);
-    } else if (USING_LOCALIZE_REMOTE_USER(dc)) {
-	LOG_RERROR(APLOG_INFO, 0, r, CMD_LOCALIZEREMOTEUSER" is deprecated, "
-		"consider using \""CMD_REMOTEUSERATTR" sAMAccountName\"");
-	localize_remote_user(r);
-    }
+    set_remote_user(r);
 
     return OK;
 }
@@ -2310,7 +2394,8 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->auth_authoritative = FLAG_UNSET;
 	dc->export_delegated = FLAG_UNSET;
 	dc->localize_remote_user = FLAG_UNSET;
-	dc->remote_user_attr = NULL;
+	dc->remote_user_map = "default";
+	dc->remote_user_map_args = NULL;
 	dc->use_suexec = FLAG_UNSET;
     }
     return (void *)dc;
@@ -2345,14 +2430,36 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 		new_dc->export_delegated);
 	merged_dc->use_suexec = FLAG_MERGE(base_dc->use_suexec,
 		new_dc->use_suexec);
-	merged_dc->localize_remote_user = 
-	    FLAG_MERGE(base_dc->localize_remote_user,
-		new_dc->localize_remote_user);
 
-	if (new_dc->remote_user_attr)
-	    merged_dc->remote_user_attr = new_dc->remote_user_attr;
-	else
-	    merged_dc->remote_user_attr = apr_pstrdup(p, base_dc->remote_user_attr);
+	/*
+	 * Handle deprecated AuthVasLocalizeRemoteUser
+	 *  AuthVasLocalizeRemoteUser on  -> AuthVasRemoteUserMap local
+	 *  AuthVasLocalizeRemoteUser off -> AuthVasRemoteUserMap default
+	 */
+	if (strcasecmp(new_dc->remote_user_map, "default") != 0) {
+	    if (new_dc->localize_remote_user != FLAG_UNSET)
+		LOG_P_ERROR(APLOG_NOTICE, 0, p,
+			"Ignoring " CMD_LOCALIZEREMOTEUSER " option "
+			"because " CMD_REMOTEUSERMAP " is set");
+
+	    merged_dc->remote_user_map = apr_pstrdup(p,
+		    new_dc->remote_user_map);
+	    merged_dc->remote_user_map_args = apr_pstrdup(p,
+		    new_dc->remote_user_map_args);
+	} else if (new_dc->localize_remote_user == FLAG_ON) {
+	    merged_dc->remote_user_map = "local";
+	    merged_dc->remote_user_map_args = NULL;
+	} else if (new_dc->localize_remote_user == FLAG_OFF &&
+		strcasecmp(base_dc->remote_user_map, "local") == 0) {
+	    /* Localize is explicitly off but the parent's was explicitly on */
+	    merged_dc->remote_user_map = "default";
+	    merged_dc->remote_user_map_args = NULL;
+	} else {
+	    merged_dc->remote_user_map = apr_pstrdup(p,
+		    base_dc->remote_user_map);
+	    merged_dc->remote_user_map_args = apr_pstrdup(p,
+		    base_dc->remote_user_map_args);
+	}
     }
     return (void *)merged_dc;
 }
