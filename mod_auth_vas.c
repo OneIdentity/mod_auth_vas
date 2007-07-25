@@ -291,15 +291,15 @@ typedef struct {
  * below. This is because they might be uninitialised.
  */
 typedef struct {
-    int auth_negotiate;			/* AuthVasUseNegotiate (default On) */
-    apr_table_t *negotiate_subnets;     /* AuthVasUseNegotiate (list of subnets, or NULL for all) */
-    int auth_basic;			/* AuthVasUseBasic (default off) */
-    int auth_authoritative;		/* AuthVasAuthoritative (default on) */
-    int export_delegated;		/* AuthVasExportDelegated (default off) */
-    int localize_remote_user;		/* AuthVasLocalizeRemoteUser (default off) */
-    char *remote_user_map;		/* AuthVasRemoteUserMap (NULL if unset) */
-    char *remote_user_map_args;		/* Argument to AuthVasRemoteUserMap (NULL if none) */
-    int use_suexec;			/* AuthVasSuexecAsRemoteUser (default off) */
+    int auth_negotiate;			/**< AuthVasUseNegotiate (default on) */
+    apr_table_t *negotiate_subnets;     /**< AuthVasUseNegotiate (list of subnets, or NULL for all) */
+    int auth_basic;			/**< AuthVasUseBasic (default off) */
+    int auth_authoritative;		/**< AuthVasAuthoritative (default on) */
+    int export_delegated;		/**< AuthVasExportDelegated (default off) */
+    int localize_remote_user;		/**< AuthVasLocalizeRemoteUser (default off) */
+    char *remote_user_map;		/**< AuthVasRemoteUserMap (NULL if unset) */
+    char *remote_user_map_args;		/**< Argument to AuthVasRemoteUserMap (NULL if none) */
+    int use_suexec;			/**< AuthVasSuexecAsRemoteUser (default off) */
 } auth_vas_dir_config;
 
 /* Default behaviour if a flag is not set */
