@@ -2329,6 +2329,16 @@ finish:
     UNLOCK_VAS(r);
 }
 
+static struct ldap_lookup_map {
+    const char *const ldap_attr;
+    vas_err_t (*vas_func)(vas_ctx_t *ctx, vas_id_t *serverid, vas_user_t *user, char **result);
+} quick_ldap_lookups[] = {
+    { "sAMAccountName",		vas_user_get_sam_account_name },
+    { "distinguishedName",	vas_user_get_dn },
+    { "objectSid",		vas_user_get_sid },
+    { NULL, NULL }
+};
+
 /**
  * Set the remote username (REMOTE_USER variable) to the chosen attribute.
  * Only call this if the remote_user_attr is not NULL.
@@ -2348,16 +2358,23 @@ set_remote_user_attr(request_rec *r, const char *attr)
     ASSERT(attr != NULL);
     ASSERT(attr[0]);
 
+    /* Ensure the auth mechanism (SPNEGO/Basic) set RUSER to the full UPN */
+    ASSERT(strchr(RUSER(r), '@') != NULL);
+
+    if (strcasecmp(attr, "userPrincipalName") == 0) {
+	LOG_RERROR(LOG_DEBUG, 0, r,
+		"%s: Returning early because REMOTE_USER is already the UPN",
+		__FUNCTION__);
+	return;
+    }
+
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+    ASSERT(sc != NULL);
+
     if (LOCK_VAS(r)) {
 	LOG_RERROR(APLOG_ERR, 0, r, "Failed to lock VAS");
 	return;
     }
-
-    /* Ensure the auth mechanism (SPNEGO/Basic) set RUSER to the full UPN */
-    ASSERT(strchr(RUSER(r), '@') != NULL);
-
-    sc = GET_SERVER_CONFIG(r->server->module_config);
-    ASSERT(sc != NULL);
 
     rn = GET_RNOTE(r);
 
@@ -2374,6 +2391,61 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    goto finish;
 	}
     } 
+    
+    /* Look for attributes that are likely to be in the vas cache */
+    {
+	struct ldap_lookup_map *map;
+
+	for (map = quick_ldap_lookups; map->ldap_attr; ++map) {
+	    ASSERT(map->vas_func != NULL);
+	    if (strcasecmp(map->ldap_attr, attr) == 0) {
+		char *attrval;
+
+		LOG_RERROR(LOG_DEBUG, 0, r,
+			"%s: Using vas cache for lookup of %s attribute",
+			__FUNCTION__, attr);
+
+		if (map->vas_func(sc->vas_ctx, sc->vas_serverid,
+			    rn->vas_user_obj, &attrval) == VAS_ERR_SUCCESS)
+		{ /* success */
+		    RUSER(r) = apr_pstrdup(RUSER_POOL(r), attrval);
+		    free(attrval);
+		} else { /* VAS error */
+		    LOG_RERROR(APLOG_ERR, 0, r,
+			    "Error looking up %s attribute in vas cache: %s",
+			    attr, vas_err_get_string(sc->vas_ctx, 1));
+		}
+		goto finish;
+	    }
+	}
+
+	/* uidNumber and gidNumber are special cases because libvas provides a
+	 * struct passwd not a char* */
+	if (strcasecmp("uidNumber", attr) == 0 || strcasecmp("gidNumber", attr) == 0) {
+	    const char ug = *attr; /* u or g */
+	    struct passwd *pw;
+
+	    LOG_RERROR(LOG_DEBUG, 0, r,
+		    "%s: Using vas cache for lookup of %cidNumber attribute",
+		    __FUNCTION__, ug);
+	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid,
+			rn->vas_user_obj, &pw) == VAS_ERR_SUCCESS)
+	    { /* success */
+		RUSER(r) = apr_psprintf(RUSER_POOL(r), "%u",
+			ug == 'u' ? pw->pw_uid : pw->pw_gid);
+		free(pw);
+	    } else { /* VAS error (or user is not Unix-enabled) */
+		LOG_RERROR(APLOG_ERR, 0, r,
+			"Error looking up %cidNumber attribute in vas cache: %s",
+			ug, vas_err_get_string(sc->vas_ctx, 1));
+	    }
+	    goto finish;
+	}
+    }
+
+    LOG_RERROR(LOG_DEBUG, 0, r,
+	    "%s: VAS cache lookup unavailable for %s, doing LDAP query",
+	    __FUNCTION__, attr);
 
     if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj,
 		anames, &attrs) == VAS_ERR_SUCCESS) {
