@@ -1820,12 +1820,15 @@ struct ip_cmp_closure {
 
 /**
  * Callback to determine whether a host matches a subnet.
+ * The match state will be returned in both the closure
+ * (::ip_cmp_closure::match_found) and this function's return code.
+ * The ::ip_cmp_closure::match_found field is necessary for APXS1 but also
+ * used on APXS2. Beware that the ::ip_cmp_closure::match_found field and
+ * this function's return code are inverse.
  *
  * @param[in,out] rec
- *            Closure with match info (request, client address).
- *            The match state is returned in the
- *            ::ip_cmp_closure::match_found field on APXS1 because its
- *            ap_table_do() returns void.
+ *            Closure with match info (request, client address) and match
+ *            state.
  *
  * @param[in] key
  *            Ignored.
