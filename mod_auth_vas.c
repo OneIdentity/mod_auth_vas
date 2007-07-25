@@ -1810,9 +1810,9 @@ add_basic_auth_headers(request_rec *r)
 
 struct ip_cmp_closure {
     request_rec *request;
+    int match_found;
 #if defined(APXS1)
     struct sockaddr_in sockaddr;
-    int match_found;
 #else /* APXS2 */
     apr_sockaddr_t *sockaddr_p;
 #endif /* APXS2 */
@@ -1840,7 +1840,10 @@ struct ip_cmp_closure {
  *            dotted-decimal address or number-of-bits notation.
  *
  * @return ZERO if the subnet matched the IP, or NON-ZERO if it did not match.
- * 	   (like ::strcmp). Errors also return non-zero.
+ *            (like ::strcmp). Errors also return non-zero. Callers must stop
+ *            iterating with the same closure if they receive a zero return, or
+ *            a match state in the closure might be overridden with a no-match
+ *            state. apr_table_do and ap_table_do behave correctly.
  */
 static int
 mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
@@ -1849,9 +1852,13 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
     struct ip_cmp_closure *closure = (struct ip_cmp_closure *)rec;
     request_rec *r = closure->request;
 
+    closure->match_found = 0;
+
     /* The default "any" always matches */
-    if (strcmp(AUTH_NEGOTIATE_DEFAULT_KEY, key) == 0)
+    if (strcmp(AUTH_NEGOTIATE_DEFAULT_KEY, key) == 0) {
+	closure->match_found = 1;
 	return MATCH;
+    }
 
 #if !defined(APXS1) /* Apache 2 */
     {
@@ -1891,8 +1898,9 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	}
 
 	if (apr_ipsubnet_test(ipsubnet, closure->sockaddr_p))
-	    return MATCH;
-	return NO_MATCH;
+	    closure->match_found = 1;
+	
+	return !closure->match_found;
     }
 
 #else /* APXS1 */
@@ -1968,10 +1976,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	    if ((ntohl(closure->sockaddr.sin_addr.s_addr) & netmask) ==
 			(ntohl(sinaddr.s_addr) & netmask))
 		closure->match_found = 1;
-	    else
-		closure->match_found = 0;
 	}
-
 	return !closure->match_found;
     }
 #endif /* APXS1 */
@@ -2013,18 +2018,12 @@ is_negotiate_enabled_for_client(request_rec *r)
 		__FUNCTION__, r->connection->remote_ip);
 	return 0;
     }
-    closure.match_found = 0;
 #endif /* APXS1 */
 
     closure.request = r;
 
-    /* apr_table_do returns void on Apache 1 */
-#if !defined(APXS1)
-    return !apr_table_do(mav_ip_subnet_cmp, &closure, dc->negotiate_subnets, NULL);
-#else /* APXS1 */
     apr_table_do(mav_ip_subnet_cmp, &closure, dc->negotiate_subnets, NULL);
     return closure.match_found;
-#endif
 }
 
 /**
