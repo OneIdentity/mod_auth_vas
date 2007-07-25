@@ -86,8 +86,13 @@
 # define apr_psprintf		ap_psprintf
 # define apr_pstrdup		ap_pstrdup
 # define apr_pool_t		pool
+# define apr_table_t		table
+# define apr_table_clear	ap_clear_table
+# define apr_table_do		ap_table_do
 # define apr_table_add		ap_table_add
+# define apr_table_addn		ap_table_addn
 # define apr_table_get		ap_table_get
+# define apr_table_make		ap_make_table
 # define apr_table_set		ap_table_set
 # define apr_table_setn		ap_table_setn
 # define apr_thread_mutex_t	mutex
@@ -286,7 +291,11 @@ typedef struct {
  * below. This is because they might be uninitialised.
  */
 typedef struct {
-    int auth_negotiate;			/* AuthVasUseNegotiate (default on) */
+    /** negotiate_subnets has three possible states:
+     *   NULL: Off - no Negotiate auth at all
+     *   table containing AUTH_NEGOTIATE_DEFAULT_KEY: On for all clients (default)
+     *   table not containing AUTH_NEGOTIATE_DEFAULT_KEY: On for the listed subnets */
+    apr_table_t *negotiate_subnets;     /* AuthVasUseNegotiate (default On for all clients) */
     int auth_basic;			/* AuthVasUseBasic (default off) */
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
     int export_delegated;		/* AuthVasExportDelegated (default off) */
@@ -297,20 +306,20 @@ typedef struct {
 } auth_vas_dir_config;
 
 /* Default behaviour if a flag is not set */
-#define DEFAULT_USING_AUTH_NEGOTIATE            FLAG_ON
 #define DEFAULT_USING_AUTH_BASIC                FLAG_OFF
 #define DEFAULT_USING_AUTH_AUTHORITATIVE        FLAG_ON
 #define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
 #define DEFAULT_USING_LOCALIZE_REMOTE_USER      FLAG_OFF
 #define DEFAULT_USING_SUEXEC                    FLAG_OFF
 
+/** Key used in the negotiate subnet table to indicate the default match of all hosts */
+#define AUTH_NEGOTIATE_DEFAULT_KEY		"default"
+
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
 #define USING_AUTH_DEFAULT(dc, field, def) \
 		((dc) ? TEST_FLAG_DEFAULT((dc)->field, def) : def)
 
 /* Macros to safely test the per-directory flags, applying defaults. */
-#define USING_AUTH_NEGOTIATE(dc) \
-    USING_AUTH_DEFAULT(dc, auth_negotiate,     DEFAULT_USING_AUTH_NEGOTIATE)
 #define USING_AUTH_BASIC(dc) \
     USING_AUTH_DEFAULT(dc, auth_basic,         DEFAULT_USING_AUTH_BASIC)
 #define USING_AUTH_AUTHORITATIVE(dc) \
@@ -322,6 +331,11 @@ typedef struct {
 					    DEFAULT_USING_LOCALIZE_REMOTE_USER)
 #define USING_SUEXEC(dc) \
     USING_AUTH_DEFAULT(dc, use_suexec,         DEFAULT_USING_SUEXEC)
+/** Indicates that Negotiate auth is enabled for _some_ hosts, not
+ * necessarily all. Use is_negotiate_enabled_for_client() to check the current
+ * client. */
+#define USING_AUTH_NEGOTIATE(dc) \
+    ((dc)->negotiate_subnets)
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -344,7 +358,9 @@ module AP_MODULE_DECLARE_DATA auth_vas_module;
 /* Prototypes */
 static const char *server_set_string_slot(cmd_parms *cmd, void *ignored, 
 	const char *arg);
-static const char *set_remote_user_map_conf(cmd_parms *cmd, void *ignored,
+static const char *set_remote_user_map_conf(cmd_parms *cmd, void *struct_ptr,
+	const char *args);
+static const char *set_negotiate_conf(cmd_parms *cmd, void *struct_ptr,
 	const char *args);
 static int server_ctx_is_valid(server_rec *s);
 static int match_user(request_rec *r, const char *name, int);
@@ -466,10 +482,10 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 
 static const command_rec auth_vas_cmds[] =
 {
-    AP_INIT_FLAG(CMD_USENEGOTIATE, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, auth_negotiate),
+    AP_INIT_RAW_ARGS(CMD_USENEGOTIATE, set_negotiate_conf,
+		APR_OFFSETOF(auth_vas_dir_config, negotiate_subnets),
 		ACCESS_CONF | OR_AUTHCFG,
-		"Kerberos SPNEGO authentication using Active Directory"),
+		"Kerberos SPNEGO authentication using Active Directory (On, Off or list of subnets)"),
     AP_INIT_FLAG(CMD_USEBASIC, ap_set_flag_slot,
 		APR_OFFSETOF(auth_vas_dir_config, auth_basic),
 		ACCESS_CONF | OR_AUTHCFG,
@@ -1796,6 +1812,218 @@ add_basic_auth_headers(request_rec *r)
     }
 }
 
+struct ip_cmp_closure {
+    request_rec *request;
+#if defined(APXS1)
+    struct sockaddr_in sockaddr;
+    int match_found;
+#else /* APXS2 */
+    apr_sockaddr_t *sockaddr_p;
+#endif /* APXS2 */
+};
+
+/**
+ * Callback to determine whether a host matches a subnet.
+ *
+ * @param[in,out] rec
+ *            Closure with match info (request, client address).
+ *            The match state is returned in the
+ *            ::ip_cmp_closure::match_found field on APXS1 because its
+ *            ap_table_do() returns void.
+ *
+ * @param[in] key
+ *            Table key. Expected to be either #AUTH_NEGOTIATE_DEFAULT_KEY or
+ *            "" (empty string). #AUTH_NEGOTIATE_DEFAULT_KEY will indicate
+ *            a match for all addresses, regardless of address family. Other
+ *            keys are not significant and the value will still be processed.
+ *
+ * @param[in] value
+ *            String representation of the network address and mask, separated
+ *            by a forward-slash. If the forward-slash is omitted, it is
+ *            assumed to be an exact host match. The mask may be in either
+ *            dotted-decimal address or number-of-bits notation.
+ *
+ * @return ZERO if the subnet matched the IP, or NON-ZERO if it did not match.
+ * 	   (like ::strcmp). Errors also return non-zero.
+ */
+static int
+mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
+{
+    enum { MATCH = 0, NO_MATCH = 1, ERROR = 2 };
+    struct ip_cmp_closure *closure = (struct ip_cmp_closure *)rec;
+    request_rec *r = closure->request;
+
+#if !defined(APXS1) /* Apache 2 */
+    apr_ipsubnet_t *ipsubnet;
+    char addr[sizeof("0000:0000:0000:0000:0000:0000:0000:0000")];
+    char *slash;
+    apr_status_t subnet_create_err;
+
+    /* The default "any" always matches */
+    if (strcmp(AUTH_NEGOTIATE_DEFAULT_KEY, key) == 0)
+	return MATCH;
+
+    slash = strchr(value, '/');
+    if (slash) {
+	int count = slash - value;
+	if (count > sizeof(addr) - 1) {
+	    /* Too long to be a valid IPv4 or IPv6 address */
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "Invalid address from config (%s): too long",
+		    __FUNCTION__, value);
+	    return ERROR;
+	}
+
+	memcpy(addr, value, count);
+	addr[count] = '\0';
+
+	subnet_create_err =
+	    apr_ipsubnet_create(&ipsubnet, addr, slash + 1, closure->request->pool);
+	memset(addr, '\0', sizeof(addr));
+    } else {
+	/* No subnet provided - checking exact host */
+	subnet_create_err =
+	    apr_ipsubnet_create(&ipsubnet, value, NULL, closure->request->pool);
+    }
+
+    if (subnet_create_err) {
+	LOG_RERROR(APLOG_ERR, subnet_create_err, r,
+		"Error turning %s/%s into an IP subnet",
+		addr, slash);
+	return ERROR;
+    }
+
+    if (apr_ipsubnet_test(ipsubnet, closure->sockaddr_p))
+	return MATCH;
+    return NO_MATCH;
+
+#else /* APXS1 */
+    /* APXS1 only supports IPv4 */
+    struct in_addr sinaddr;
+    char addr[sizeof("255.255.255.255")], *slash;
+    int length;
+    const char *mask;
+    const char const default_mask[] = "32";
+
+    slash = strchr(value, '/');
+
+    if (slash) { /* Netmask (probably) supplied */
+	length = slash - value;
+	
+	mask = slash + 1;
+	if (!*mask) {
+	    LOG_RERROR(LOG_WARNING, 0, r,
+		    "Coercing empty netmask to the default (%s)",
+		    default_mask);
+	    mask = default_mask;
+	}
+    } else { /* No netmask specified */
+	mask = default_mask;
+	length = strlen(value);
+    }
+
+    if (length > sizeof(addr) - 1) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+		"Invalid address (%.*s): too long",
+		length, value);
+	return ERROR;
+    }
+
+    memcpy(addr, value, length);
+    addr[length] = '\0';
+
+    if (inet_aton(addr, &sinaddr) == 0) {
+	LOG_RERROR(APLOG_ERR, 0, r, "Invalid address: %s", addr);
+	return ERROR;
+    }
+
+    if (strchr(mask, '.')) { /* Mask looks like a dotted quad */
+	struct in_addr sin_mask;
+
+	if (inet_aton(mask, &sin_mask) == 0) {
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "Invalid netmask address: %s", addr);
+	    return ERROR;
+	}
+
+	if ((sinaddr.s_addr & sin_mask.s_addr) ==
+		(closure->sockaddr.sin_addr.s_addr & sin_mask.s_addr))
+	    closure->match_found = 1;
+	else
+	    closure->match_found = 0;
+    } else { /* Mask looks like a bit count */
+	unsigned long int mask_bits;
+	char *endptr;
+	uint32_t netmask;
+
+	mask_bits = strtol(mask, &endptr, 10);
+	if (*endptr != '\0' || mask_bits > 32 || mask_bits < 0) {
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "Invalid netmask /%s: must be in the range 0 to 32",
+		    mask);
+	    return ERROR;
+	}
+
+	netmask = 0xFFFFFFFFul << (32 - mask_bits);
+
+	if ((ntohl(closure->sockaddr.sin_addr.s_addr) & netmask) ==
+		    (ntohl(sinaddr.s_addr) & netmask))
+	    closure->match_found = 1;
+	else
+	    closure->match_found = 0;
+    }
+
+    return !closure->match_found;
+#endif /* APXS1 */
+}
+
+/**
+ * Determines whether the client should be allowed to do Negotiate auth.
+ * @return non-zero if so, zero if not.
+ */
+static int
+is_negotiate_enabled_for_client(request_rec *r)
+{
+    auth_vas_dir_config *dc;
+    struct ip_cmp_closure closure;
+    apr_status_t err;
+
+    ASSERT(r != NULL);
+
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+
+    if (!USING_AUTH_NEGOTIATE(dc))
+	return 0;
+
+#if !defined(APXS1)
+    err = apr_sockaddr_info_get(&closure.sockaddr_p, r->connection->remote_ip, APR_UNSPEC, 0, 0, r->pool);
+    if (err != APR_SUCCESS) {
+	LOG_RERROR(APLOG_ERR, err, r,
+		"%s: Error turning %s into a sockaddr struct",
+		__FUNCTION__, r->connection->remote_ip);
+	return 0;
+    }
+#else /* APXS1 */
+    if (inet_aton(r->connection->remote_ip, &closure.sockaddr.sin_addr) == 0) {
+	LOG_RERROR(APLOG_ERR, 0, r,
+		"%s: Error turning remote IP %s into a struct sin_addr_t",
+		__FUNCTION__, r->connection->remote_ip);
+	return 0;
+    }
+    closure.match_found = 0;
+#endif /* APXS1 */
+
+    closure.request = r;
+
+    /* apr_table_do returns void on Apache 1 */
+#if !defined(APXS1)
+    return !apr_table_do(mav_ip_subnet_cmp, &closure, dc->negotiate_subnets, NULL);
+#else /* APXS1 */
+    apr_table_do(mav_ip_subnet_cmp, &closure, dc->negotiate_subnets, NULL);
+    return closure.match_found;
+#endif
+}
+
 /**
  * Appends the headers
  *   WWW-Authenticate: Negotiate
@@ -1807,7 +2035,8 @@ add_auth_headers(request_rec *r)
 {
     ASSERT(r != NULL);
 
-    apr_table_add(r->err_headers_out, "WWW-Authenticate", "Negotiate");
+    if (is_negotiate_enabled_for_client(r))
+	apr_table_add(r->err_headers_out, "WWW-Authenticate", "Negotiate");
     add_basic_auth_headers(r);
 }
 
@@ -1890,7 +2119,7 @@ auth_vas_check_user_id(request_rec *r)
     TRACE_R(r, "Got: 'Authorization: %s [...]'", auth_type);
 
     /* Handle "Authorization: Negotiate ..." */
-    if (strcasecmp(auth_type, "Negotiate") == 0)
+    if (strcasecmp(auth_type, "Negotiate") == 0 && is_negotiate_enabled_for_client(r))
     {
 	if (!USING_AUTH_NEGOTIATE(dc)) {
 	    if (!USING_AUTH_AUTHORITATIVE(dc))
@@ -2264,6 +2493,38 @@ localize_remote_user_strcmp(request_rec *r)
     }
 }
 
+/**
+ * Process the AuthVasUseNegotiate option which may be "On" (default),
+ * "Off", or a list of subnets to suggest negotiate auth to.
+ * @return NULL on success or an error message.
+ */
+static const char *
+set_negotiate_conf(cmd_parms *cmd, void *struct_ptr, const char *args)
+{
+    auth_vas_dir_config *dc = (auth_vas_dir_config*)struct_ptr;
+    char *opt;
+
+    opt = ap_getword_white(cmd->pool, &args);
+    if (!*opt)
+	return "Insufficient parameters for " CMD_USENEGOTIATE;
+
+    if (strcasecmp(opt, "On") == 0)
+	return NULL; /* On is default and has already been set */
+
+    if (strcasecmp(opt, "Off") == 0) {
+	dc->negotiate_subnets = NULL;
+	return NULL;
+    }
+
+    apr_table_clear(dc->negotiate_subnets);
+
+    do {
+	apr_table_add(dc->negotiate_subnets, "", opt);
+    } while (*(opt = ap_getword_white(cmd->pool, &args)));
+
+    return NULL;
+}
+
 static struct {
     const char *name;
     void (*method)(request_rec *r, const char *line);
@@ -2390,13 +2651,20 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
     TRACE_P(p, "auth_vas_create_dir_config");
     if (dc != NULL) {
 	dc->auth_basic = FLAG_UNSET;
-	dc->auth_negotiate = FLAG_UNSET;
 	dc->auth_authoritative = FLAG_UNSET;
 	dc->export_delegated = FLAG_UNSET;
 	dc->localize_remote_user = FLAG_UNSET;
 	dc->remote_user_map = "default";
 	dc->remote_user_map_args = NULL;
 	dc->use_suexec = FLAG_UNSET;
+
+	dc->negotiate_subnets = apr_table_make(p, 2);
+	if (!dc->negotiate_subnets)
+	    return NULL;
+#if APR_HAVE_IPv6
+	apr_table_addn(dc->negotiate_subnets, AUTH_NEGOTIATE_DEFAULT_KEY, "::/0");
+#endif
+	apr_table_addn(dc->negotiate_subnets, AUTH_NEGOTIATE_DEFAULT_KEY, "0.0.0.0/0");
     }
     return (void *)dc;
 }
@@ -2422,14 +2690,18 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     if (merged_dc != NULL) {
 	merged_dc->auth_basic = FLAG_MERGE(base_dc->auth_basic,
 		new_dc->auth_basic);
-	merged_dc->auth_negotiate = FLAG_MERGE(base_dc->auth_negotiate,
-		new_dc->auth_negotiate);
 	merged_dc->auth_authoritative = FLAG_MERGE(base_dc->auth_authoritative,
 		new_dc->auth_authoritative);
 	merged_dc->export_delegated = FLAG_MERGE(base_dc->export_delegated,
 		new_dc->export_delegated);
 	merged_dc->use_suexec = FLAG_MERGE(base_dc->use_suexec,
 		new_dc->use_suexec);
+
+	if (new_dc->negotiate_subnets &&
+		apr_table_get(new_dc->negotiate_subnets, AUTH_NEGOTIATE_DEFAULT_KEY))
+	    merged_dc->negotiate_subnets = base_dc->negotiate_subnets;
+	else
+	    merged_dc->negotiate_subnets = new_dc->negotiate_subnets;
 
 	/*
 	 * Handle deprecated AuthVasLocalizeRemoteUser
