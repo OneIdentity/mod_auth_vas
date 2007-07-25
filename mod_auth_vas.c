@@ -291,11 +291,8 @@ typedef struct {
  * below. This is because they might be uninitialised.
  */
 typedef struct {
-    /** negotiate_subnets has three possible states:
-     *   NULL: Off - no Negotiate auth at all
-     *   table containing AUTH_NEGOTIATE_DEFAULT_KEY: On for all clients (default)
-     *   table not containing AUTH_NEGOTIATE_DEFAULT_KEY: On for the listed subnets */
-    apr_table_t *negotiate_subnets;     /* AuthVasUseNegotiate (default On for all clients) */
+    int auth_negotiate;			/* AuthVasUseNegotiate (default On) */
+    apr_table_t *negotiate_subnets;     /* AuthVasUseNegotiate (list of subnets, or NULL for all) */
     int auth_basic;			/* AuthVasUseBasic (default off) */
     int auth_authoritative;		/* AuthVasAuthoritative (default on) */
     int export_delegated;		/* AuthVasExportDelegated (default off) */
@@ -306,14 +303,12 @@ typedef struct {
 } auth_vas_dir_config;
 
 /* Default behaviour if a flag is not set */
+#define DEFAULT_USING_AUTH_NEGOTIATE            FLAG_ON
 #define DEFAULT_USING_AUTH_BASIC                FLAG_OFF
 #define DEFAULT_USING_AUTH_AUTHORITATIVE        FLAG_ON
 #define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
 #define DEFAULT_USING_LOCALIZE_REMOTE_USER      FLAG_OFF
 #define DEFAULT_USING_SUEXEC                    FLAG_OFF
-
-/** Key used in the negotiate subnet table to indicate the default match of all hosts */
-#define AUTH_NEGOTIATE_DEFAULT_KEY		"default"
 
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
 #define USING_AUTH_DEFAULT(dc, field, def) \
@@ -335,7 +330,8 @@ typedef struct {
  * necessarily all. Use is_negotiate_enabled_for_client() to check the current
  * client. */
 #define USING_AUTH_NEGOTIATE(dc) \
-    ((dc)->negotiate_subnets)
+    USING_AUTH_DEFAULT(dc, auth_negotiate,     DEFAULT_USING_AUTH_NEGOTIATE)
+    
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -1999,6 +1995,9 @@ is_negotiate_enabled_for_client(request_rec *r)
     if (!USING_AUTH_NEGOTIATE(dc))
 	return 0;
 
+    if (dc->negotiate_subnets == NULL) /* All subnets */
+	return 1;
+
 #if !defined(APXS1)
     err = apr_sockaddr_info_get(&closure.sockaddr_p, r->connection->remote_ip, APR_UNSPEC, 0, 0, r->pool);
     if (err != APR_SUCCESS) {
@@ -2512,15 +2511,19 @@ set_negotiate_conf(cmd_parms *cmd, void *struct_ptr, const char *args)
     if (!*opt)
 	return "Insufficient parameters for " CMD_USENEGOTIATE;
 
-    if (strcasecmp(opt, "On") == 0)
-	return NULL; /* On is default and has already been set */
-
-    if (strcasecmp(opt, "Off") == 0) {
-	dc->negotiate_subnets = NULL;
+    if (strcasecmp(opt, "On") == 0) {
+	dc->auth_negotiate = FLAG_ON;
+	/* dc->negotiate_subnets left as NULL indicating all subnets */
 	return NULL;
     }
 
-    apr_table_clear(dc->negotiate_subnets);
+    if (strcasecmp(opt, "Off") == 0) {
+	dc->auth_negotiate = FLAG_OFF;
+	/* dc->negotiate_subnets unused (remains NULL) */
+	return NULL;
+    }
+
+    dc->negotiate_subnets = apr_table_make(cmd->pool, 2);
 
     do {
 	apr_table_add(dc->negotiate_subnets, "", opt);
@@ -2654,6 +2657,8 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
     dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *dc);
     TRACE_P(p, "auth_vas_create_dir_config");
     if (dc != NULL) {
+	dc->auth_negotiate = FLAG_UNSET;
+	dc->negotiate_subnets = NULL;
 	dc->auth_basic = FLAG_UNSET;
 	dc->auth_authoritative = FLAG_UNSET;
 	dc->export_delegated = FLAG_UNSET;
@@ -2661,14 +2666,6 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->remote_user_map = "default";
 	dc->remote_user_map_args = NULL;
 	dc->use_suexec = FLAG_UNSET;
-
-	dc->negotiate_subnets = apr_table_make(p, 2);
-	if (!dc->negotiate_subnets)
-	    return NULL;
-#if APR_HAVE_IPv6
-	apr_table_addn(dc->negotiate_subnets, AUTH_NEGOTIATE_DEFAULT_KEY, "::/0");
-#endif
-	apr_table_addn(dc->negotiate_subnets, AUTH_NEGOTIATE_DEFAULT_KEY, "0.0.0.0/0");
     }
     return (void *)dc;
 }
@@ -2692,6 +2689,8 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     merged_dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *merged_dc);
     TRACE_P(p, "auth_vas_merge_dir_config");
     if (merged_dc != NULL) {
+	merged_dc->auth_negotiate = FLAG_MERGE(base_dc->auth_negotiate,
+		new_dc->auth_negotiate);
 	merged_dc->auth_basic = FLAG_MERGE(base_dc->auth_basic,
 		new_dc->auth_basic);
 	merged_dc->auth_authoritative = FLAG_MERGE(base_dc->auth_authoritative,
@@ -2701,10 +2700,9 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 	merged_dc->use_suexec = FLAG_MERGE(base_dc->use_suexec,
 		new_dc->use_suexec);
 
-	if (new_dc->negotiate_subnets &&
-		apr_table_get(new_dc->negotiate_subnets, AUTH_NEGOTIATE_DEFAULT_KEY))
+	if (new_dc->auth_negotiate == FLAG_UNSET)
 	    merged_dc->negotiate_subnets = base_dc->negotiate_subnets;
-	else
+	else /* Flag set */
 	    merged_dc->negotiate_subnets = new_dc->negotiate_subnets;
 
 	/*
