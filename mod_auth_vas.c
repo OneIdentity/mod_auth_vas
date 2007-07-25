@@ -1853,127 +1853,131 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
     struct ip_cmp_closure *closure = (struct ip_cmp_closure *)rec;
     request_rec *r = closure->request;
 
-#if !defined(APXS1) /* Apache 2 */
-    apr_ipsubnet_t *ipsubnet;
-    char addr[sizeof("0000:0000:0000:0000:0000:0000:0000:0000")];
-    char *slash;
-    apr_status_t subnet_create_err;
-
     /* The default "any" always matches */
     if (strcmp(AUTH_NEGOTIATE_DEFAULT_KEY, key) == 0)
 	return MATCH;
 
-    slash = strchr(value, '/');
-    if (slash) {
-	int count = slash - value;
-	if (count > sizeof(addr) - 1) {
-	    /* Too long to be a valid IPv4 or IPv6 address */
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		    "Invalid address from config (%s): too long",
-		    __FUNCTION__, value);
+#if !defined(APXS1) /* Apache 2 */
+    {
+	apr_ipsubnet_t *ipsubnet;
+	char addr[sizeof("0000:0000:0000:0000:0000:0000:0000:0000")];
+	char *slash;
+	apr_status_t subnet_create_err;
+
+	slash = strchr(value, '/');
+	if (slash) {
+	    int count = slash - value;
+	    if (count > sizeof(addr) - 1) {
+		/* Too long to be a valid IPv4 or IPv6 address */
+		LOG_RERROR(APLOG_ERR, 0, r,
+			"Invalid address from config (%s): too long",
+			__FUNCTION__, value);
+		return ERROR;
+	    }
+
+	    memcpy(addr, value, count);
+	    addr[count] = '\0';
+
+	    subnet_create_err =
+		apr_ipsubnet_create(&ipsubnet, addr, slash + 1, closure->request->pool);
+	    memset(addr, '\0', sizeof(addr));
+	} else {
+	    /* No subnet provided - checking exact host */
+	    subnet_create_err =
+		apr_ipsubnet_create(&ipsubnet, value, NULL, closure->request->pool);
+	}
+
+	if (subnet_create_err) {
+	    LOG_RERROR(APLOG_ERR, subnet_create_err, r,
+		    "Error turning %s/%s into an IP subnet",
+		    addr, slash);
 	    return ERROR;
 	}
 
-	memcpy(addr, value, count);
-	addr[count] = '\0';
-
-	subnet_create_err =
-	    apr_ipsubnet_create(&ipsubnet, addr, slash + 1, closure->request->pool);
-	memset(addr, '\0', sizeof(addr));
-    } else {
-	/* No subnet provided - checking exact host */
-	subnet_create_err =
-	    apr_ipsubnet_create(&ipsubnet, value, NULL, closure->request->pool);
+	if (apr_ipsubnet_test(ipsubnet, closure->sockaddr_p))
+	    return MATCH;
+	return NO_MATCH;
     }
-
-    if (subnet_create_err) {
-	LOG_RERROR(APLOG_ERR, subnet_create_err, r,
-		"Error turning %s/%s into an IP subnet",
-		addr, slash);
-	return ERROR;
-    }
-
-    if (apr_ipsubnet_test(ipsubnet, closure->sockaddr_p))
-	return MATCH;
-    return NO_MATCH;
 
 #else /* APXS1 */
-    /* APXS1 only supports IPv4 */
-    struct in_addr sinaddr;
-    char addr[sizeof("255.255.255.255")], *slash;
-    int length;
-    const char *mask;
-    const char const default_mask[] = "32";
+    {
+	/* APXS1 only supports IPv4 */
+	struct in_addr sinaddr;
+	char addr[sizeof("255.255.255.255")], *slash;
+	int length;
+	const char *mask;
+	const char const default_mask[] = "32";
 
-    slash = strchr(value, '/');
+	slash = strchr(value, '/');
 
-    if (slash) { /* Netmask (probably) supplied */
-	length = slash - value;
-	
-	mask = slash + 1;
-	if (!*mask) {
-	    LOG_RERROR(LOG_WARNING, 0, r,
-		    "Coercing empty netmask to the default (%s)",
-		    default_mask);
+	if (slash) { /* Netmask (probably) supplied */
+	    length = slash - value;
+	    
+	    mask = slash + 1;
+	    if (!*mask) {
+		LOG_RERROR(LOG_WARNING, 0, r,
+			"Coercing empty netmask to the default (%s)",
+			default_mask);
+		mask = default_mask;
+	    }
+	} else { /* No netmask specified */
 	    mask = default_mask;
+	    length = strlen(value);
 	}
-    } else { /* No netmask specified */
-	mask = default_mask;
-	length = strlen(value);
-    }
 
-    if (length > sizeof(addr) - 1) {
-	LOG_RERROR(APLOG_ERR, 0, r,
-		"Invalid address (%.*s): too long",
-		length, value);
-	return ERROR;
-    }
-
-    memcpy(addr, value, length);
-    addr[length] = '\0';
-
-    if (inet_aton(addr, &sinaddr) == 0) {
-	LOG_RERROR(APLOG_ERR, 0, r, "Invalid address: %s", addr);
-	return ERROR;
-    }
-
-    if (strchr(mask, '.')) { /* Mask looks like a dotted quad */
-	struct in_addr sin_mask;
-
-	if (inet_aton(mask, &sin_mask) == 0) {
+	if (length > sizeof(addr) - 1) {
 	    LOG_RERROR(APLOG_ERR, 0, r,
-		    "Invalid netmask address: %s", addr);
+		    "Invalid address (%.*s): too long",
+		    length, value);
 	    return ERROR;
 	}
 
-	if ((sinaddr.s_addr & sin_mask.s_addr) ==
-		(closure->sockaddr.sin_addr.s_addr & sin_mask.s_addr))
-	    closure->match_found = 1;
-	else
-	    closure->match_found = 0;
-    } else { /* Mask looks like a bit count */
-	unsigned long int mask_bits;
-	char *endptr;
-	uint32_t netmask;
+	memcpy(addr, value, length);
+	addr[length] = '\0';
 
-	mask_bits = strtol(mask, &endptr, 10);
-	if (*endptr != '\0' || mask_bits > 32 || mask_bits < 0) {
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		    "Invalid netmask /%s: must be in the range 0 to 32",
-		    mask);
+	if (inet_aton(addr, &sinaddr) == 0) {
+	    LOG_RERROR(APLOG_ERR, 0, r, "Invalid address: %s", addr);
 	    return ERROR;
 	}
 
-	netmask = 0xFFFFFFFFul << (32 - mask_bits);
+	if (strchr(mask, '.')) { /* Mask looks like a dotted quad */
+	    struct in_addr sin_mask;
 
-	if ((ntohl(closure->sockaddr.sin_addr.s_addr) & netmask) ==
-		    (ntohl(sinaddr.s_addr) & netmask))
-	    closure->match_found = 1;
-	else
-	    closure->match_found = 0;
+	    if (inet_aton(mask, &sin_mask) == 0) {
+		LOG_RERROR(APLOG_ERR, 0, r,
+			"Invalid netmask address: %s", addr);
+		return ERROR;
+	    }
+
+	    if ((sinaddr.s_addr & sin_mask.s_addr) ==
+		    (closure->sockaddr.sin_addr.s_addr & sin_mask.s_addr))
+		closure->match_found = 1;
+	    else
+		closure->match_found = 0;
+	} else { /* Mask looks like a bit count */
+	    unsigned long int mask_bits;
+	    char *endptr;
+	    uint32_t netmask;
+
+	    mask_bits = strtol(mask, &endptr, 10);
+	    if (*endptr != '\0' || mask_bits > 32 || mask_bits < 0) {
+		LOG_RERROR(APLOG_ERR, 0, r,
+			"Invalid netmask /%s: must be in the range 0 to 32",
+			mask);
+		return ERROR;
+	    }
+
+	    netmask = 0xFFFFFFFFul << (32 - mask_bits);
+
+	    if ((ntohl(closure->sockaddr.sin_addr.s_addr) & netmask) ==
+			(ntohl(sinaddr.s_addr) & netmask))
+		closure->match_found = 1;
+	    else
+		closure->match_found = 0;
+	}
+
+	return !closure->match_found;
     }
-
-    return !closure->match_found;
 #endif /* APXS1 */
 }
 
