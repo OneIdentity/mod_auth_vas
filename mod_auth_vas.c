@@ -1828,10 +1828,7 @@ struct ip_cmp_closure {
  *            ap_table_do() returns void.
  *
  * @param[in] key
- *            Table key. Expected to be either #AUTH_NEGOTIATE_DEFAULT_KEY or
- *            "" (empty string). #AUTH_NEGOTIATE_DEFAULT_KEY will indicate
- *            a match for all addresses, regardless of address family. Other
- *            keys are not significant and the value will still be processed.
+ *            Ignored.
  *
  * @param[in] value
  *            String representation of the network address and mask, separated
@@ -1853,12 +1850,6 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
     request_rec *r = closure->request;
 
     closure->match_found = 0;
-
-    /* The default "any" always matches */
-    if (strcmp(AUTH_NEGOTIATE_DEFAULT_KEY, key) == 0) {
-	closure->match_found = 1;
-	return MATCH;
-    }
 
 #if !defined(APXS1) /* Apache 2 */
     {
