@@ -952,7 +952,7 @@ usage(char *prog)
 		    "       -u user       - use principal name override\n"
 		    "       -S spn        - service principal name override\n"
 		    "       -g            - use GSSAPI internally (not VAS)\n"
-	    ,prog,prog,prog);
+	    ,prog,prog,prog,prog);
     exit(1);
 }
 
