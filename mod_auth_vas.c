@@ -2360,13 +2360,20 @@ set_remote_user_attr(request_rec *r, const char *attr)
     ASSERT(attr != NULL);
     ASSERT(attr[0]);
 
-    /* Ensure the auth mechanism (SPNEGO/Basic) set RUSER to the full UPN */
-    ASSERT(strchr(RUSER(r), '@') != NULL);
-
     if (strcasecmp(attr, "userPrincipalName") == 0) {
 	LOG_RERROR(LOG_DEBUG, 0, r,
 		"%s: Returning early because REMOTE_USER is already the UPN",
 		__FUNCTION__);
+	return;
+    }
+
+    /* RUSER might already be set - particularly on Apache 1 where it is
+     * per-connection not per-request */
+    /* XXX: It might have to be changed to a different attr */
+    if(strchr(RUSER(r), '@') == NULL) {
+	LOG_RERROR(LOG_DEBUG, 0, r,
+		"%s: REMOTE_USER appears to already have been set to %s",
+		__FUNCTION__, RUSER(r));
 	return;
     }
 
