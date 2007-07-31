@@ -494,12 +494,11 @@ readbody(response, out)
 		chunklen = chunklen * 16 + value;
 		ch = fdbuf_getc(f);
 	    }
-	    if (ch == '\r') {
-		ch = fdbuf_getc(f);
-		if (ch != '\n' && ch != EOF)
-		    fdbuf_ungetc(f, ch);
-	    }
 	    if (debug > 1) fprintf(stderr, "chunklen=%d\n", chunklen);
+	    /* Ignore linear whitespace and chunk-extensions - jump to the end
+	     * of the line. */
+	    while (ch != '\n' && ch != EOF)
+		ch = fdbuf_getc(f);
 	    if (chunklen == 0)
 		break;
 	    while (chunklen > 0) {
