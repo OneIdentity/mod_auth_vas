@@ -84,6 +84,7 @@
 # define apr_palloc		ap_palloc
 # define apr_pool_cleanup_register ap_register_cleanup
 # define apr_psprintf		ap_psprintf
+# define apr_pstrcat		ap_pstrcat
 # define apr_pstrdup		ap_pstrdup
 # define apr_pool_t		pool
 # define apr_table_t		table
@@ -300,6 +301,7 @@ typedef struct {
     char *remote_user_map;		/**< AuthVasRemoteUserMap (NULL if unset) */
     char *remote_user_map_args;		/**< Argument to AuthVasRemoteUserMap (NULL if none) */
     int use_suexec;			/**< AuthVasSuexecAsRemoteUser (default off) */
+    char *ntlm_error_document;		/**< AuthVasNTLMErrorDocument (default built-in) */
 } auth_vas_dir_config;
 
 /* Default behaviour if a flag is not set */
@@ -475,6 +477,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_SPN			"AuthVasServicePrincipal"
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
+#define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -506,6 +509,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_dir_config, remote_user_map),
 		ACCESS_CONF | OR_AUTHCFG,
 		"How to map the remote user identity to the REMOTE_USER environment variable"),
+    AP_INIT_TAKE1(CMD_NTLMERRORDOCUMENT, ap_set_string_slot,
+		APR_OFFSETOF(auth_vas_dir_config, ntlm_error_document),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Error page or string to provide when a client attempts unsupported NTLM authentication"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, service_principal),
 		RSRC_CONF,
@@ -1576,11 +1583,44 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	TRACE_R(r, "waiting for more tokens from client");
 	result = HTTP_UNAUTHORIZED;
     } else if (memcmp(auth_param, "TlRM", 4) == 0) {
+	const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
 	LOG_RERROR(APLOG_ERR, 0, r,
 		    "NTLM authentication attempted");
 	/* Already logged the failure cause */
 	gsserr = 0;
-	/* TODO: Set a location header to redirect to a NTLM page (bug 210) */
+	if (dc->ntlm_error_document)
+	    ap_custom_response(r, HTTP_UNAUTHORIZED, dc->ntlm_error_document);
+	else
+	    ap_custom_response(r, HTTP_UNAUTHORIZED, apr_pstrcat(r->pool,
+			DOCTYPE_HTML_2_0
+			"<HTML><HEAD>\n"
+			"<TITLE>NTLM authentication not supported</TITLE>\n"
+			"</HEAD><BODY>\n"
+			"<H1>NTLM authentication not supported</H1>\n"
+			"The server received an NTLM authentication token,\n"
+			"but NTLM authentication is not supported.\n"
+			"This is usually the result of using an old version of\n"
+			"Internet Explorer (earlier than version 6.0) or entering\n"
+			"the wrong password in IE's password dialog.\n"
+			"<H2>Solving this problem</H2>\n"
+			"<UL>\n"
+			"<LI>If your computer is on an Active Directory domain, see\n"
+			"<A HREF=\"http://rc.quest.com/topics/mod_auth_vas/howto.php#browser-config\">"
+			"http://rc.quest.com/topics/mod_auth_vas/howto.php#browser-config</A>\n"
+			"for browser configuration instructions.\n"
+			"<LI>For Internet Explorer 6 on Windows 2000, see\n"
+			"<A HREF=\"http://support.microsoft.com/kb/299838\">"
+			"http://support.microsoft.com/kb/299838</A>"
+			"<LI>Internet Explorer on Microsoft Windows 98 or NT 4.0\n"
+			"does not support the Kerberos authentication mechanism\n"
+			"supported by this server.\n"
+			"</UL>\n"
+			"<P>For further help, please contact your support personnel\n"
+			"or the server administrator.\n"
+			, ap_psignature("<HR>\n", r),
+			"</BODY></HTML>\n"
+			, NULL
+			));
 	result = HTTP_UNAUTHORIZED;
     } else {
 	/* Any other result means we send back an Unauthorized result */
@@ -2740,6 +2780,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->remote_user_map = "default";
 	dc->remote_user_map_args = NULL;
 	dc->use_suexec = FLAG_UNSET;
+	dc->ntlm_error_document = NULL;
     }
     return (void *)dc;
 }
@@ -2807,6 +2848,14 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 		    base_dc->remote_user_map);
 	    merged_dc->remote_user_map_args = apr_pstrdup(p,
 		    base_dc->remote_user_map_args);
+	}
+
+	if (new_dc->ntlm_error_document) {
+	    if (strcasecmp(new_dc->ntlm_error_document, "default") == 0)
+		merged_dc->ntlm_error_document = NULL;
+	    else
+		merged_dc->ntlm_error_document = apr_pstrdup(p,
+			new_dc->ntlm_error_document);
 	}
     }
     return (void *)merged_dc;
