@@ -2638,6 +2638,7 @@ set_negotiate_conf(cmd_parms *cmd, void *struct_ptr, const char *args)
 	return NULL;
     }
 
+    dc->auth_negotiate = FLAG_ON;
     dc->negotiate_subnets = apr_table_make(cmd->pool, 2);
 
     do {
