@@ -2556,7 +2556,8 @@ localize_remote_user(request_rec *r, const char *unused)
 	 * for consistency */
 
 	LOG_RERROR(LOG_DEBUG, aprst, r,
-		"apr_uid_get failed for %s, falling back to strcmp method",
+		"apr_uid_get failed for %s (normal for non-Unix users), "
+		"using strcmp method",
 		RUSER(r));
 
 	localize_remote_user_strcmp(r);
