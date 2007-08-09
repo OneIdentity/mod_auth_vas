@@ -1,0 +1,67 @@
+# Subnet-specific negotiate auth
+#
+# Tests a few basic config options and that per-dir configs are merged
+# properly (they weren't, as pointed out in bug 337 comment 10).
+#
+# Assumes the client comes from the 127.0.0.0/8 range
+#
+description "subnet-specific Negotiate auth (bug 337)"
+
+TESTFILE=testbug337.txt
+OUTPUTFILE=/tmp/bug337.$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $OUTPUTFILE $DOC_DIR/$TESTFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+# Usage: set_negotiate <dir> <val> [val...]
+# You might want to call ap_conf_restore first
+# You have to call ap_{stop,start,restart} yourself
+set_negotiate () {
+	local negdir negopts
+
+	negdir="$1"
+	shift
+	negopts="$@"
+
+	ap_conf_append <<-.
+	<Directory "$negdir">
+		AuthType VAS
+		AuthVasUseNegotiate $negopts
+		Require valid-user
+		AuthVasUseBasic Off
+	</Directory>
+.
+	ap_conf_check
+}
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+
+# Test: Negotiate includes localhost
+set_negotiate $DOC_DIR 127.0.0.0/255.0.0.0
+ap_start
+rm -f $OUTPUTFILE
+fetch_nego -u "$USER_test" `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+	fail "Inclusive subnet-specific Negotiate failed"
+test 200 = $FETCH_RES || fail "inclusive: expected 200 but got $FETCH_RES"
+
+#
+# Test: Negotiate excludes localhost
+ap_conf_restore
+set_negotiate $DOC_DIR 77.77.77.0/255.255.255.0
+ap_restart
+rm -f $OUTPUTFILE
+# fetch_nego should fail because it can't even try negotiate
+fetch_nego -u "$USER_test" `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUTFILE &&
+	fail "Exclusive subnet-specific Negotiate did not exclude localhost"
+
+ap_stop
+ap_conf_restore
+
+#vim: ts=4 sw=4 et syntax=shell
