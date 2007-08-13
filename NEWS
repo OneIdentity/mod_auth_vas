@@ -1,3 +1,50 @@
+3.5.0   (2007-08-13)
+
+	- New option: AuthVasSuexecAsRemoteUser (default off), fixes suEXEC
+	  failures outside the DocumentRoot (bug #271).
+
+	- New option: AuthVasRemoteUserMap to specify what to put in the
+	  REMOTE_USER variable (mainly LDAP attributes).
+
+	- New option: AuthVasNTLMErrorDocument to specify the error page to
+	  serve when a client tries NTLM authentication (bug #210).
+	  A built-in error page is served by default.
+
+	- Extended the AuthVasUseNegotiate option to accept a list of subnets
+	  to use Negotiate auth on (bug #337).
+
+	- Test the keytab at startup where possible.
+
+	- Improved setup script portability for Solaris.
+
+	- Fixed case-sensitivity with Basic auth (bug #214).
+
+	- Correctly set the intermediate module extension when
+	  automatic detection fails.
+
+	- New setup-mod_auth_vas option '-u' to specify the user account to
+	  use.
+
+	- Set REMOTE_USER to the userPrincipalName by default.
+	  (This only changes the behavior of Basic auth - Negotiate already
+	   set it to the userPrincipalName.)
+
+	- AuthVasLocalizeRemoteUser now "localizes" non-Unix users (bug #319)
+	  for consistency.
+
+	- Fixed trace messages being printed as errors on Apache 1 (bug #317).
+
+	- Fixed LocalizeRemoteUser and ExportDelegated not working on Apache 1
+	  (bug #327).
+
+	- Look for apxs in /usr/IBMIHS/bin for the IBM HTTP Server (bug #349).
+
+	- Try linking to libgcc_s if vas-config's flags alone were insufficient
+	  (bug #349).
+
+	- Try to find APXS's compiler even when it is not in the PATH
+	  (bug #349).
+
 3.4.0
 	- Log version number, libvas version during startup
 	- Setup script changes:
@@ -6,7 +53,6 @@
 	    * warns if the HTTP/ account has expired
 	    * allows adding of principal name aliases
 	    * allows disabling password expiry on the service account (bug #213)
-	    * allow specifying privileged user with -u option
 	- Support C99 vararg macros (Sun CC) and non-GNU make
 	- Support using the compiler that apxs suggests
 	- Enhancement bug 126: AuthVasLocalizeRemoteUser
