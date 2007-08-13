@@ -30,7 +30,9 @@ AC_TYPE_SIZE_T
 #AC_TYPE_SSIZE_T
 
 # Checks for library functions.
-AC_FUNC_MALLOC
+dnl Having a malloc that returns a valid pointer for malloc(0) is not
+dnl particularly important. (AIX's xlc_r seems to fail this test.)
+dnl AC_FUNC_MALLOC
 AC_FUNC_VPRINTF
 AC_SEARCH_LIBS(socket, socket)
 AC_SEARCH_LIBS(gethostbyname, nsl)
