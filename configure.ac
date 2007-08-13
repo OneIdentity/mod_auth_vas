@@ -261,7 +261,15 @@ AC_SUBST(VAS_LIBS)
 # Try vasapi functions
 CFLAGS_save="$CFLAGS" LIBS_save="$LIBS"
 CFLAGS="$CFLAGS $VAS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
-AC_CHECK_FUNC([vas_ctx_alloc],,[AC_MSG_FAILURE([VAS 3 SDK required])])
+AC_CHECK_FUNC([vas_ctx_alloc],,[
+	       # Prevent the cached "no" being reused
+	       $as_unset ac_cv_func_vas_ctx_alloc
+	       # Try adding libgcc_s (VAS bug #12950)
+	       LIBS="$LIBS -L/opt/quest/lib/support -lgcc_s"
+	       AC_CHECK_FUNC([vas_ctx_alloc],
+			     [VAS_LIBS="$VAS_LIBS -L/opt/quest/lib/support -lgcc_s"],
+			     [AC_MSG_FAILURE([VAS 3 SDK required])])
+	       ])
 CFLAGS="$CFLAGS_save" LIBS="$LIBS_save"
 
 AC_CHECK_FUNCS([getgrnam_r memset strcasecmp strchr strtol])
