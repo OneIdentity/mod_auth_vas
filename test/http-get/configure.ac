@@ -26,7 +26,8 @@ AC_CHECK_HEADERS([vas.h vas_gss.h gssapi.h gssapi_krb5.h])
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_TYPE_SIZE_T
-AC_TYPE_SSIZE_T
+# Too recent for some autoconfs
+#AC_TYPE_SSIZE_T
 
 # Checks for library functions.
 AC_FUNC_MALLOC
