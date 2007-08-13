@@ -26,8 +26,8 @@ AC_CHECK_HEADERS([vas.h vas_gss.h gssapi.h gssapi_krb5.h])
 # Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_TYPE_SIZE_T
-# Too recent for some autoconfs
-#AC_TYPE_SSIZE_T
+dnl Too recent for some autoconfs
+dnlAC_TYPE_SSIZE_T
 
 # Checks for library functions.
 dnl Having a malloc that returns a valid pointer for malloc(0) is not

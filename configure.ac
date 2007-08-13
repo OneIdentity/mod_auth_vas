@@ -287,7 +287,7 @@ AC_C_CONST
 AC_FUNC_MEMCMP
 AC_HEADER_STDC
 AC_TYPE_SIZE_T
-# Too recent for some autoconfs
-#AC_TYPE_UINT32_T
+dnl Too recent for some autoconfs
+dnlAC_TYPE_UINT32_T
 
 AC_OUTPUT
