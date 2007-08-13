@@ -264,6 +264,12 @@ CFLAGS="$CFLAGS $VAS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
 AC_CHECK_FUNC([vas_ctx_alloc],,[AC_MSG_FAILURE([VAS 3 SDK required])])
 CFLAGS="$CFLAGS_save" LIBS="$LIBS_save"
 
-AC_CHECK_FUNC([getgrnam_r])
+AC_CHECK_FUNCS([getgrnam_r memset strcasecmp strchr strtol])
+AC_CHECK_HEADERS([string.h])
+AC_C_CONST
+AC_FUNC_MEMCMP
+AC_HEADER_STDC
+AC_TYPE_SIZE_T
+AC_TYPE_UINT32_T
 
 AC_OUTPUT
