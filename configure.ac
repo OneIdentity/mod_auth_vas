@@ -93,6 +93,15 @@ AC_CACHE_CHECK([what compiler apxs uses], [ac_cv_var_apxs_cc],
 #-- Try to use the C compiler APXS recommends
 if test x"$ac_cv_var_apxs_cc" != x"" -a x"$CC" = x""; then
     CC="$ac_cv_var_apxs_cc"
+    # Try to find this CC if it's not already in the PATH
+    # (Include the dir's trailing '/')
+    for dir in '' /usr/local/bin/ /usr/vac/bin/ /usr/ccs/bin/ /opt/freeware/bin/; do
+	if which "$dir$CC" >/dev/null 2>&1; then
+	    # Looks good
+	    CC="$dir$CC"
+	    break
+	fi
+    done
 fi
 AC_PROG_CC
 
