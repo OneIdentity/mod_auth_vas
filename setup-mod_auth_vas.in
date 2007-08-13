@@ -231,7 +231,7 @@ fi
 #-- look for apxs
 apxs=
 label "looking for Apache extension tool"
-for x in "$aflag" "@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs; do
+for x in "$aflag" "@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs /usr/IBMIHS/bin/apxs; do
     test -z "$x" && continue
     ap_target=`($x -q TARGET) 2>/dev/null` || continue
     if test -n "$ap_target"; then

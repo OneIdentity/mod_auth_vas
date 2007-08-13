@@ -53,7 +53,7 @@ AC_ARG_WITH(apxs,
 dnl -- Search path for finding apxs2/apxs
 APXS_PATH="$PATH"
 APXS_PATH="$APXS_PATH:/opt/hpws/apache/bin"
-APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/opt/freeware/bin"
+APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/usr/IBMIHS/bin:/opt/freeware/bin"
 APXS_PATH="$APXS_PATH:/usr/apache2/bin"
 APXS_PATH="$APXS_PATH:/usr/local/bin:/usr/sbin:/usr/bin"
 APXS_PATH="$APXS_PATH:/usr/local/apache2:/usr/local/apache"
