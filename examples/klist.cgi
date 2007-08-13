@@ -1,4 +1,8 @@
 #! /bin/sh
+#
+# This script can be used to easily test the effect of the
+# AuthVasExportDelegated and AuthVasRemoteUserMap options.
+#
 
 echo 'Content-type: text/plain'
 echo
