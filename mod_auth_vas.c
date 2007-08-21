@@ -671,7 +671,9 @@ match_user(request_rec *r, const char *name, int log_level)
 
     if (vas_user_compare(sc->vas_ctx, rnote->vas_user_obj, required_user) == VAS_ERR_SUCCESS) {
 	user_matches = 1;
-	TRACE_R(r, "match_user: name=%s RUSER=%s", name, RUSER(r));
+	TRACE_R(r, "match_user: user matches");
+    } else {
+	TRACE_R(r, "match_user: user does not match");
     }
 
 #if defined(MODAUTHVAS_VERBOSE)
