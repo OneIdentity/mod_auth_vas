@@ -1,0 +1,67 @@
+# Ensure both Negotiate and Basic auth set REMOTE_USER to the full UPN
+# Previously Basic auth would set REMOTE_USER to whatever the user typed,
+# which was not reliable for applications.
+description "Remote user set to UPN"
+
+CGIFILE=testr203.cgi
+OUTPUTFILE=/tmp/testr203.$$.txt
+REMOTEUSER="$USER_test@$REALM_test"
+REMOTEUSERFILE=/tmp/testr203-remoteuser.$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$CGIFILE $OUTPUTFILE $REMOTEUSERFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseNegotiate On
+		AuthVasUseBasic On
+
+		Options +ExecCGI
+		AddHandler cgi-script .cgi
+		Require valid-user
+	</Directory>
+.
+
+ap_conf_check
+
+# Shell script embedded in a shell script.
+cat <<-EO > $DOC_DIR/$CGIFILE
+	#!/bin/sh
+	set -e
+	echo Content-type: text/plain
+	echo
+	echo \$REMOTE_USER
+EO
+chmod +x $DOC_DIR/$CGIFILE
+
+echo $REMOTEUSER > $REMOTEUSERFILE
+
+vas_kinit $USER_test $PASSWD_test
+
+ap_start
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` $USER_test:$PASSWD_test $DOC_URL/$CGIFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as $USER_test"
+if ! diff -i $REMOTEUSERFILE $OUTPUTFILE >/dev/null 2>&1; then
+    fail "Unexpected REMOTE_USER variable, expected $REMOTEUSER but got `cat $OUTPUTFILE`"
+fi
+
+rm -f $OUTPUTFILE
+fetch_nego `ifdebug -d` -u $USER_test $DOC_URL/$CGIFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with negotiate as $USER_test"
+if ! diff -i $REMOTEUSERFILE $OUTPUTFILE >/dev/null 2>&1; then
+    fail "Unexpected REMOTE_USER variable, expected $REMOTEUSER but got `cat $OUTPUTFILE`"
+fi
+
+vas_kdestroy
+
+# vim: syntax=sh ts=8 sw=4 noet ft=sh

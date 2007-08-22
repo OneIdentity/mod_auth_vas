@@ -15,6 +15,7 @@ TESTS = \
 	test.bug167 \
 	test.bug214 \
 	test.bug337 \
+	test.r203 \
 	# end of tests
 
 TEST_PLATFORM = $(shell $(srcdir)/get-platform)
