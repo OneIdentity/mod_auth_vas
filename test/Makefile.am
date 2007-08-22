@@ -2,7 +2,10 @@
 SUBDIRS=	http-get .
 DIST_SUBDIRS=	http-get
 
-TESTS = \
+TESTS =
+
+if ENABLE_RCDEV_TESTS
+TESTS += \
 	test.version \
 	test.bug4286 \
 	test.bug4712 \
@@ -17,6 +20,7 @@ TESTS = \
 	test.bug337 \
 	test.r203 \
 	# end of tests
+endif
 
 TEST_PLATFORM = $(shell $(srcdir)/get-platform)
 # Set environment variable DEBUG=true for test debugging

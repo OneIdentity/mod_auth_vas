@@ -281,6 +281,17 @@ AC_CHECK_FUNC([vas_ctx_alloc],,[
 	       ])
 CFLAGS="$CFLAGS_save" LIBS="$LIBS_save"
 
+AC_ARG_ENABLE([rcdev-tests],
+	      [AS_HELP_STRING([--enable-rcdev-tests],
+			      [Enable tests that rely on the Resource Central dev network])],
+	      [case "${enableval}" in
+	        yes) ENABLE_RCDEV_TESTS=yes ;;
+		no)  ENABLE_RCDEV_TESTS=no ;;
+		*) AC_MSG_ERROR([bad value ${enableval} for --enable-rcdev-tests]) ;;
+	       esac],
+	      [ENABLE_RCDEV_TESTS=no])
+AM_CONDITIONAL(ENABLE_RCDEV_TESTS, test "x$ENABLE_RCDEV_TESTS" = "xyes")
+
 AC_CHECK_FUNCS([getgrnam_r memset strcasecmp strchr strtol])
 AC_CHECK_HEADERS([string.h])
 AC_C_CONST
