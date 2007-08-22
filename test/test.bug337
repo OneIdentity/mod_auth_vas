@@ -43,6 +43,8 @@ set_negotiate () {
 
 echo "test file for pid $$" > $DOC_DIR/$TESTFILE
 
+vas_kinit $USER_test $PASSWD_test
+
 # Test: Negotiate includes localhost
 set_negotiate $DOC_DIR 127.0.0.0/255.0.0.0
 ap_start
@@ -63,5 +65,7 @@ fetch_nego -u "$USER_test" `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUTFILE &&
 
 ap_stop
 ap_conf_restore
+
+vas_kdestroy
 
 #vim: ts=4 sw=4 et syntax=shell
