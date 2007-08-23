@@ -871,7 +871,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
             buf = apr_palloc(r->pool, buflen);
 	if (gbuf == NULL || buf == NULL) {
 	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
-	    result = HTTP_INTERNAL_SERVER_ERROR;
+	    rval = HTTP_INTERNAL_SERVER_ERROR;
 	    goto finish;
 	}
         if ((ret = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
