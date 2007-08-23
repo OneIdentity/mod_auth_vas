@@ -1912,11 +1912,13 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	apr_ipsubnet_t *ipsubnet;
 	char addr[sizeof("0000:0000:0000:0000:0000:0000:0000:0000")];
 	char *slash;
+	const char *mask;
 	apr_status_t subnet_create_err;
 
 	slash = strchr(value, '/');
 	if (slash) {
 	    int count = slash - value;
+	    mask = slash + 1;
 	    if (count > sizeof(addr) - 1) {
 		/* Too long to be a valid IPv4 or IPv6 address */
 		LOG_RERROR(APLOG_ERR, 0, r,
@@ -1929,7 +1931,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	    addr[count] = '\0';
 
 	    subnet_create_err =
-		apr_ipsubnet_create(&ipsubnet, addr, slash + 1, closure->request->pool);
+		apr_ipsubnet_create(&ipsubnet, addr, mask, closure->request->pool);
 	    memset(addr, '\0', sizeof(addr));
 	} else {
 	    /* No subnet provided - checking exact host */
@@ -1940,7 +1942,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	if (subnet_create_err) {
 	    LOG_RERROR(APLOG_ERR, subnet_create_err, r,
 		    "Error turning %s/%s into an IP subnet",
-		    addr, slash);
+		    addr, mask);
 	    return ERROR;
 	}
 
