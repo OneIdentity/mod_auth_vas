@@ -1743,7 +1743,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     /* Obtain a new VAS context for the web server */
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
     if (vaserr != VAS_ERR_SUCCESS) {
-        LOG_ERROR(APLOG_ERR, vaserr, s, 
+        LOG_ERROR(APLOG_ERR, 0, s, 
 		"vas_ctx_alloc failed, err = %d",
 	       	vaserr);
 	return;
