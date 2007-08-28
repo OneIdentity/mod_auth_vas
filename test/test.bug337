@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # Subnet-specific negotiate auth
 #
 # Tests a few basic config options and that per-dir configs are merged

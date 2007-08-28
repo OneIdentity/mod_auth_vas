@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # 'Require group' did not previously work for local unix groups.
 # MAV now has a 'local-group' option.
 description "local-group (bug 64)"

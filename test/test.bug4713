@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # bug 4713 
 description "AuthVasDefaultRealm conf directive accepted"
 #

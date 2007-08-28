@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # bug 4833
 description "AuthVasServicePrincipal actually changes service principal"
 #

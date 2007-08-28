@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # Ensure both Negotiate and Basic auth set REMOTE_USER to the full UPN
 # Previously Basic auth would set REMOTE_USER to whatever the user typed,
 # which was not reliable for applications.

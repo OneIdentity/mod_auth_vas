@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # Passing an empty username to the authentication function triggered an
 # assertion in VAS causing the server process to die.
 # MAV was modified to send an authentication failure if an empty username is

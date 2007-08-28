@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 EXPECTED_VERSION=`sh ../config.status -V | head -1 | cut -d' ' -f3`
 # version
 description "sudo works and version is $EXPECTED_VERSION"

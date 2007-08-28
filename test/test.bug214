@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # Ensure basic auth is not case-sensitive on usernames
 description "case-insensitive basic auth (bug #214)"
 

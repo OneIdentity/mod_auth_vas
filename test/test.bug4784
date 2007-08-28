@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # bug 4784 
 description "Require valid-user"
 #

@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # 401 Unauthorized responses were missing the WWW-Authenticate header,
 # so users were not given the chance to re-enter an incorrect password
 description "basic auth lockout (bug 167)"

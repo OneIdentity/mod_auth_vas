@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # Bug 46 was a nasty one - passing a valid username but invalid password led
 # to the user still being granted access.
 description "Basic auth (bug 46)"

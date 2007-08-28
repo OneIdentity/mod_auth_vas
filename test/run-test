@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# usage: run-test platform scriptname
+# usage: run-test scriptname
 #
 # macros and variables defined for controlling the web server
 # and installing a package etc. scripts should undo all their own changes,
@@ -39,13 +39,13 @@
 #  $PASSWD_local - password of non-AD user
 #
 
-if test $# -ne 2; then
-  echo "usage: $0 platform scriptname"
+if test $# -ne 1; then
+  echo "usage: $0 scriptname"
   exit 1
 fi
 
-PLATFORM="$1"
-script="$2"
+PLATFORM=`./get-platform`
+script="$1"
 
 VASTOOL=/opt/quest/bin/vastool
 SUDO=sudo

@@ -1,3 +1,4 @@
+#!/bin/sh ./run-test
 # bug 4286 segv under suse
 #
 # In this test, we do a general exercise of the mod_auth_vas module,
