@@ -628,7 +628,7 @@ match_user(request_rec *r, const char *name, int log_level)
     ASSERT(name != NULL);
     ASSERT(RUSER(r) != NULL);
 
-    TRACE_R(r, "match_user: name=%s RUSER=%s", name, RUSER(r));
+    TRACE_R(r, "%s: name=%s RUSER=%s", __FUNCTION__, name, RUSER(r));
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
@@ -636,7 +636,7 @@ match_user(request_rec *r, const char *name, int log_level)
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "match_group: unable to acquire lock");
+                   "%s: unable to acquire lock", __FUNCTION__);
 	result = err;
 	goto finish;
     }
@@ -671,9 +671,9 @@ match_user(request_rec *r, const char *name, int log_level)
 
     if (vas_user_compare(sc->vas_ctx, rnote->vas_user_obj, required_user) == VAS_ERR_SUCCESS) {
 	user_matches = 1;
-	TRACE_R(r, "match_user: user matches");
+	TRACE_R(r, "%s: user matches", __FUNCTION__);
     } else {
-	TRACE_R(r, "match_user: user does not match");
+	TRACE_R(r, "%s: user does not match", __FUNCTION__);
     }
 
 #if defined(MODAUTHVAS_VERBOSE)
@@ -682,7 +682,7 @@ match_user(request_rec *r, const char *name, int log_level)
 	char *bdn = NULL;
 	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, rnote->vas_user_obj, &adn);
 	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &bdn);
-	TRACE_R(r, "match_user: <%s> <%s> %s", adn?adn:"ERROR",
+	TRACE_R(r, "%s: <%s> <%s> %s", __FUNCTION__, adn?adn:"ERROR",
 		bdn?bdn:"ERROR", user_matches ? "match" : "no-match");
 	if (adn) free(adn);
 	if (bdn) free(bdn);
@@ -726,7 +726,7 @@ match_group(request_rec *r, const char *name, int log_level)
 
     if ((rval = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "match_group: unable to acquire lock");
+                   "%s: unable to acquire lock", __FUNCTION__);
 	return rval;
     }
 
@@ -738,7 +738,8 @@ match_group(request_rec *r, const char *name, int log_level)
      * no available group information. */
     if (rnote->vas_authctx == NULL) {
         LOG_RERROR(log_level, 0, r,
-                   "match_group: no available auth context for %s",
+                   "%s: no available auth context for %s",
+		   __FUNCTION__,
                    rnote->vas_pname);
         rval = HTTP_FORBIDDEN;
         goto finish;
@@ -764,7 +765,8 @@ match_group(request_rec *r, const char *name, int log_level)
         case VAS_ERR_NOT_FOUND: /* user not member of group */
             rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
-                       "match_group: %s not member of %s",
+                       "%s: %s not member of %s",
+		       __FUNCTION__,
                        rnote->vas_pname,
                        name);
             break;
@@ -772,14 +774,16 @@ match_group(request_rec *r, const char *name, int log_level)
         case VAS_ERR_EXISTS: /* configured group not found */
             rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
-                       "match_group: group %s does not exist",
+                       "%s: group %s does not exist",
+		       __FUNCTION__,
                        name);
             break;
             
         default: /* other type of error */
             rval = HTTP_INTERNAL_SERVER_ERROR;
             LOG_RERROR(log_level, 0, r,
-                       "match_group: fatal vas error: %s",
+                       "%s: fatal vas error: %s",
+		       __FUNCTION__,
                        vas_err_get_string(sc->vas_ctx, 1));
             break;
     }
