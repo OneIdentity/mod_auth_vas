@@ -274,7 +274,7 @@ case "$PLATFORM" in
 	ap_restart () { errormark && ( $SUDO $APACHECTL restart > /dev/null) ; }
 
 	test -x $FETCH || fail "$FETCH: not found"
-	VERSION=unknown # currently no .debs
+	VERSION=`strings /usr/lib/apache2/modules/mod_auth_vas.so | grep ^mod_auth_vas/ | cut -d/ -f2`
 	;;
 
     *)
