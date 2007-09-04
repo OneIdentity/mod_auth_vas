@@ -62,9 +62,7 @@
 # endif
 #endif
 
-#if !defined(STANDARD20_MODULE_STUFF)
-# define APXS1 1 /* Apache 1.3.x */
-#endif
+#include "compat.h"
 
 /*
  * Apache2 compatibility wrappers around the Apache1 API.
@@ -628,7 +626,7 @@ match_user(request_rec *r, const char *name, int log_level)
     ASSERT(name != NULL);
     ASSERT(RUSER(r) != NULL);
 
-    TRACE_R(r, "%s: name=%s RUSER=%s", __FUNCTION__, name, RUSER(r));
+    TRACE_R(r, "%s: name=%s RUSER=%s", __func__, name, RUSER(r));
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
@@ -636,7 +634,7 @@ match_user(request_rec *r, const char *name, int log_level)
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "%s: unable to acquire lock", __FUNCTION__);
+                   "%s: unable to acquire lock", __func__);
 	result = err;
 	goto finish;
     }
@@ -671,9 +669,9 @@ match_user(request_rec *r, const char *name, int log_level)
 
     if (vas_user_compare(sc->vas_ctx, rnote->vas_user_obj, required_user) == VAS_ERR_SUCCESS) {
 	user_matches = 1;
-	TRACE_R(r, "%s: user matches", __FUNCTION__);
+	TRACE_R(r, "%s: user matches", __func__);
     } else {
-	TRACE_R(r, "%s: user does not match", __FUNCTION__);
+	TRACE_R(r, "%s: user does not match", __func__);
     }
 
 #if defined(MODAUTHVAS_VERBOSE)
@@ -682,7 +680,7 @@ match_user(request_rec *r, const char *name, int log_level)
 	char *bdn = NULL;
 	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, rnote->vas_user_obj, &adn);
 	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &bdn);
-	TRACE_R(r, "%s: <%s> <%s> %s", __FUNCTION__, adn?adn:"ERROR",
+	TRACE_R(r, "%s: <%s> <%s> %s", __func__, adn?adn:"ERROR",
 		bdn?bdn:"ERROR", user_matches ? "match" : "no-match");
 	if (adn) free(adn);
 	if (bdn) free(bdn);
@@ -726,7 +724,7 @@ match_group(request_rec *r, const char *name, int log_level)
 
     if ((rval = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "%s: unable to acquire lock", __FUNCTION__);
+                   "%s: unable to acquire lock", __func__);
 	return rval;
     }
 
@@ -739,7 +737,7 @@ match_group(request_rec *r, const char *name, int log_level)
     if (rnote->vas_authctx == NULL) {
         LOG_RERROR(log_level, 0, r,
                    "%s: no available auth context for %s",
-		   __FUNCTION__,
+		   __func__,
                    rnote->vas_pname);
         rval = HTTP_FORBIDDEN;
         goto finish;
@@ -766,7 +764,7 @@ match_group(request_rec *r, const char *name, int log_level)
             rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
                        "%s: %s not member of %s",
-		       __FUNCTION__,
+		       __func__,
                        rnote->vas_pname,
                        name);
             break;
@@ -775,7 +773,7 @@ match_group(request_rec *r, const char *name, int log_level)
             rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
                        "%s: group %s does not exist",
-		       __FUNCTION__,
+		       __func__,
                        name);
             break;
             
@@ -783,7 +781,7 @@ match_group(request_rec *r, const char *name, int log_level)
             rval = HTTP_INTERNAL_SERVER_ERROR;
             LOG_RERROR(log_level, 0, r,
                        "%s: fatal vas error: %s",
-		       __FUNCTION__,
+		       __func__,
                        vas_err_get_string(sc->vas_ctx, 1));
             break;
     }
@@ -1927,7 +1925,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 		/* Too long to be a valid IPv4 or IPv6 address */
 		LOG_RERROR(APLOG_ERR, 0, r,
 			"Invalid address from config (%s): too long",
-			__FUNCTION__, value);
+			__func__, value);
 		return ERROR;
 	    }
 
@@ -2061,14 +2059,14 @@ is_negotiate_enabled_for_client(request_rec *r)
     if (err != APR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, err, r,
 		"%s: Error turning %s into a sockaddr struct",
-		__FUNCTION__, r->connection->remote_ip);
+		__func__, r->connection->remote_ip);
 	return 0;
     }
 #else /* APXS1 */
     if (inet_aton(r->connection->remote_ip, &closure.sockaddr.sin_addr) == 0) {
 	LOG_RERROR(APLOG_ERR, 0, r,
 		"%s: Error turning remote IP %s into a struct sin_addr_t",
-		__FUNCTION__, r->connection->remote_ip);
+		__func__, r->connection->remote_ip);
 	return 0;
     }
 #endif /* APXS1 */
@@ -2420,7 +2418,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
     if (strcasecmp(attr, "userPrincipalName") == 0) {
 	LOG_RERROR(LOG_DEBUG, 0, r,
 		"%s: Returning early because REMOTE_USER is already the UPN",
-		__FUNCTION__);
+		__func__);
 	return;
     }
 
@@ -2430,7 +2428,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
     if(strchr(RUSER(r), '@') == NULL) {
 	LOG_RERROR(LOG_DEBUG, 0, r,
 		"%s: REMOTE_USER appears to already have been set to %s",
-		__FUNCTION__, RUSER(r));
+		__func__, RUSER(r));
 	return;
     }
 
@@ -2469,7 +2467,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 
 		LOG_RERROR(LOG_DEBUG, 0, r,
 			"%s: Using vas cache for lookup of %s attribute",
-			__FUNCTION__, attr);
+			__func__, attr);
 
 		if (map->vas_func(sc->vas_ctx, sc->vas_serverid,
 			    rn->vas_user_obj, &attrval) == VAS_ERR_SUCCESS)
@@ -2493,7 +2491,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 
 	    LOG_RERROR(LOG_DEBUG, 0, r,
 		    "%s: Using vas cache for lookup of %cidNumber attribute",
-		    __FUNCTION__, ug);
+		    __func__, ug);
 	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid,
 			rn->vas_user_obj, &pw) == VAS_ERR_SUCCESS)
 	    { /* success */
@@ -2511,7 +2509,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 
     LOG_RERROR(LOG_DEBUG, 0, r,
 	    "%s: VAS cache lookup unavailable for %s, doing LDAP query",
-	    __FUNCTION__, attr);
+	    __func__, attr);
 
     if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj,
 		anames, &attrs) == VAS_ERR_SUCCESS) {
@@ -2564,7 +2562,7 @@ localize_remote_user(request_rec *r, const char *unused)
     char *username;
 
     ASSERT(r != NULL);
-    TRACE_R(r, __FUNCTION__);
+    TRACE_R(r, __func__);
 
     /* Convert the UPN into a UID, then convert the UID back again */
 
@@ -2609,7 +2607,7 @@ localize_remote_user_strcmp(request_rec *r)
     char *at, *user_realm;
 
     ASSERT(r != NULL);
-    TRACE_R(r, __FUNCTION__);
+    TRACE_R(r, __func__);
 
     at = strchr(RUSER(r), '@');
     if (!at)

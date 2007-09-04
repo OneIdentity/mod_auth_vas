@@ -7,7 +7,7 @@ APXS_ACTIVATE=		# -a
 
 # We make the module noinst here, and install with apxs-install target
 noinst_DATA= 		mod_auth_vas$(DSOEXT)
-mod_auth_vas_SRCS=	mod_auth_vas.c
+mod_auth_vas_SRCS=	mod_auth_vas.c compat.h
 abs_builddir=		@abs_builddir@
 
 # Use -Wc and -Wl to protect linker options that aren't already protected
