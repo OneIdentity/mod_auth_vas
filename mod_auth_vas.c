@@ -468,8 +468,8 @@ match_user(request_rec *r, const char *name, int log_level)
     { 
 	char *adn = NULL;
 	char *bdn = NULL;
-	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, rnote->vas_user_obj, &adn);
-	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &bdn);
+	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &adn);
+	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, rnote->vas_user_obj, &bdn);
 	TRACE_R(r, "%s: <%s> <%s> %s", __func__, adn?adn:"ERROR",
 		bdn?bdn:"ERROR", user_matches ? "match" : "no-match");
 	if (adn) free(adn);
