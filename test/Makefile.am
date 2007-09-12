@@ -19,6 +19,7 @@ TESTS += \
 	test.bug214 \
 	test.bug337 \
 	test.r203 \
+	test.bug370 \
 	# end of tests
 endif
 
