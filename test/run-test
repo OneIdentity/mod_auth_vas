@@ -60,6 +60,9 @@ USER_disabled=disabled
 PASSWD_disabled=disabled
 USER_expired=expired
 PASSWD_expired=expired
+# User whose sAMAccountName does not match its userPrincipalName
+USER_nomatch=samaccount
+PASSWD_nomatch=samaccount
 TEST_DESC=' ** no description ** '
 
 FETCH=http-get/get

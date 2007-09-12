@@ -1,0 +1,52 @@
+#!/bin/sh ./run-test
+# Users with a sAMAccountName that does not match the userPrincipalName
+# cannot be retrieved using vas_id_get_user because the vas_id_t has no creds
+#
+# If this fails, you should expect to see an error like this in ErrorLog:
+# 
+# [error] [client 127.0.0.2]
+# vas_id_get_user: VAS_ERR_NOT_FOUND in _name_user_to_dn
+# could not resolve User: samaccount@RCDEV.VINTELA.COM to DN
+# Caused by:
+#  VAS_ERR_CRED_NEEDED in libvas_id_cred_check_for_tgt
+#  Could not find TGT for samaccount@RCDEV.VINTELA.COM in credential cache /tmp/krb5cc_33
+#
+# Make sure you have username-attr-name = sAMAccountName in vas.conf
+# for this test.
+#
+
+description "vas_id_get_user and sAMAccountName != userPrincipalName (bug 370)"
+
+OUTPUTFILE=/tmp/bug370.$$.txt
+TESTFILE=testfile-$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $OUTPUTFILE $DOC_DIR/$TESTFILE
+   vas_kdestroy
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		Require user $USER_nomatch
+	</Directory>
+.
+
+ap_conf_check
+
+ap_start
+
+vas_kinit $USER_nomatch $PASSWD_nomatch
+
+echo 'Hello, world!' > $DOC_DIR/$TESTFILE
+
+fetch_nego `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "Failed to retrieve test file as $USER_nomatch"
+
+# hey vim: syntax=sh

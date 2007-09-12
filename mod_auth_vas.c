@@ -396,6 +396,50 @@ server_ctx_is_valid(server_rec *s)
 }
 
 /**
+ * Ensure the vas_user_obj is set.
+ * Callers must hold the VAS lock.
+ * This function will log an error message if a failure occurs and an error
+ * cause is available.
+ *
+ * @return 0 on success, -1 on error.
+ */
+static int
+set_user_obj(request_rec *r)
+{
+    auth_vas_server_config *sc = NULL;
+    auth_vas_rnote *rn = NULL;
+
+    ASSERT(r != NULL);
+
+    sc = GET_SERVER_CONFIG(r->server->module_config);
+    ASSERT(sc != NULL);
+    ASSERT(sc->vas_ctx != NULL);
+
+    TRACE_R(r, "%s", __func__);
+
+    rn = GET_RNOTE(r);
+    if (!rn)
+	return -1;
+
+    if (rn->vas_user_obj)
+	return 0; /* Already set */
+
+    /* Use RUSER(r) because any other name is susceptible to failure
+     * when username-attr-name is not userPrincipalName. */
+    if (vas_user_init(sc->vas_ctx, sc->vas_serverid, RUSER(r), 0,
+	    &rn->vas_user_obj) != VAS_ERR_SUCCESS)
+    {
+	LOG_RERROR(LOG_ERR, 0, r,
+		"Failed to get user object for %.100s: %s",
+		RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
+	rn->vas_user_obj = NULL;
+	return -1;
+    }
+
+    return 0; /* success */
+}
+
+/**
  * Checks if the previously authenticated user matches a particular name.
  * Name comparison is done by libvas.
  *   @param r The authenticated request
@@ -434,19 +478,8 @@ match_user(request_rec *r, const char *name, int log_level)
 	goto finish;
     }
 
-    if (!rnote->vas_user_obj) {
-	/* Create a user object from the remote user id. */
-	ASSERT(rnote->vas_userid != NULL);
-
-	if (vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &rnote->vas_user_obj)) {
-	    rnote->vas_user_obj = NULL; /* VAS does not guarantee this */
-
-	    LOG_RERROR(log_level, 0, r,
-		       "vas_id_get_user: %s",
-		       vas_err_get_string(sc->vas_ctx, 1));
-	    goto finish;
-	}
-    } 
+    if (set_user_obj(r) == -1)
+	goto finish;
 
     /* Convert the required user name into a user obj */
     if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, 
@@ -616,19 +649,8 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
 	goto finish;
 
-    if (!rnote->vas_user_obj) {
-	ASSERT(rnote->vas_userid != NULL);
-	vaserr = vas_id_get_user(sc->vas_ctx, rnote->vas_userid, &rnote->vas_user_obj);
-	if (vaserr != VAS_ERR_SUCCESS) {
-	    rnote->vas_user_obj = NULL; /* VAS does not guarantee this */
-
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		       "vas_id_get_user(): %s",
-		       vas_err_get_string(sc->vas_ctx, 1));
-	    rval = HTTP_INTERNAL_SERVER_ERROR;
-	    goto finish;
-	}
-    }
+    if (set_user_obj(r) == -1)
+	goto finish;
 
     /* Determine the user's unix name */
     vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, rnote->vas_user_obj, &pw);
@@ -1228,6 +1250,9 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
 	    if (vaserr != VAS_ERR_SUCCESS) {
 		LOG_RERROR(APLOG_ERR, 0, r, "Failed to get name from vas_id_t for user %s: %s",
 			user, vas_err_get_string(sc->vas_ctx, 1));
+	    } else {
+		LOG_RERROR(APLOG_DEBUG, 0, r,
+			"Converted %.100s to a vas_id_t", user);
 	    }
         } else {
 	    LOG_RERROR(APLOG_ERR, 0, r, "Failed to convert %s into a vas_id_t: %s",
@@ -2232,20 +2257,9 @@ set_remote_user_attr(request_rec *r, const char *attr)
 
     rn = GET_RNOTE(r);
 
-    if (!rn->vas_user_obj) {
-	/* Create a user object from the remote user id. */
-	ASSERT(rn->vas_userid != NULL);
+    if (set_user_obj(r) == -1)
+	return;
 
-	if (vas_id_get_user(sc->vas_ctx, rn->vas_userid, &rn->vas_user_obj)) {
-	    rn->vas_user_obj = NULL; /* VAS does not guarantee this */
-
-	    LOG_RERROR(LOG_ERR, 0, r,
-		       "vas_id_get_user: %s",
-		       vas_err_get_string(sc->vas_ctx, 1));
-	    goto finish;
-	}
-    } 
-    
     /* Look for attributes that are likely to be in the vas cache */
     {
 	struct ldap_lookup_map *map;
