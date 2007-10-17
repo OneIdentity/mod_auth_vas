@@ -1,7 +1,5 @@
 # (c) 2006, Quest Software, Inc. All rights reserved.
 
-AUTOMAKE_OPTIONS=	foreign
-
 #-- set this to -a to cause 'make install' to activate the module (unreliable)
 APXS_ACTIVATE=		# -a
 
@@ -16,8 +14,10 @@ Wl=-Wl,
 
 # NB: copy the sources locally so that apxs doesn't get confused
 mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
-	cmp $(srcdir)/mod_auth_vas.c ./mod_auth_vas.c 2>/dev/null || \
-	  cp $(srcdir)/mod_auth_vas.c .
+	for f in $(mod_auth_vas_SRCS); do \
+	  cmp $(srcdir)/$$f ./$$f 2>/dev/null || \
+	    cp $(srcdir)/$$f . ; \
+	done
 	$(APXS) -c $(APXSFLAGS) \
 		$(CPPFLAGS) \
 		-DMODAUTHVAS_VERSION='\"$(PACKAGE_VERSION)\"' \

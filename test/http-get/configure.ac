@@ -2,7 +2,7 @@
 AC_INIT([http-get], [0.1], [David.Leonard@quest.com])
 AC_REVISION($Id$)
 AC_CONFIG_AUX_DIR([.])
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 
 AC_CONFIG_SRCDIR([get.c])
 AC_CONFIG_HEADER([config.h])

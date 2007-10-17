@@ -4,7 +4,7 @@ AC_INIT([mod_auth_vas],
         [3.5.1.]esyscmd((svnversion . /trunk || echo 0) | tr : _ | tr -d \\012),
 	[support@quest.com])
 AC_CONFIG_AUX_DIR([.])
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE([foreign])
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
 AC_CONFIG_FILES([Makefile])
