@@ -5,7 +5,7 @@ AC_INIT([mod_auth_vas],
 	[support@quest.com])
 AC_PREREQ(2.55)
 AC_CONFIG_AUX_DIR([.])
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([foreign -Wall])
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
 AC_CONFIG_FILES([Makefile])
