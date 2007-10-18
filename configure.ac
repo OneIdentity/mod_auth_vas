@@ -299,7 +299,7 @@ AC_C_CONST
 AC_FUNC_MEMCMP
 AC_HEADER_STDC
 AC_TYPE_SIZE_T
-dnl Too recent for some autoconfs
+dnl Added in autoconf 2.59c
 dnl AC_TYPE_UINT32_T
 
 AC_OUTPUT
