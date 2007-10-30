@@ -31,9 +31,11 @@ mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
 
 clean-local:
 	rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
+	: Remove sources from builddir
+	test "$(top_srcdir)" = "$(top_builddir)" || rm -f $(mod_auth_vas_SRCS)
 
 # use apxs to install the module, inserting DESTDIR as best we can
-install-data-local:
+install-exec-local:
 	mkdir -p $(DESTDIR)`$(APXS) -q LIBEXECDIR`
 	mkdir -p $(DESTDIR)`$(APXS) -q SYSCONFDIR`
 	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
