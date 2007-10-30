@@ -30,7 +30,7 @@ mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
 		mod_auth_vas.c
 
 clean-local:
-	-rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
+	rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
 
 # use apxs to install the module, inserting DESTDIR as best we can
 install-data-local:
