@@ -41,11 +41,17 @@ install-data-local:
 		$(APXSFLAGS) $(APXS_ACTIVATE) -n auth_vas \
 		mod_auth_vas$(DSOEXT)
 
+# Ensure the module does not leak symbols
+# DSOEXT is usually .la but we want the .so. Some hackery required.
+check-local: mod_auth_vas$(DSOEXT)
+	eval `libtool --config | grep ^shrext_cmds` && \
+	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$$shrext_cmds
+
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	NEWS README LICENCE examples
-EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf
+EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf check-symbols.sh
 CLEANFILES=	setup-mod_auth_vas
 
 EXTRA_DIST+=	setup-mod_auth_vas.in
