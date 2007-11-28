@@ -37,7 +37,7 @@ AC_FUNC_VPRINTF
 AC_SEARCH_LIBS(socket, socket)
 AC_SEARCH_LIBS(gethostbyname, nsl)
 AC_SEARCH_LIBS(hstrerror, resolv)
-AC_CHECK_FUNCS([gethostbyname inet_ntoa memset socket strcasecmp strchr strdup strerror strncasecmp])
+AC_CHECK_FUNCS([gethostbyname inet_ntoa memset socket strcasecmp strchr strdup strerror strncasecmp hstrerror])
 
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

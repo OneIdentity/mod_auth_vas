@@ -83,6 +83,31 @@ void	sendrequest(char *method, struct url *url, struct header *headers);
 void	readbody(struct response *response, FILE *out);
 static void	dumpheaders(const struct response *response);
 
+#if !HAVE_HSTRERROR
+/* We do this because the getaddrinfo interface isn't everywhere yet */
+const char *hstrerror(int);
+const char *
+hstrerror(err)
+    int err;
+{
+    static char buf[100];
+
+    switch (err) {
+    case HOST_NOT_FOUND:
+	return "No such host is known"
+    case NO_DATA:
+	return "No address available"
+    case NO_RECOVERY:
+	return "Unexpected name server failure"
+    case TRY_AGAIN:
+	return "Temporary name server failure: try again later"
+    default:
+	snprintf(buf, sizeof buf, "Hostname lookup error %d", err);
+	return buf;
+    }
+}
+#endif
+
 /*------------------------------------------------------------
  * URL functions
  */
