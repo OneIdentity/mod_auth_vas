@@ -1187,7 +1187,9 @@ auth_vas_cleanup_request(void *data)
     request_rec *r = (request_rec *)data;
     auth_vas_rnote *rn;
 
-    /* XXX Really shouldn't draw from the pool while cleaning it up! */
+    /* "A cleanup function can safely allocate memory from the pool that is
+     * being cleaned up." - APR 1.2 docs. */
+
     TRACE_R(r, "auth_vas_cleanup_request");
     rn = GET_RNOTE(r);
     if (rn != NULL) {
