@@ -1,7 +1,8 @@
 # (c) 2006 Quest Software. All right reserved.
 
 AC_INIT([mod_auth_vas], 
-        [3.5.1.]esyscmd((svnversion . /trunk || echo 0) | tr : _ | tr -d \\012),
+        [3.5.1.]esyscmd(if test -d .git; then git-svn log | head -2 | tail -1 | cut -d' ' -f 1 | tr -d 'r\012';
+			else (svnversion . /trunk || echo 0) | tr : _ | tr -d \\012; fi),
 	[support@quest.com])
 AC_PREREQ(2.55)
 AC_CONFIG_AUX_DIR([.])
