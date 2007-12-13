@@ -649,8 +649,10 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
 	goto finish;
 
-    if (set_user_obj(r) == -1)
+    if (set_user_obj(r) == -1) {
+	rval = HTTP_FORBIDDEN;
 	goto finish;
+    }
 
     /* Determine the user's unix name */
     vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, rnote->vas_user_obj, &pw);
