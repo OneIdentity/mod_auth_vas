@@ -64,6 +64,13 @@
 
 #include "compat.h"
 
+/** Macro for returning a value from the match functions via a cleanup label
+ * (called finish) to make the code read more easily. */
+#define RETURN(r) do { \
+    result = (r); \
+    goto finish; \
+} while (0)
+
 /*
  * Per-server configuration structure - exists for lifetime of server process.
  */
@@ -458,7 +465,7 @@ static int
 match_user(request_rec *r, const char *name, int log_level)
 {
     int                       err; /*< Temporary storage */
-    int                       result = HTTP_FORBIDDEN; /*< This function's return code */
+    int                       result; /*< This function's return code */
     int                       user_matches = 0;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
@@ -477,19 +484,15 @@ match_user(request_rec *r, const char *name, int log_level)
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "%s: unable to acquire lock", __func__);
-	result = err;
-	goto finish;
+	return err;
     }
+    /* Use RETURN() from here on */
 
-    if ((err = rnote_get(sc, r, RUSER(r), &rnote))) {
-	result = err;
-	goto finish;
-    }
+    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+	RETURN(err);
 
-    if ((err = set_user_obj(r))) {
-	result = err;
-	goto finish;
-    }
+    if ((err = set_user_obj(r)))
+	RETURN(err);
 
     /* Convert the required user name into a user obj */
     if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, 
@@ -497,7 +500,8 @@ match_user(request_rec *r, const char *name, int log_level)
 	LOG_RERROR(log_level, 0, r,
 		   "vas_user_init(%.100s): %s", name,
 		   vas_err_get_string(sc->vas_ctx, 1));
-	goto finish;
+
+	RETURN(HTTP_INTERNAL_SERVER_ERROR); /* Server misconfiguration */
     }
 
     if (vas_user_compare(sc->vas_ctx, rnote->vas_user_obj, required_user) == VAS_ERR_SUCCESS) {
@@ -520,14 +524,18 @@ match_user(request_rec *r, const char *name, int log_level)
     }
 #endif
 
+    if (user_matches)
+	RETURN(OK);
+    else
+	RETURN(HTTP_FORBIDDEN);
+
 finish:
     if (required_user)
 	vas_user_free(sc->vas_ctx, required_user);
 
     UNLOCK_VAS(r);
 
-    ASSERT(user_matches || result != OK);
-    return user_matches ? OK : result;
+    return result;
 }
 
 
@@ -542,7 +550,8 @@ static int
 match_group(request_rec *r, const char *name, int log_level)
 {
     vas_err_t                 vaserr;
-    int                       rval;
+    int                       result;
+    int                       err; /*< temp storage */
     int                       user_matches = 0;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
@@ -555,14 +564,15 @@ match_group(request_rec *r, const char *name, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
 
-    if ((rval = LOCK_VAS(r))) {
+    if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "%s: unable to acquire lock", __func__);
-	return rval;
+	return err;
     }
+    /* Use RETURN() from here on */
 
-    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
-	goto finish;
+    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+	RETURN(err);
 
     /* Make sure that we have a valid VAS authentication context.
      * If it's not there, then we'll just fail since there is
@@ -572,8 +582,7 @@ match_group(request_rec *r, const char *name, int log_level)
                    "%s: no available auth context for %s",
 		   __func__,
                    rnote->vas_pname);
-        rval = HTTP_FORBIDDEN;
-        goto finish;
+	RETURN(HTTP_FORBIDDEN);
     }
 
 #define VASVER ((VAS_API_VERSION_MAJOR * 10000) + \
@@ -594,36 +603,38 @@ match_group(request_rec *r, const char *name, int log_level)
             break;
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
-            rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
                        "%s: %s not member of %s",
 		       __func__,
                        rnote->vas_pname,
                        name);
+	    RETURN(HTTP_FORBIDDEN);
             break;
             
         case VAS_ERR_EXISTS: /* configured group not found */
-            rval = HTTP_FORBIDDEN;
             LOG_RERROR(log_level, 0, r,
                        "%s: group %s does not exist",
 		       __func__,
                        name);
+            RETURN(HTTP_FORBIDDEN);
             break;
             
         default: /* other type of error */
-            rval = HTTP_INTERNAL_SERVER_ERROR;
             LOG_RERROR(log_level, 0, r,
                        "%s: fatal vas error: %s",
 		       __func__,
                        vas_err_get_string(sc->vas_ctx, 1));
+	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
             break;
     }
+
+    if (user_matches)
+	RETURN(OK);
 
 finish:
     UNLOCK_VAS(r);
 
-    ASSERT(user_matches || rval != OK);
-    return user_matches ? OK : rval;
+    return result;
 }
 
 /**
@@ -637,8 +648,9 @@ static int
 match_unix_group(request_rec *r, const char *name, int log_level)
 {
     vas_err_t                 vaserr;
-    int                       rval;
+    int                       result;
     int                       user_matches = 0;
+    int                       err;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
     struct group             *gr;
@@ -653,31 +665,29 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
 
-    if ((rval = LOCK_VAS(r))) {
+    if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "match_group: unable to acquire lock");
-	return rval;
+	return err;
     }
 
-    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
-	goto finish;
+    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+	RETURN(err);
 
-    if ((rval = set_user_obj(r)))
-	goto finish;
+    if ((err = set_user_obj(r)))
+	RETURN(err);
 
     /* Determine the user's unix name */
     vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, rnote->vas_user_obj, &pw);
     if (vaserr == VAS_ERR_NOT_FOUND) {
         /* User does not map to a unix user, so cannot be part of a group */
-        rval = HTTP_FORBIDDEN;
-        goto finish;
+	RETURN(HTTP_FORBIDDEN);
     }
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "vas_user_get_pwinfo(): %s",
                    vas_err_get_string(sc->vas_ctx, 1));
-        rval = HTTP_INTERNAL_SERVER_ERROR;
-	goto finish;
+	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
 
     /* 
@@ -690,7 +700,6 @@ match_unix_group(request_rec *r, const char *name, int log_level)
         char *buf;
         size_t buflen = 16384;  /* GETGR_R_SIZE_MAX is not portable :( */
         struct group *gbuf;
-        int ret;
         
         gbuf = (struct group *)apr_palloc(r->pool, 
                 sizeof (struct group));
@@ -698,14 +707,12 @@ match_unix_group(request_rec *r, const char *name, int log_level)
             buf = apr_palloc(r->pool, buflen);
 	if (gbuf == NULL || buf == NULL) {
 	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
-	    rval = HTTP_INTERNAL_SERVER_ERROR;
-	    goto finish;
+	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
 	}
-        if ((ret = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
+        if ((err = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
             LOG_RERROR(log_level, ret, r,
                        "getgrnam_r: cannot access group '%s'", name);
-            rval = HTTP_INTERNAL_SERVER_ERROR;
-            goto finish;
+            RETURN(HTTP_INTERNAL_SERVER_ERROR);
         }
     }
 #else
@@ -713,31 +720,34 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     if (!gr) {
 	LOG_RERROR_ERRNO(log_level, 0, r,
                    "getgrnam: cannot access group '%s'", name);
-        rval = HTTP_INTERNAL_SERVER_ERROR;
-        goto finish;
+	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
 #endif
 
     /* Search the group list */
-    rval = HTTP_FORBIDDEN;
-    for (sp = gr->gr_mem; sp && *sp; sp++)
+    for (sp = gr->gr_mem; sp && *sp; sp++) {
         if (strcmp(pw->pw_name, *sp) == 0) {
             user_matches = 1;
             break;
         }
-    if (!user_matches)
-        LOG_RERROR(log_level, 0, r,
-                   "match_group: %s not member of %s",
-                   rnote->vas_pname,
-                   name);
+    }
+
+    if (user_matches) {
+	RETURN(OK);
+    } else {
+	LOG_RERROR(log_level, 0, r,
+		   "match_group: %s not member of %s",
+		   rnote->vas_pname,
+		   name);
+	RETURN(HTTP_FORBIDDEN);
+    }
 
 finish:
     UNLOCK_VAS(r);
     if (pw)
         free(pw);
 
-    ASSERT(user_matches || rval != OK);
-    return user_matches ? OK : rval;
+    return result;
 }
 
 
@@ -769,7 +779,8 @@ dn_in_container(const char *dn, const char *container)
 static int
 match_container(request_rec *r, const char *container, int log_level)
 {
-    int                       rval;
+    int                       result;
+    int                       err;
     int                       user_matches = 0;
     vas_err_t                 vaserr;
     auth_vas_server_config    *sc = NULL;
@@ -785,14 +796,15 @@ match_container(request_rec *r, const char *container, int log_level)
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
     
-    if ((rval = LOCK_VAS(r))) {
+    if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "match_container: unable to acquire lock");
-	return rval;
+	return err;
     }
+    /* Use RETURN() from here on */
 
-    if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
-	goto done;
+    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+	RETURN(err);
 
     if ((vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid,
 		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
@@ -800,8 +812,7 @@ match_container(request_rec *r, const char *container, int log_level)
         LOG_RERROR(log_level, 0, r,
 	       	"match_container: fatal vas error for user_init: %d, %s",
 	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
-        rval = HTTP_FORBIDDEN;
-        goto done;
+	RETURN(HTTP_FORBIDDEN);
     }
 
     if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, vasuser,
@@ -810,8 +821,7 @@ match_container(request_rec *r, const char *container, int log_level)
 	LOG_RERROR(log_level, 0, r,
 	       	"match_container: fatal vas error for user_get_dn: %d, %s",
 	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
-        rval = HTTP_FORBIDDEN;
-        goto done;
+	RETURN(HTTP_FORBIDDEN);
     }
 
     ASSERT(dn != NULL);
@@ -821,18 +831,16 @@ match_container(request_rec *r, const char *container, int log_level)
         LOG_RERROR(APLOG_INFO, 0, r,
 	       	"match_container: user dn %s not in container %s",
 	       	dn, container);
-        rval = HTTP_FORBIDDEN;
+	RETURN(HTTP_FORBIDDEN);
     }
 
-
-done:
+finish:
     if (vasuser) vas_user_free(sc->vas_ctx, vasuser);
     if (dn)      free(dn);
 
     UNLOCK_VAS(r);
 
-    ASSERT(user_matches || rval != OK);
-    return user_matches ? OK : rval;
+    return result;
 }
 
 /**
@@ -1034,25 +1042,24 @@ auth_vas_auth_checker(request_rec *r)
 static int
 do_basic_accept(request_rec *r, const char *user, const char *password)
 {
-    int                     rval;
-    int                     user_authorized = 0;
+    int                     err;
+    int                     result;
     vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
     TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
 
-    if ((rval = LOCK_VAS(r))) {
+    if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "do_basic_accept: unable to acquire lock");
-	return rval;
+	return err;
     }
+    /* Use RETURN() from here on */
 
     /* get the note record with the user's id */
-    if ((rval = rnote_get(sc, r, user, &rn))) {
-        goto done;
-    }
-    rval = HTTP_UNAUTHORIZED;
+    if ((err = rnote_get(sc, r, user, &rn)))
+	RETURN(err);
 
     /* Check that the given password is correct */
     vaserr = vas_id_establish_cred_password(sc->vas_ctx, rn->vas_userid,
@@ -1061,7 +1068,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "vas_id_establish_cred_password(user=%s): %s",
                    user, vas_err_get_string(sc->vas_ctx, 1));
-	goto done;
+	RETURN(HTTP_UNAUTHORIZED);
     }
 
     /* authenticate the user against our service, and store off the auth context
@@ -1074,27 +1081,25 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
                    "vas_auth(user=%s): %s",
                    user,
                    vas_err_get_string(sc->vas_ctx, 1));
-	goto done;
+	RETURN(HTTP_UNAUTHORIZED);
     }
 
     /* Authenticated */
-    user_authorized = 1;
     RAUTHTYPE(r) = "Basic";
     RUSER(r) = apr_pstrdup(RUSER_POOL(r), rn->vas_pname);
+    RETURN(OK);
 
- done:
+finish:
 
-    if (!user_authorized && rval == HTTP_UNAUTHORIZED) {
-	/* Prompt the client to try again (only if failure was authorization
-	 * failure, rather than internal server error). */
+    if (result == HTTP_UNAUTHORIZED) {
+	/* Prompt the client to try again */
 	add_auth_headers(r);
     }
 
     /* Release resources */
     UNLOCK_VAS(r);
 
-    ASSERT(user_authorized || rval != OK);
-    return user_authorized ? OK : rval;
+    return result;
 }
 
 /**
