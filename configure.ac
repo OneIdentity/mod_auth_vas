@@ -13,6 +13,8 @@ AC_CONFIG_FILES([Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
+AC_PROG_CC
+
 AC_CACHE_CHECK([if ${MAKE-make} understands patsubst], [ac_cv_prog_gnu_make], 
 [
    cat <<'__EOF' >conftest.mk
@@ -44,6 +46,40 @@ AC_CACHE_CHECK([platform type], [ac_cv_var_platform],
 		fi;;
        SunOS)	ac_cv_var_platform=solaris;;
      esac])
+
+dnl -- Flags to make GCC complain about your bugs
+dnl Originally from Stallone <http://tedp.id.au/stallone/>, copied with permission.
+if test "x$GCC" = "xyes"; then
+    DESIRED_CFLAGS="-Wall -Wextra -std=c89 -g"
+    DESIRED_LDFLAGS="-Wl,-z,defs"
+
+dnl    # Add stricter flags in developer mode
+dnl    if test "$enable_developer_mode" = "yes"; then
+dnl        DESIRED_CFLAGS="$DESIRED_CFLAGS -pedantic-errors -Werror"
+dnl    fi
+
+    for flag in $DESIRED_CFLAGS; do
+        AC_MSG_CHECKING([whether ${CC} accepts ${flag}])
+        orig_CFLAGS="$CFLAGS"
+        CFLAGS="$CFLAGS $flag"
+
+        AC_COMPILE_IFELSE([int main() {}],
+                          [AC_MSG_RESULT([yes])],
+                          [AC_MSG_RESULT([no])
+                           CFLAGS="$orig_CFLAGS"])
+    done
+
+    for flag in $DESIRED_LDFLAGS; do
+        AC_MSG_CHECKING([whether ${CC} accepts ${flag}])
+        orig_LDFLAGS="$LDFLAGS"
+        LDFLAGS="$LDFLAGS $flag"
+
+        AC_LINK_IFELSE([int main() {}],
+                       [AC_MSG_RESULT([yes])],
+                       [AC_MSG_RESULT([no])
+                        LDFLAGS="$orig_LDFLAGS"])
+    done
+fi
 
 dnl -- APXS is Apache's extension tool.
 dnl    We trust it completely to do the right thing.
