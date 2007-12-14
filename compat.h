@@ -264,4 +264,10 @@
     ap_set_module_config((r)->request_config, &auth_vas_module, note)
 #endif /* apache 2.0.x */
 
+#ifdef __GNUC__
+# define MAV_UNUSED __attribute__((__unused__))
+#else
+# define MAV_UNUSED
+#endif
+
 #endif /* MAV_COMPAT_H */

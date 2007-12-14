@@ -323,7 +323,7 @@ static const command_rec auth_vas_cmds[] =
  * A static string containing the compile options, that can be revealed
  * by strings(1)
  */
-static char module_info[] = 
+static char module_info[] MAV_UNUSED =
 #if defined(AP_DEBUG)
 	" AP_DEBUG"
 #endif
