@@ -527,7 +527,6 @@ finish:
     UNLOCK_VAS(r);
 
     ASSERT(user_matches || result != OK);
-
     return user_matches ? OK : result;
 }
 
@@ -544,6 +543,7 @@ match_group(request_rec *r, const char *name, int log_level)
 {
     vas_err_t                 vaserr;
     int                       rval;
+    int                       user_matches = 0;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
 
@@ -590,7 +590,7 @@ match_group(request_rec *r, const char *name, int log_level)
                                               name);
     switch (vaserr) {
         case VAS_ERR_SUCCESS: /* user is member of group */
-            rval = OK;
+            user_matches = 1;
             break;
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
@@ -621,7 +621,9 @@ match_group(request_rec *r, const char *name, int log_level)
 
 finish:
     UNLOCK_VAS(r);
-    return rval;
+
+    ASSERT(user_matches || rval != OK);
+    return user_matches ? OK : rval;
 }
 
 /**
@@ -636,6 +638,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 {
     vas_err_t                 vaserr;
     int                       rval;
+    int                       user_matches = 0;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
     struct group             *gr;
@@ -719,10 +722,10 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     rval = HTTP_FORBIDDEN;
     for (sp = gr->gr_mem; sp && *sp; sp++)
         if (strcmp(pw->pw_name, *sp) == 0) {
-            rval = OK;
+            user_matches = 1;
             break;
         }
-    if (rval)
+    if (!user_matches)
         LOG_RERROR(log_level, 0, r,
                    "match_group: %s not member of %s",
                    rnote->vas_pname,
@@ -732,7 +735,9 @@ finish:
     UNLOCK_VAS(r);
     if (pw)
         free(pw);
-    return rval;
+
+    ASSERT(user_matches || rval != OK);
+    return user_matches ? OK : rval;
 }
 
 
@@ -764,7 +769,8 @@ dn_in_container(const char *dn, const char *container)
 static int
 match_container(request_rec *r, const char *container, int log_level)
 {
-    int                       rval = 0;
+    int                       rval;
+    int                       user_matches = 0;
     vas_err_t                 vaserr;
     auth_vas_server_config    *sc = NULL;
     auth_vas_rnote            *rnote = NULL;
@@ -809,9 +815,9 @@ match_container(request_rec *r, const char *container, int log_level)
     }
 
     ASSERT(dn != NULL);
-    if (dn_in_container(dn, container)) 
-        rval = OK;
-    else {
+    if (dn_in_container(dn, container)) {
+	user_matches = 1;
+    } else {
         LOG_RERROR(APLOG_INFO, 0, r,
 	       	"match_container: user dn %s not in container %s",
 	       	dn, container);
@@ -825,7 +831,8 @@ done:
 
     UNLOCK_VAS(r);
 
-    return rval;
+    ASSERT(user_matches || rval != OK);
+    return user_matches ? OK : rval;
 }
 
 /**
@@ -1028,6 +1035,7 @@ static int
 do_basic_accept(request_rec *r, const char *user, const char *password)
 {
     int                     rval;
+    int                     user_authorized = 0;
     vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
@@ -1070,21 +1078,23 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     }
 
     /* Authenticated */
-    rval = OK;
+    user_authorized = 1;
     RAUTHTYPE(r) = "Basic";
     RUSER(r) = apr_pstrdup(RUSER_POOL(r), rn->vas_pname);
 
  done:
 
-    if (rval == HTTP_UNAUTHORIZED) {
-	/* Prompt the client to try again */
+    if (!user_authorized && rval == HTTP_UNAUTHORIZED) {
+	/* Prompt the client to try again (only if failure was authorization
+	 * failure, rather than internal server error). */
 	add_auth_headers(r);
     }
 
     /* Release resources */
     UNLOCK_VAS(r);
 
-    return rval;
+    ASSERT(user_authorized || rval != OK);
+    return user_authorized ? OK : rval;
 }
 
 /**
