@@ -1766,7 +1766,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	    if (count > sizeof(addr) - 1) {
 		/* Too long to be a valid IPv4 or IPv6 address */
 		LOG_RERROR(APLOG_ERR, 0, r,
-			"Invalid address from config (%s): too long",
+			"%s: Invalid address from config (%s): too long",
 			__func__, value);
 		return ERROR;
 	    }
