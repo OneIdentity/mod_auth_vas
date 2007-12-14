@@ -401,11 +401,13 @@ server_ctx_is_valid(server_rec *s)
  * This function will log an error message if a failure occurs and an error
  * cause is available.
  *
- * @return 0 on success, -1 on error.
+ * @return OK (0) on success, or an HTTP error code (nonzero) on error.
  */
 static int
 set_user_obj(request_rec *r)
 {
+    vas_err_t vaserr;
+
     auth_vas_server_config *sc = NULL;
     auth_vas_rnote *rn = NULL;
 
@@ -419,21 +421,27 @@ set_user_obj(request_rec *r)
 
     rn = GET_RNOTE(r);
     if (!rn)
-	return -1;
+	return HTTP_INTERNAL_SERVER_ERROR;
 
     if (rn->vas_user_obj)
 	return 0; /* Already set */
 
     /* Use RUSER(r) because any other name is susceptible to failure
      * when username-attr-name is not userPrincipalName. */
-    if (vas_user_init(sc->vas_ctx, sc->vas_serverid, RUSER(r), 0,
-	    &rn->vas_user_obj) != VAS_ERR_SUCCESS)
-    {
+    vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid, RUSER(r), 0,
+	    &rn->vas_user_obj);
+
+    if (vaserr) {
+	rn->vas_user_obj = NULL;
+
 	LOG_RERROR(LOG_ERR, 0, r,
 		"Failed to get user object for %.100s: %s",
 		RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
-	rn->vas_user_obj = NULL;
-	return -1;
+
+	if (vaserr == VAS_ERR_NOT_FOUND) /* No such user */
+	    return HTTP_UNAUTHORIZED;
+
+	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     return 0; /* success */
@@ -478,8 +486,10 @@ match_user(request_rec *r, const char *name, int log_level)
 	goto finish;
     }
 
-    if (set_user_obj(r) == -1)
+    if ((err = set_user_obj(r))) {
+	result = err;
 	goto finish;
+    }
 
     /* Convert the required user name into a user obj */
     if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, 
@@ -649,10 +659,8 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     if ((rval = rnote_get(sc, r, RUSER(r), &rnote)))
 	goto finish;
 
-    if (set_user_obj(r) == -1) {
-	rval = HTTP_FORBIDDEN;
+    if ((rval = set_user_obj(r)))
 	goto finish;
-    }
 
     /* Determine the user's unix name */
     vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, rnote->vas_user_obj, &pw);
@@ -2261,7 +2269,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 
     rn = GET_RNOTE(r);
 
-    if (set_user_obj(r) == -1)
+    if (set_user_obj(r))
 	return;
 
     /* Look for attributes that are likely to be in the vas cache */
