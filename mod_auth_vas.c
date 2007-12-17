@@ -1066,8 +1066,8 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_id_establish_cred_password(user=%s): %s",
-                   user, vas_err_get_string(sc->vas_ctx, 1));
+		"user %s: authentication failure for \"%s\": %s",
+		user, r->uri, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_UNAUTHORIZED);
     }
 
