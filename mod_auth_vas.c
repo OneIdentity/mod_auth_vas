@@ -1879,7 +1879,6 @@ is_negotiate_enabled_for_client(request_rec *r)
 {
     auth_vas_dir_config *dc;
     struct ip_cmp_closure closure;
-    apr_status_t err;
 
     ASSERT(r != NULL);
 
@@ -1892,12 +1891,16 @@ is_negotiate_enabled_for_client(request_rec *r)
 	return 1;
 
 #if !defined(APXS1)
-    err = apr_sockaddr_info_get(&closure.sockaddr_p, r->connection->remote_ip, APR_UNSPEC, 0, 0, r->pool);
-    if (err != APR_SUCCESS) {
-	LOG_RERROR(APLOG_ERR, err, r,
-		"%s: Error turning %s into a sockaddr struct",
-		__func__, r->connection->remote_ip);
-	return 0;
+    {
+	apr_status_t err;
+
+	err = apr_sockaddr_info_get(&closure.sockaddr_p, r->connection->remote_ip, APR_UNSPEC, 0, 0, r->pool);
+	if (err != APR_SUCCESS) {
+	    LOG_RERROR(APLOG_ERR, err, r,
+		    "%s: Error turning %s into a sockaddr struct",
+		    __func__, r->connection->remote_ip);
+	    return 0;
+	}
     }
 #else /* APXS1 */
     if (inet_aton(r->connection->remote_ip, &closure.sockaddr.sin_addr) == 0) {
@@ -2756,6 +2759,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     return (void *)sc;
 }
 
+#if !defined(APXS1) /* Unused on APXS1 */
 /*
  * Logs version information about this module.
  */
@@ -2765,6 +2769,7 @@ auth_vas_print_version(apr_pool_t *plog)
     LOG_P_ERROR(APLOG_INFO, 0, plog, "mod_auth_vas version %s, VAS %s",
 	    MODAUTHVAS_VERSION, vas_product_version(0, 0, 0));
 }
+#endif
 
 /**
  * Performs post-configuration initialisation.
