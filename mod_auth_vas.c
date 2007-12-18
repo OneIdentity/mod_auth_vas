@@ -552,7 +552,6 @@ match_group(request_rec *r, const char *name, int log_level)
     vas_err_t                 vaserr;
     int                       result;
     int                       err; /*< temp storage */
-    int                       user_matches = 0;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
 
@@ -599,7 +598,7 @@ match_group(request_rec *r, const char *name, int log_level)
                                               name);
     switch (vaserr) {
         case VAS_ERR_SUCCESS: /* user is member of group */
-            user_matches = 1;
+	    RETURN(OK);
             break;
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
@@ -627,9 +626,6 @@ match_group(request_rec *r, const char *name, int log_level)
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
             break;
     }
-
-    if (user_matches)
-	RETURN(OK);
 
 finish:
     UNLOCK_VAS(r);
@@ -781,7 +777,6 @@ match_container(request_rec *r, const char *container, int log_level)
 {
     int                       result;
     int                       err;
-    int                       user_matches = 0;
     vas_err_t                 vaserr;
     auth_vas_server_config    *sc = NULL;
     auth_vas_rnote            *rnote = NULL;
@@ -826,7 +821,7 @@ match_container(request_rec *r, const char *container, int log_level)
 
     ASSERT(dn != NULL);
     if (dn_in_container(dn, container)) {
-	user_matches = 1;
+	RETURN(OK);
     } else {
         LOG_RERROR(APLOG_INFO, 0, r,
 	       	"match_container: user dn %s not in container %s",
