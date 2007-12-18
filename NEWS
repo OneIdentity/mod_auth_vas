@@ -1,3 +1,19 @@
+3.5.3   (UNRELEASED)
+
+	- Fixed a bug where "Require container" might incorrectly reject an
+	  authorized user (bug #450).
+
+	- Made the Basic auth failure log message easier to understand.
+
+	- Removed -std=c89 build flag: it made the compiler too strict,
+	  particularly on Solaris.
+
+	- Removed -Wl,-z-defs link flag when building for APXS1 where we
+	  expect undefined symbols (ap_*).
+
+	- Fixed compiler warnings about unused variables when building for
+	  APXS1.
+
 3.5.2   (2007-12-17)
 
 	- Fixed "Require unix-group" incorrectly allowing remote users if
