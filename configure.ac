@@ -50,7 +50,7 @@ AC_CACHE_CHECK([platform type], [ac_cv_var_platform],
 dnl -- Flags to make GCC complain about your bugs
 dnl Originally from Stallone <http://tedp.id.au/stallone/>, copied with permission.
 if test "x$GCC" = "xyes"; then
-    DESIRED_CFLAGS="-Wall -std=c89 -g"
+    DESIRED_CFLAGS="-Wall -g"
     DESIRED_LDFLAGS="-Wl,-z,defs"
 
 dnl    # Add stricter flags in developer mode
