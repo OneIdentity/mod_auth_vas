@@ -1,0 +1,43 @@
+#!/bin/sh ./run-test
+description "Ensure 'Require container' works (bug #450)"
+
+TESTFILE=testbug450.$$.txt
+OUTPUTFILE=/tmp/$TESTFILE
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f "$OUTPUTFILE" "$DOC_DIR/$TESTFILE"
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseNegotiate Off
+		AuthVasUseBasic On
+
+		Require container $CN_nonunix
+	</Directory>
+.
+
+ap_conf_check
+
+echo "Hello from pid $$ testing bug 450" > "$DOC_DIR/$TESTFILE"
+
+ap_start
+
+rm -f "$OUTPUTFILE"
+fetch_basic `ifdebug -d` $USER_nonunix:$PASSWD_nonunix $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as $USER_nonunix"
+if ! cmp $OUTPUTFILE $DOC_DIR/$TESTFILE; then
+    fail "File contents don't match"
+fi
+
+fetch_basic `ifdebug -d` $USER_diffcn:$PASSWD_diffcn $DOC_URL/$TESTFILE > $OUTPUTFILE &&
+    fail "Unexpected success fetching with basic as $USER_diffcn"
+
+# vim: syntax=sh ts=8 sw=4 noet ft=sh

@@ -1266,28 +1266,29 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
      * yet. */
     if (user && rn->vas_userid == NULL) {
         vaserr = vas_id_alloc(sc->vas_ctx, user, &rn->vas_userid);
-        if (vaserr == VAS_ERR_SUCCESS) {
-            vaserr = vas_id_get_name(sc->vas_ctx, rn->vas_userid,
-		    &rn->vas_pname, NULL);
-	    if (vaserr != VAS_ERR_SUCCESS) {
-		LOG_RERROR(APLOG_ERR, 0, r, "Failed to get name from vas_id_t for user %s: %s",
-			user, vas_err_get_string(sc->vas_ctx, 1));
-	    } else {
-		LOG_RERROR(APLOG_DEBUG, 0, r,
-			"Converted %.100s to a vas_id_t", user);
-	    }
-        } else {
-	    LOG_RERROR(APLOG_ERR, 0, r, "Failed to convert %s into a vas_id_t: %s",
-		    user, vas_err_get_string(sc->vas_ctx, 1));
-	    rn->vas_userid = NULL;
+
+	if (vaserr) {
+	    rn->vas_userid = NULL; /* Ensure. */
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "%s: Failed to get vas_id_t for user %s: %s",
+		    __func__, user, vas_err_get_string(sc->vas_ctx, 1));
+	    goto failure;
 	}
     }
-
-    if (vaserr != VAS_ERR_SUCCESS) {
-        goto failure;
+    if (rn->vas_userid && rn->vas_pname == NULL) {
+	vaserr = vas_id_get_name(sc->vas_ctx, rn->vas_userid,
+		&rn->vas_pname, NULL);
+	if (vaserr) {
+	    rn->vas_pname = NULL; /* Ensure. */
+	    LOG_RERROR(APLOG_ERR, 0, r, "Failed to get name from vas_id_t for user %s: %s",
+		    user, vas_err_get_string(sc->vas_ctx, 1));
+	    goto failure;
+	}
+	LOG_RERROR(APLOG_DEBUG, 0, r, "%s: Remote user principal name is %s",
+		__func__, rn->vas_pname);
     }
 
-    /* This is the point of success */
+    /* Success */
     *rn_ptr = rn;
     return 0;
 

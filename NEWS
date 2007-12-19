@@ -1,7 +1,6 @@
 3.5.3   (UNRELEASED)
 
-	- Fixed a bug where "Require container" might incorrectly reject an
-	  authorized user (bug #450).
+	- Fixed "Require container" not allowing anyone access (bug #450).
 
 	- Made the Basic auth failure log message easier to understand.
 

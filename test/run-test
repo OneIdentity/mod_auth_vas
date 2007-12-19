@@ -37,7 +37,9 @@
 #  $PASSWD_test - password of test user
 #  $USER_local	- name of non-AD user
 #  $PASSWD_local - password of non-AD user
-#
+#  $USER_nonunix - a non-unix-enabled test user
+#  $USER_nomatch - a user whose sAMAccountName does not match its userPrincipalName
+#  $USER_diffcn - user in a container other than the one USER_nonunix is in
 
 if test $# -ne 1; then
   echo "usage: $0 scriptname"
@@ -60,9 +62,15 @@ USER_disabled=disabled
 PASSWD_disabled=disabled
 USER_expired=expired
 PASSWD_expired=expired
-# User whose sAMAccountName does not match its userPrincipalName
 USER_nomatch=samaccount
 PASSWD_nomatch=samaccount
+USER_nonunix=testusern
+PASSWD_nonunix=testusern
+CN_nonunix="CN=Users,DC=rcdev,DC=vintela,DC=com"
+USER_diffcn=computeruser
+PASSWD_diffcn=computeruser
+CN_diffcn="CN=Computers,DC=rcdev,DC=vintela,DC=com"
+
 TEST_DESC=' ** no description ** '
 
 FETCH=http-get/get
