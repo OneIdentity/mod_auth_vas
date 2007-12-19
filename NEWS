@@ -1,4 +1,4 @@
-3.5.3   (UNRELEASED)
+3.5.3   (2007-12-19)
 
 	- Fixed "Require container" not allowing anyone access (bug #450).
 
