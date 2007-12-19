@@ -5,7 +5,10 @@ DIST_SUBDIRS=	http-get
 TESTS =
 
 if ENABLE_RCDEV_TESTS
-TESTS += \
+TESTS += $(RCDEV_TESTS)
+endif
+
+RCDEV_TESTS = \
 	test.version \
 	test.bug4286 \
 	test.bug4712 \
@@ -21,7 +24,6 @@ TESTS += \
 	test.r203 \
 	test.bug370 \
 	test.bug450 \
-	# end of tests
-endif
+	# end of RCDEV tests
 
-EXTRA_DIST= get-platform run-test
+EXTRA_DIST= get-platform run-test $(RCDEV_TESTS)
