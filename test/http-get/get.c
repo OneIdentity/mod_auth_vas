@@ -39,6 +39,8 @@
 #include <assert.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 int debug = 0;
 int use_gssapi = 0;
@@ -504,7 +506,6 @@ readbody(response, out)
 	if (debug > 1) fprintf(stderr, "reading chunked data\n");
 	while (1) {
 	    int chunklen = 0;
-	    char *p;
 	    int ch;
 	    int value;
 
@@ -639,7 +640,6 @@ get_nego(urlarg, principal)
 #endif
     gss_name_t target_name;
     OM_uint32 major, minor;
-    gss_buffer_desc gssbuf;
     gss_ctx_id_t gssctx;
     char tokbuf[8192];
 
@@ -773,7 +773,7 @@ again_spnego:
 		    else {
 			out_token_size = base64_encode(outbuf.value, 
 				outbuf.length, tokbuf, sizeof tokbuf);
-			out_token = tokbuf;
+			out_token = (unsigned char *)tokbuf;
 			gss_release_buffer(&minor, &outbuf);
 		    }
 		} 
@@ -798,7 +798,7 @@ again_spnego:
 			errx(1, "vas_gss_spnego_initiate: %s", 
 			    vas_err_get_string(vas, 1));
 		    out_token_size = outbuf.length;
-		    out_token = (char *)outbuf.value;
+		    out_token = (unsigned char *)outbuf.value;
 		    /* XXX outbuf is not released */
 		}
 #else
