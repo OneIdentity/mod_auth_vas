@@ -270,4 +270,6 @@
 # define MAV_UNUSED
 #endif
 
+#define streq(a,b) (strcmp((a),(b))==0)
+
 #endif /* MAV_COMPAT_H */

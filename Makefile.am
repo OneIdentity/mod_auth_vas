@@ -5,7 +5,8 @@ APXS_ACTIVATE=		# -a
 
 # We make the module noinst here, and install with apxs-install target
 noinst_DATA= 		mod_auth_vas$(DSOEXT)
-mod_auth_vas_SRCS=	mod_auth_vas.c compat.h
+mod_auth_vas_SRCS=	mod_auth_vas.c cache.c
+mod_auth_vas_HDRS=	compat.h cache.h
 abs_builddir=		@abs_builddir@
 
 # Use -Wc and -Wl to protect linker options that aren't already protected
@@ -13,8 +14,8 @@ Wc=-Wc,
 Wl=-Wl,
 
 # NB: copy the sources locally so that apxs doesn't get confused
-mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
-	for f in $(mod_auth_vas_SRCS); do \
+mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
+	for f in $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS); do \
 	  cmp $(srcdir)/$$f ./$$f 2>/dev/null || \
 	    cp $(srcdir)/$$f . ; \
 	done
@@ -27,12 +28,12 @@ mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
 		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(VAS_LIBS:%=$(Wl)%)) \
 		-o $@ \
 		-n auth_vas \
-		mod_auth_vas.c
+		$(mod_auth_vas_SRCS)
 
 clean-local:
 	rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
 	: Remove sources from builddir
-	test "$(top_srcdir)" = "$(top_builddir)" || rm -f $(mod_auth_vas_SRCS)
+	test "$(top_srcdir)" = "$(top_builddir)" || rm -f $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
 
 # use apxs to install the module, inserting DESTDIR as best we can
 install-exec-local:
@@ -53,7 +54,8 @@ check-local: mod_auth_vas$(DSOEXT)
 sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	NEWS README LICENCE examples
-EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf check-symbols.sh
+EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf \
+		$(mod_auth_vas_HDRS) check-symbols.sh
 CLEANFILES=	setup-mod_auth_vas
 
 EXTRA_DIST+=	setup-mod_auth_vas.in
