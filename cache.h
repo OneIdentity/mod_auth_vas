@@ -52,6 +52,7 @@ typedef struct auth_vas_cache auth_vas_cache;
 typedef struct auth_vas_user auth_vas_user;
 
 /* functions */
+
 auth_vas_cache *
 auth_vas_cache_new(request_rec *request);
 
@@ -64,23 +65,24 @@ auth_vas_cache_lock(auth_vas_cache *cache);
 void
 auth_vas_cache_unlock(auth_vas_cache *cache);
 
-vas_err_t
-auth_vas_cache_user_id_alloc(auth_vas_cache *cache, const char *username);
-
-void
-auth_vas_cache_set_serverid(auth_vas_cache *cache, vas_id_t *serverid);
-
-vas_err_t
-auth_vas_user_authenticate(
-	auth_vas_cache *cache,
-	int credflags,
-	const char *password);
-
-vas_err_t
-auth_vas_cache_auth(auth_vas_cache *cache, vas_auth_t **auth);
-
 void
 auth_vas_cache_flush(auth_vas_cache *cache);
+
+
+vas_err_t
+auth_vas_user_alloc(auth_vas_cache *cache, const char *username, auth_vas_user **user);
+
+void
+auth_vas_user_ref(auth_vas_user *user);
+
+void
+auth_vas_user_unref(auth_vas_user *user);
+
+vas_err_t
+auth_vas_user_authenticate(auth_vas_user *user, int credflags, const char *password);
+
+vas_err_t
+auth_vas_is_user_in_group(auth_vas_user *user, const char *group);
 
 #ifdef __cplusplus
 } /* extern C */
