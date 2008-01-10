@@ -663,7 +663,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "match_group: unable to acquire lock");
+                   "%s: unable to acquire lock", __func__);
 	return err;
     }
 
@@ -732,7 +732,8 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 	RETURN(OK);
     } else {
 	LOG_RERROR(log_level, 0, r,
-		   "match_group: %s not member of %s",
+		   "%s: %s not member of %s",
+		   __func__,
 		   rnote->vas_pname,
 		   name);
 	RETURN(HTTP_FORBIDDEN);
