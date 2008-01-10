@@ -54,7 +54,7 @@ typedef struct auth_vas_user auth_vas_user;
 /* functions */
 
 auth_vas_cache *
-auth_vas_cache_new(request_rec *request);
+auth_vas_cache_new(server_rec *request);
 
 void
 auth_vas_cache_cleanup(auth_vas_cache *cache);
