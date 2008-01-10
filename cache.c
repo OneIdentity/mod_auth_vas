@@ -35,23 +35,24 @@
  *     Ted Percival <ted.percival@quest.com>
  *
  *   @file
- *   Implements a cache of VAS-related authentication information. Only caches
- *   the information for a single vserver and a single user -- if a request
- *   comes in for a different user then the previously cached user data is
- *   destroyed. Likewise if a request comes in on a different vserver, the
- *   cached user data is destroyed (because the identity that a given username
- *   string refers to may differ across realms, and realms are configured
- *   per-vserver).
+ *   Implements a cache of VAS-related authentication information.
  *
- *   The API mimics the libvas API with the intention of making it easy to use.
+ *   The cache is based around the idea of lots of users authenticating to a
+ *   single service - as such each cache object is associated with a single vas
+ *   server identity. This simplifies caching by maintaining a one-to-many
+ *   (service-to-user) association and should fit most authentication use cases.
+ *   In particular it matches the mod_auth_vas use case ;)
  *
- *   The code could (probably) be reused in other projects so long as they
- *   link to the Apache Portable Runtime (APR) and provide the parent memory
- *   pool.
+ *   The API is vaguely similar to the libvas API so it should be easy to adapt
+ *   to, the major differences are:
+ *   - Users are represented by an auth_vas_user rather than a vas_id_t.
+ *   - Credential establishment and authentication are done in one step, by
+ *     auth_vas_user_authenticate.
+ *   - User objects are reference counted and shared. Access to them should be
+ *     locked, the auth_vas_cache_*lock functions can be used for this purpose.
  *
- *   Future work might include adding more libvas-like error reporting, such as
- *   auth_vas_cached_err_get_string() and having caching functions set an error
- *   string where appropriate.
+ *   Most functions are not thread safe. Be careful.
+ *
  */
 
 #include "cache.h"
@@ -395,7 +396,7 @@ auth_vas_user_authenticate(
     user->password = strdup(password);
     user->credflags = credflags;
 
-    /* Authenticate the user to our service */
+    /* Authenticate the user to our service. Causes Kerberos traffic. */
     vaserr = vas_auth(user->cache->vas_ctx, user->vas_id,
 	    user->cache->vas_serverid, &user->vas_authctx);
     if (vaserr) {
