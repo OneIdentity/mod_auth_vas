@@ -64,19 +64,15 @@
  *
  * Operations on the user object are generally NOT THREAD-SAFE so the caller
  * must handle locking.
+ *
+ * All vas_* objects are associated with the cache's vas_ctx_t, so libvas
+ * functions are called using user->cache->vas_ctx as the vas_ctx_t.
  */
 struct auth_vas_user {
     unsigned int	refcount;
     auth_vas_cache	*cache;
-    vas_ctx_t	*vas_ctx; /**< Shared, do not free. */
     vas_id_t	*vas_id;
     vas_user_t	*vas_user;
-    /* XXX: To avoid exposing the vas_auth_t, instead we shall provide a
-     * function called
-     *   auth_vas_is_user_in_group(user, group).
-     * that will be a caching frontend for
-     *   vas_auth_check_client_membership
-     */
     vas_auth_t	*vas_authctx; /**< To be set by vas_gss_auth() or vas_auth() */
     char	*username; /**< As provided by the client */
     char	*password;
@@ -102,9 +98,8 @@ struct auth_vas_cache {
      * free. */
     vas_ctx_t	*vas_ctx;
 
-    /** Record of the vas_id_t of the server to ensure we only return a
-     * vas_auth_t if the server is the same as it was when the vas_auth_t was
-     * originally retrieved from libvas. Do not free. */
+    /** The server ID that all clients will be authenticated to, owned by the
+     * server_rec. Do not free. */
     vas_id_t	*vas_serverid;
 };
 
@@ -148,6 +143,7 @@ auth_vas_cache_new(server_rec *server)
 
     serverconf = GET_SERVER_CONFIG(request->server->module_config);
     cache->vas_ctx = serverconf->vas_ctx;
+    cache->vas_serverid = serverconf->vas_serverid;
 
     return cache;
 }
@@ -204,10 +200,56 @@ auth_vas_cache_unlock(auth_vas_cache *cache) {
 	LOG_P_ERROR(LOG_ERR, aprerr, "Cannot unlock cache mutex");
 }
 
+/**
+ * Determine whether the given user is in a particular group.
+ *
+ * @param user User to check. Must not be NULL.
+ *
+ * @param group Group name to check. Must not be NULL.
+ *
+ * @return VAS_ERR_SUCCESS if the user is a member of the group,
+ * VAS_ERR_NOT_FOUND if the user is not a member, VAS_ERR_INVALID_PARAM if the
+ * user has no auth context (no error is logged), or any other error code that
+ * vas_auth_check_client_membership may return.
+ *
+ * @sa vas_auth_check_client_membership
+ */
+vas_err_t
+auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
+
+    if (user->vas_authctx == NULL)
+	return VAS_ERR_INVALID_PARAM;
+
+    /* No caching, simply a pass-through because
+     * vas_auth_check_client_membership does not hit the network. */
+
+    return vas_auth_check_client_membership(user->cache->vas_ctx, user->vas_id,
+	    user->vas_authctx, group);
+}
+
 #define RETURN(x) do { \
     result = (x); \
     goto finish; \
 } while (0)
+
+#if 0 /* Hmm... unnecessary. I'll put the auth stuff in the user creation. */
+vas_err_t
+auth_vas_auth(auth_vas_user *user, vas_id_t *server) {
+    vas_err_t vaserr; /**< Temp storage */
+    vas_err_t result; /**< Our return code */
+
+    if (user->vas_authctx) {
+	/* Yay, cache! */
+	return VAS_ERR_SUCCESS;
+    }
+
+    vaserr = vas_auth(user->cache->vas_ctx, user->vas_id, server, &user->vas_authctx);
+    if (vaserr) {
+	user->vas_authctx = NULL; /* ensure. */
+	return vaserr;
+    }
+}
+#endif
 
 /**
  * Get (and cache) the auth_vas_user for the given username.
@@ -284,24 +326,31 @@ auth_vas_user_unref(auth_vas_user *user) {
     --user->refcount;
 
     if (user->refcount == 0) {
+	vas_ctx_t *vasctx = user->cache->vas_ctx;
+
 	if (user->username)
 	    free(user->username);
 
 	if (user->password)
 	    free(user->password);
 
+	if (user->vas_authctx)
+	    vas_auth_free(vasctx, user->vas_authctx);
+
 	if (user->vas_user)
-	    vas_user_free(user->vas_ctx, user->vas_user);
+	    vas_user_free(vasctx, user->vas_user);
 
 	if (user->vas_id)
-	    vas_id_free(user->vas_ctx, user->vas_id);
+	    vas_id_free(vasctx, user->vas_id);
 
 	free(user);
     }
 }
 
 /**
- * Establishes credentials for the given user with the given password.
+ * Establishes credentials for the given user with the given password and
+ * authenticates them (using the cache's server ID). This is effectively the
+ * combination of vas_id_establish_cred_password and vas_auth.
  *
  * This function is not thread-safe.
  *
@@ -310,10 +359,10 @@ auth_vas_user_unref(auth_vas_user *user) {
  *         password, whereas real libvas would return VAS_ERR_KRB5 and set
  *         the error state.
  *
- * @see vas_id_establish_cred_password
+ * @see vas_id_establish_cred_password, vas_auth
  */
 vas_err_t
-auth_vas_user_establish_cred_password(
+auth_vas_user_authenticate(
 	auth_vas_user *user,
 	int credflags,
 	const char *password)
@@ -337,7 +386,7 @@ auth_vas_user_establish_cred_password(
     }
 
     /* Do a real VAS lookup. This causes Kerberos traffic (TGS-REQ, TGS-REP) */
-    vaserr = vas_id_establish_cred_password(user->vas_ctx, user->vas_id,
+    vaserr = vas_id_establish_cred_password(user->cache->vas_ctx, user->vas_id,
 	    credflags, password);
     if (vaserr)
 	RETURN(vaserr);
@@ -345,6 +394,15 @@ auth_vas_user_establish_cred_password(
     /* Successfully authenticated. Save the auth info */
     user->password = strdup(password);
     user->credflags = credflags;
+
+    /* Authenticate the user to our service */
+    vaserr = vas_auth(user->cache->vas_ctx, user->vas_id,
+	    user->cache->vas_serverid, &user->vas_authctx);
+    if (vaserr) {
+	user->vas_authctx = NULL; /* ensure */
+	RETURN(vaserr);
+    }
+
     RETURN(VAS_ERR_SUCCESS);
 
 finish:
@@ -374,7 +432,7 @@ auth_vas_user_establish_cred_keytab(
 {
     vas_err_t vaserr;
 
-    vaserr = vas_id_establish_cred_keytab(user->vas_ctx, user->vas_id,
+    vaserr = vas_id_establish_cred_keytab(user->cache->vas_ctx, user->vas_id,
 	    credflags, keytab);
 
     if (vaserr == VAS_ERR_SUCCESS)
@@ -383,22 +441,6 @@ auth_vas_user_establish_cred_keytab(
     return vaserr;
 }
 #endif
-
-/**
- * Authenticate the given user to the given service.
- *
- * The auth parameter will only be changed if this function is successful.
- */
-vas_err_t
-auth_vas_cache_auth(auth_vas_user *client)
-{
-    vas_err_t result; /**< Our return value */
-    vas_err_t vaserr; /**< Temp storage */
-
-    if (
-
-
-}
 
 #if 0 /* old */
 /**

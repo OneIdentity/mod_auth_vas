@@ -71,7 +71,7 @@ void
 auth_vas_cache_set_serverid(auth_vas_cache *cache, vas_id_t *serverid);
 
 vas_err_t
-auth_vas_cache_id_establish_cred_password(
+auth_vas_user_authenticate(
 	auth_vas_cache *cache,
 	int credflags,
 	const char *password);
