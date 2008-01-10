@@ -150,10 +150,9 @@ auth_vas_cache_new(server_rec *server)
 }
 
 /**
- * Cleans up the given cache - freeing resources that can be freed (those
- * allocated by libvas, and the userdata_pool).
- * The actual cache structure is allocated from the connection pool (its parent)
- * and cannot be explicitly freed.
+ * Cleans up the given cache - freeing resources that can be freed, including
+ * the cache's child pool. Anything allocated from a parent pool, such as the
+ * cache itself will (of course) not be freed.
  *
  * This function can be used when the cache is no longer required.
  * As it should only be called by the server cleanup function, it won't be run
@@ -162,11 +161,22 @@ auth_vas_cache_new(server_rec *server)
 void
 auth_vas_cache_cleanup(auth_vas_cache *cache)
 {
+    apr_hash_index_t *index;
+
+    for (index = apr_hash_first(cache->pool, cache->users);
+	    index;
+	    index = apr_hash_next(index))
+    {
+	auth_vas_user *user;
+
+	user = apr_hash_this(index, NULL, NULL, &user);
+	/* No need to remove the user from the hash table, it will be done by
+	 * the pool destructor below. */
+	auth_vas_user_unref(user);
+    }
+
     apr_pool_destroy(cache->pool);
     cache->pool = NULL;
-
-    /* TODO: Free VAS resources? */
-
 }
 
 /**
