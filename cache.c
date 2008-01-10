@@ -233,25 +233,6 @@ auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
     goto finish; \
 } while (0)
 
-#if 0 /* Hmm... unnecessary. I'll put the auth stuff in the user creation. */
-vas_err_t
-auth_vas_auth(auth_vas_user *user, vas_id_t *server) {
-    vas_err_t vaserr; /**< Temp storage */
-    vas_err_t result; /**< Our return code */
-
-    if (user->vas_authctx) {
-	/* Yay, cache! */
-	return VAS_ERR_SUCCESS;
-    }
-
-    vaserr = vas_auth(user->cache->vas_ctx, user->vas_id, server, &user->vas_authctx);
-    if (vaserr) {
-	user->vas_authctx = NULL; /* ensure. */
-	return vaserr;
-    }
-}
-#endif
-
 /**
  * Get (and cache) the auth_vas_user for the given username.
  * This function locks the cache. Callers must not.
@@ -410,74 +391,6 @@ finish:
 
     return result;
 }
-
-#if 0 /* unnecessary. The server ID is provided at cache creation time */
-/**
- * Establishes credentials for the given user using a keytab.
- *
- * This is a pass-through to vas_id_establish_cred_keytab as we can't reliably
- * cache keytab credentials, and there is little benefit because it usually
- * doesn't cause network traffic, and should only be used rarely (in contrast to
- * establishing creds with a password, which may be frequent).
- *
- * This function is not thread-safe.
- *
- * @return VAS_ERR_SUCCESS if credentials were established (or already held) or
- * an error code from vas_id_establish_cred_keytab.
- */
-vas_err_t
-auth_vas_user_establish_cred_keytab(
-	auth_vas_user *user,
-	int credflags,
-	const char *keytab)
-{
-    vas_err_t vaserr;
-
-    vaserr = vas_id_establish_cred_keytab(user->cache->vas_ctx, user->vas_id,
-	    credflags, keytab);
-
-    if (vaserr == VAS_ERR_SUCCESS)
-	user->credflags = credflags; /* In case anyone wants to check them */
-
-    return vaserr;
-}
-#endif
-
-#if 0 /* old */
-/**
- * Authenticate the cached user to the cached service.
- *
- * The auth parameter will only be changed if this function is successful.
- *
- * This breaks the idea of keeping the function signatures the same except for
- * the vas_ctx/auth_vas_cache arg.
- */
-vas_err_t
-auth_vas_cache_auth(
-	auth_vas_cache *cache,
-	vas_auth_t **auth)
-{
-    vas_err_t vaserr;
-    vas_auth_t *local_authptr;
-
-    if (!cache->vas_userid || !cache->vas_serverid || !auth)
-	return VAS_ERR_INVALID_PARAM;
-
-    if (cache->vas_auth_obj) {
-	*auth = cache->vas_auth_obj;
-	return VAS_ERR_SUCCESS;
-    }
-
-    vaserr = vas_auth(cache->vas_ctx, cache->vas_userid, cache->vas_serverid, &local_authptr);
-
-    if (vaserr == VAS_ERR_SUCCESS) {
-	*auth = local_authptr;
-	cache->vas_auth_obj = local_authptr;
-    }
-
-    return vaserr;
-}
-#endif /* old */
 
 /**
  *
