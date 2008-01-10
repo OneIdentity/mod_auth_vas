@@ -47,8 +47,7 @@
  *
  *   The code could (probably) be reused in other projects so long as they
  *   link to the Apache Portable Runtime (APR) and provide the parent memory
- *   pool. However the architecture of only caching a single user's credentials
- *   might make it inaffective in many situations.
+ *   pool.
  *
  *   Future work might include adding more libvas-like error reporting, such as
  *   auth_vas_cached_err_get_string() and having caching functions set an error
@@ -58,68 +57,97 @@
 #include "cache.h"
 
 /**
- * Per-connection structure for caching remote user information.
- * Any of these fields may be NULL, particularly for the first request.
+ * A cacheable user object.
+ *
+ * Can also represent a service (really, anything that can be represented by
+ * a vas_id_t -- anything with a userPrincipalName).
+ *
+ * Operations on the user object are generally NOT THREAD-SAFE so the caller
+ * must handle locking.
  */
-struct auth_vas_cache {
-    /** The pool to allocate cached user data from.
-     * This pool is cleaned up and re-created when a different user tries to
-     * authenticate, ensuring that old user data does not hang around in memory
-     * waiting for arbitrary memory disclosure. */
-    apr_pool_t	*userdata_pool;
-
-    /** The pool to allocate non-user-specific data from (also the parent of the
-     * userdata_pool). */
-    apr_pool_t	*parent_pool;
-
-    /** The Virtual Server that the vas_serverid refers to. Don't free this. */
-    server_rec *server;
-
-    /************************************************************************
-     * Resources that must be explicitly freed.
-     ************************************************************************/
-
-    vas_ctx_t	*vas_ctx;
-    vas_id_t	*vas_serverid;
-    vas_id_t	*vas_userid;
-    /* _obj suffix to avoid confusion with the vas_auth() function: */
-    vas_auth_t	*vas_auth_obj;
-
-    /************************************************************************
-     * Resources allocated from pools that will be freed automatically.
-     ************************************************************************/
-
-    /** The username passed in by the client. May be in any format. Allocated
-     * from a pool -- do not free. */
-    char	*username;
-
-    /** The password passed in by the client for Basic auth. Allocated from a
-     * pool -- do not free. */
-    char	*basic_password;
-
-    /** credflags argument used in vas_id_establish_cred_password, only
-     * meaningful if basic_password is not NULL */
-    int		password_credflags;
+struct auth_vas_user {
+    unsigned int	refcount;
+    auth_vas_cache	*cache;
+    vas_ctx_t	*vas_ctx; /**< Shared, do not free. */
+    vas_id_t	*vas_id;
+    vas_user_t	*vas_user;
+    /* XXX: To avoid exposing the vas_auth_t, instead we shall provide a
+     * function called
+     *   auth_vas_is_user_in_group(user, group).
+     * that will be a caching frontend for
+     *   vas_auth_check_client_membership
+     */
+    vas_auth_t	*vas_authctx; /**< To be set by vas_gss_auth() or vas_auth() */
+    char	*username; /**< As provided by the client */
+    char	*password;
+    int	credflags; /**< Flags used when establishing credentials */
 };
 
 /**
- * Creates a new auth_vas_cache, allocated from the connection pool of the
- * given request.
+ * Per-server structure for caching remote user authentication information.
+ */
+struct auth_vas_cache {
+    /** For locking the cache. */
+    apr_thread_mutex_t	*mutex;
+
+    /** The pool to allocate cached user data from. It is destroyed when the
+     * cache is destroyed. */
+    apr_pool_t	*pool;
+
+    /** Table of auth_vas_user, keyed by username. The username string in the
+     * auth_vas_user is used as the key. */
+    apr_hash_t	*users;
+
+    /** Convenience pointer to the vas_ctx owned by the server_rec. Do not
+     * free. */
+    vas_ctx_t	*vas_ctx;
+
+    /** Record of the vas_id_t of the server to ensure we only return a
+     * vas_auth_t if the server is the same as it was when the vas_auth_t was
+     * originally retrieved from libvas. Do not free. */
+    vas_id_t	*vas_serverid;
+};
+
+/**
+ * Creates a new auth_vas_cache, allocated from the server's memory pool
+ * because the vas_ctx_t must be the same. (The server doesn't actually have its
+ * own memory pool, but its parent process does. We use that one.)
  */
 auth_vas_cache *
-auth_vas_cache_new(request_rec *request)
+auth_vas_cache_new(server_rec *server)
 {
+    apr_status_t *aprerr;
     auth_vas_cache *cache = NULL;
+    auth_vas_server_config *serverconf;
 
-    cache = apr_pcalloc(request->connection->pool, sizeof(*cache));
+    /* Should we allocate the cache out of the cache subpool instead?
+     * Only necessary if caches are destroyed more frequently than processes
+     * exit. */
+    cache = apr_pcalloc(server->process->pool, sizeof(*cache));
     if (!cache) {
-	LOG_P_ERROR(APLOG_ERR, 0, request->connection->pool, "Failed to allocate cache structure");
+	LOG_P_ERROR(APLOG_ERR, 0, server->process->pool,
+		"Failed to allocate cache structure");
 	return NULL;
     }
 
-    cache->parent_pool = request->connection->pool;
+    aprerr = apr_pool_create(&cache->pool, server->process->pool);
+    if (aprerr) {
+	LOG_P_ERROR(APLOG_ERR, aprerr, server->process->pool,
+		"Failed to create cache memory pool");
+	return NULL;
+    }
 
-    /* cache->userdata_pool will be created later, by auth_vas_cache_user_id_alloc */
+    aprerr = apr_thread_mutex_create(&cache->mutex, APR_THREAD_MUTEX_UNNESTED, cache->pool);
+    if (aprerr) {
+	LOG_P_ERROR(APLOG_ERR, aprerr, cache->pool,
+		"Failed to create cache mutex");
+	return NULL;
+    }
+
+    cache->users = apr_hash_make(cache->pool);
+
+    serverconf = GET_SERVER_CONFIG(request->server->module_config);
+    cache->vas_ctx = serverconf->vas_ctx;
 
     return cache;
 }
@@ -131,123 +159,151 @@ auth_vas_cache_new(request_rec *request)
  * and cannot be explicitly freed.
  *
  * This function can be used when the cache is no longer required.
+ * As it should only be called by the server cleanup function, it won't be run
+ * in parallel and does not require locking.
  */
 void
 auth_vas_cache_cleanup(auth_vas_cache *cache)
 {
-    apr_pool_destroy(cache->userdata_pool);
+    apr_pool_destroy(cache->pool);
+    cache->pool = NULL;
 
-    if (cache->vas_auth_obj) {
-	vas_auth_free(cache->vas_ctx, cache->vas_auth_obj);
-	cache->vas_auth_obj = NULL;
-    }
+    /* TODO: Free VAS resources? */
 
-    if (cache->vas_userid) {
-	vas_id_free(cache->vas_ctx, cache->vas_userid);
-	cache->vas_userid = NULL;
-    }
-
-    if (cache->vas_serverid) {
-	vas_id_free(cache->vas_ctx, cache->vas_serverid);
-	cache->vas_serverid = NULL;
-    }
-
-    if (cache->vas_ctx) {
-	vas_ctx_free(cache->vas_ctx);
-	cache->vas_ctx = NULL;
-    }
 }
 
-/** Get (and cache) the vas_id_t for the given username.
- * A vas_id_alloc doesn't cause any network traffic, this function exists
- * only as an interface for setting the user ID in the cache structure.
+/**
+ * Locks the cache mutex.
+ * Can be used by external code to synchronise access to cached data, such as
+ * user objects.
+ *
+ * @sa auth_vas_cache_unlock
+ */
+void
+auth_vas_cache_lock(auth_vas_cache *cache) {
+    apr_status_t aprerr;
+    
+    aprerr = apr_thread_mutex_lock(&cache->mutex);
+    if (aprerr)
+	LOG_P_ERROR(LOG_CRIT, aprerr, "Cannot lock cache mutex");
+}
+
+/**
+ * Unlocks the cache mutex.
+ * Can be used by external code to synchronise access to cached data, such as
+ * use robjects.
+ *
+ * @sa auth_vas_cache_lock
+ */
+void
+auth_vas_cache_unlock(auth_vas_cache *cache) {
+    apr_status_t aprerr;
+
+    aprerr = apr_thread_mutex_unlock(&cache->mutex);
+    if (aprerr)
+	LOG_P_ERROR(LOG_ERR, aprerr, "Cannot unlock cache mutex");
+}
+
+#define RETURN(x) do { \
+    result = (x); \
+    goto finish; \
+} while (0)
+
+/**
+ * Get (and cache) the auth_vas_user for the given username.
+ * This function locks the cache. Callers must not.
  */
 vas_err_t
-auth_vas_cached_user_id_alloc(
+auth_vas_user_alloc(
 	auth_vas_cache *cache,
-	const char *username)
+	const char *username,
+	auth_vas_user **user)
 {
+    vas_err_t result; /**< This function's return code. */
     vas_err_t vaserr; /**< Temp storage */
-    vas_err_t our_err = VAS_ERR_SUCCESS; /**< The value returned by this func. */
-    apr_status_t aprerr; /**< Temp storage */
+    apr_status_t aprerr;
+    vas_id_t *local_id;
+    auth_vas_user *cached_user;
+
+    auth_vas_cache_lock(cache);
+    /* Use the RETURN() macro from here on */
 
     /* User IDs are only dependent on the machine's default_realm, which will
      * not change within the lifetime of the process, so we only need to
      * check that the username matches.
      */
-    if (cache->username) {
-	if (streq(cache->username, username)) {
-	    /* Already cached. */
-	    ASSERT(cache->vas_userid != NULL);
-	    return VAS_ERR_SUCCESS;
-	}
+    cached_user = apr_hash_get(cache->users, username, APR_HASH_KEY_STRING);
 
-	/* XXX: Separate this out into an auth_vas_cache_destroy_userdata() so
-	 * it can be reused (maybe?). */
+    if (!cached_user) {
+	vaserr = vas_id_alloc(cache->vas_ctx, username, &local_id);
+	if (vaserr)
+	    RETURN(vaserr);
 
-	/* Different user, free the old data. */
-	ASSERT(cache->userdata_pool != NULL);
-	apr_pool_destroy(cache->userdata_pool);
-	vas_id_free(cache->vas_ctx, cache->vas_userid);
+	cached_user = malloc(sizeof(*cached_user));
+	cached_user->cache = cache;
+	cached_user->username = strdup(username);
+	user->vas_id = local_id;
 
-	/* These have now been freed */
-	cache->userdata_pool = NULL;
-	cache->vas_userid = NULL;
-	cache->username = NULL;
-	cache->basic_password = NULL;
-    }
-
-    if (!cache->userdata_pool) {
-	aprerr = apr_pool_create_ex(&cache->userdata_pool, cache->parent_pool, NULL, NULL);
-	if (aprerr) {
-	    LOG_P_ERROR(APLOG_ERR, aprerr, cache->parent_pool, "Failed to create userdata pool");
-	    our_err = VAS_ERR_NO_MEMORY;
-	    goto fail;
-	}
-    }
-
-    /* Allocate the new data */
-    vaserr = vas_id_alloc(cache->vas_ctx, username, &cache->vas_userid);
-    if (vaserr) {
-	/* Probably not worth doing negative caching here because vas_id_alloc
-	 * doesn't hit the network. */
-	cache->vas_userid = NULL; /* libvas doesn't guarantee this */
-	/* Don't destroy the userdata_pool - it contains nothing yet and can be
-	 * reused. */
-	our_err = vaserr;
-
-	return vaserr;
-    }
-
-    cache->username = apr_pstrdup(cache->userdata_pool, username);
-    if (!cache->username) {
-	our_err = VAS_ERR_NO_MEMORY;
-	goto fail;
+	auth_vas_user_ref(cached_user); /* For the cache */
+	apr_hash_set(cache->users, user->username, APR_HASH_KEY_STRING, user);
     }
 
     /* Success */
-    ASSERT(our_err == VAS_ERR_SUCCESS);
-    return VAS_ERR_SUCCESS;
+    auth_vas_user_ref(cached_user); /* For the caller */
+    *user = cached_user;
 
-fail:
-    /* Ensure a failure reason has been set */
-    ASSERT(our_err != VAS_ERR_SUCCESS);
+    RETURN(VAS_ERR_SUCCESS);
 
-    if (cache->vas_userid) {
-	vas_id_free(cache->vas_ctx, cache->vas_userid);
-	cache->vas_userid = NULL;
-    }
+finish:
+    auth_vas_cache_unlock(cache);
 
-    return our_err;
+    return result;
 }
 
 /**
- * Establishes credentials using the given password.
- * The identity must already have been set with
- * \c auth_vas_cached_user_id_alloc .
- * This function only does positive caching (correct password), not negative
- * caching (so if the user keeps getting his password wrong, it will keep
- * hitting the krb5 KDC).
+ * Increments the reference count on the given user object.
+ *
+ * This function is not thread-safe.
+ */
+void
+auth_vas_user_ref(auth_vas_user *user) {
+    ++user->refcount;
+}
+
+/**
+ * Decrements the reference count on the given user object.
+ * When the reference count reaches zero, the object is freed.
+ *
+ * This function is not thread-safe.
+ */
+void
+auth_vas_user_unref(auth_vas_user *user) {
+
+    ASSERT(user->refcount > 0);
+
+    --user->refcount;
+
+    if (user->refcount == 0) {
+	if (user->username)
+	    free(user->username);
+
+	if (user->password)
+	    free(user->password);
+
+	if (user->vas_user)
+	    vas_user_free(user->vas_ctx, user->vas_user);
+
+	if (user->vas_id)
+	    vas_id_free(user->vas_ctx, user->vas_id);
+
+	free(user);
+    }
+}
+
+/**
+ * Establishes credentials for the given user with the given password.
+ *
+ * This function is not thread-safe.
  *
  * @return VAS_ERR_SUCCESS if the password was valid, or nonzero on failure.
  *         Returns VAS_ERR_FAILURE if the password does not match the cached
@@ -257,36 +313,94 @@ fail:
  * @see vas_id_establish_cred_password
  */
 vas_err_t
-auth_vas_cached_id_establish_cred_password(
-	auth_vas_cache *cache,
+auth_vas_user_establish_cred_password(
+	auth_vas_user *user,
 	int credflags,
 	const char *password)
 {
+    vas_err_t result; /**< Our return code */
+    vas_err_t vaserr; /**< Temp storage */
+
+    if (credflags == user->credflags && user->password != NULL) {
+	/* We already know the user's password */
+	if (strcmp(user->password, password) == 0)
+	    RETURN(VAS_ERR_SUCCESS);
+	else
+	    RETURN(VAS_ERR_FAILURE);
+    }
+    
+    if (user->password) {
+	/* Avoid leaving user passwords in memory. */
+	memset(user->password, '\0', strlen(user->password));
+	free(user->password);
+	user->password = NULL;
+    }
+
+    /* Do a real VAS lookup. This causes Kerberos traffic (TGS-REQ, TGS-REP) */
+    vaserr = vas_id_establish_cred_password(user->vas_ctx, user->vas_id,
+	    credflags, password);
+    if (vaserr)
+	RETURN(vaserr);
+
+    /* Successfully authenticated. Save the auth info */
+    user->password = strdup(password);
+    user->credflags = credflags;
+    RETURN(VAS_ERR_SUCCESS);
+
+finish:
+
+    return result;
+}
+
+#if 0 /* unnecessary. The server ID is provided at cache creation time */
+/**
+ * Establishes credentials for the given user using a keytab.
+ *
+ * This is a pass-through to vas_id_establish_cred_keytab as we can't reliably
+ * cache keytab credentials, and there is little benefit because it usually
+ * doesn't cause network traffic, and should only be used rarely (in contrast to
+ * establishing creds with a password, which may be frequent).
+ *
+ * This function is not thread-safe.
+ *
+ * @return VAS_ERR_SUCCESS if credentials were established (or already held) or
+ * an error code from vas_id_establish_cred_keytab.
+ */
+vas_err_t
+auth_vas_user_establish_cred_keytab(
+	auth_vas_user *user,
+	int credflags,
+	const char *keytab)
+{
     vas_err_t vaserr;
 
-    /* If the previous password is set but does not match this one, fail.
-     * (The caller can do a periodic cache_flush to ensure stale passwords are
-     * not cached.) Only if credflags == cached_credflags, of course. */
+    vaserr = vas_id_establish_cred_keytab(user->vas_ctx, user->vas_id,
+	    credflags, keytab);
 
-    if (cache->basic_password && cache->password_credflags == credflags) {
-	if (streq(cache->basic_password, password))
-	    return VAS_ERR_SUCCESS;
-	/* libvas would return VAS_ERR_KRB5 and set error state. */
-	return VAS_ERR_FAILURE;
-    }
-
-    vaserr = vas_id_establish_cred_password(cache->vas_ctx, cache->vas_userid,
-	    credflags, password);
-
-    if (vaserr == VAS_ERR_SUCCESS) {
-	/* Save the current password */
-	cache->basic_password = apr_strdup(cache->userdata_pool, password);
-	cache->password_credflags = credflags;
-    }
+    if (vaserr == VAS_ERR_SUCCESS)
+	user->credflags = credflags; /* In case anyone wants to check them */
 
     return vaserr;
 }
+#endif
 
+/**
+ * Authenticate the given user to the given service.
+ *
+ * The auth parameter will only be changed if this function is successful.
+ */
+vas_err_t
+auth_vas_cache_auth(auth_vas_user *client)
+{
+    vas_err_t result; /**< Our return value */
+    vas_err_t vaserr; /**< Temp storage */
+
+    if (
+
+
+}
+
+#if 0 /* old */
 /**
  * Authenticate the cached user to the cached service.
  *
@@ -296,7 +410,7 @@ auth_vas_cached_id_establish_cred_password(
  * the vas_ctx/auth_vas_cache arg.
  */
 vas_err_t
-auth_vas_cached_auth(
+auth_vas_cache_auth(
 	auth_vas_cache *cache,
 	vas_auth_t **auth)
 {
@@ -320,6 +434,7 @@ auth_vas_cached_auth(
 
     return vaserr;
 }
+#endif /* old */
 
 /**
  *
@@ -332,7 +447,7 @@ auth_vas_cache_flush(auth_vas_cache *cache)
 {
     cache->username = NULL;
     cache->basic_password = NULL;
-    /* TODO: Free the cache->vas_userid? What about cache->vas_serverid? */
+    /* TODO: Free the cache->vas_userid? */
     /* ... probably. */
     /* And the cache->vas_auth */
 }

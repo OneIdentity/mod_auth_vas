@@ -64,6 +64,8 @@
 
 #include "compat.h"
 
+#include "cache.h"
+
 /** Macro for returning a value from the match functions via a cleanup label
  * (called finish) to make the code read more easily. */
 #define RETURN(r) do { \
@@ -134,8 +136,11 @@ typedef struct {
  * Per-request note data - exists for lifetime of request only.
  */
 typedef struct {
+    auth_vas_cache *cache;
+#if 0
     vas_id_t *vas_userid;		/* The user's identity */
     vas_user_t *vas_user_obj;		/* The remote user object (lazy initialisation - possibly NULL) */
+#endif
     char *vas_pname;			/* The user's principal name */
     vas_auth_t *vas_authctx;		/* The VAS authentication context */
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
@@ -1059,7 +1064,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	RETURN(err);
 
     /* Check that the given password is correct */
-    vaserr = vas_id_establish_cred_password(sc->vas_ctx, rn->vas_userid,
+    vaserr = auth_vas_cache_id_establish_cred_password(rn->cache,
 	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
@@ -1068,11 +1073,14 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
 	RETURN(HTTP_UNAUTHORIZED);
     }
 
+    /* Ensure we authenticate with the right service.
+     * XXX: This should most likely go elsewhere, but it's harmless. */
+    auth_vas_set_serverid(rn->cache, sc->vas_serverid);
+
     /* authenticate the user against our service, and store off the auth context
      * into the connection note so that we can reuse that later for authz
      * checks */
-    vaserr = vas_auth(sc->vas_ctx, rn->vas_userid, sc->vas_serverid,
-		&rn->vas_authctx);
+    vaserr = auth_vas_cache_auth(rn->cache, &rn->vas_authctx);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "vas_auth(user=%s): %s",
@@ -1145,8 +1153,11 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
 static void
 rnote_init(auth_vas_rnote *rn)
 {
+    rn->cache        = NULL;
+#if 0
     rn->vas_userid   = NULL;
     rn->vas_user_obj = NULL;
+#endif
     rn->vas_pname    = NULL;
     rn->vas_authctx  = NULL;
     rn->gss_ctx = GSS_C_NO_CONTEXT;
@@ -1197,8 +1208,10 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
     if (rn->vas_userid)
         vas_id_free(sc->vas_ctx, rn->vas_userid);
 
+#if 0
     if (rn->vas_authctx)
         vas_auth_free(sc->vas_ctx, rn->vas_authctx);
+#endif
 }
 
 /** This function is called when the request pool is being released.
@@ -1238,17 +1251,19 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
     int             rval = HTTP_INTERNAL_SERVER_ERROR; 
     auth_vas_rnote  *rn = NULL;
     vas_err_t       vaserr = VAS_ERR_SUCCESS;
+    auth_vas_cache *cache;
     
     rn = GET_RNOTE(r);
     if (rn == NULL) {
 
         TRACE_R(r, "%s: creating rnote", __func__);
+Decided I have to create a wrapped object with reference counting.:mod_auth_vas.c
         rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
 
         /* initialize the rnote and set it on the record */
         rnote_init(rn);
         SET_RNOTE(r, rn);
-        
+
         /* Arrange to release the RNOTE data when the request completes */
         apr_pool_cleanup_register(r->pool, r, auth_vas_cleanup_request,
 	       	apr_pool_cleanup_null);
@@ -1256,6 +1271,15 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
         TRACE_R(r, "%s: reusing existing rnote", __func__);
     }
 
+    /* Initialise the libvas cache */
+    /* FIXME: Probably need macros to make this work on AP1 and AP2 */
+    cache = ap_get_module_config(r->connection->conn_config, &auth_vas_module);
+    if (!cache) {
+	cache = auth_vas_cache_new(r);
+	ap_set_module_config(r->connection->conn_config, &auth_vas_module, cache);
+    }
+    rn->cache = cache;
+    
     /* Don't allow an empty-string be sent as username to VAS
      * (see VAS bug #9473), though even with that fixed, an empty username
      * should be HTTP_UNAUTHORIZED rather than HTTP_INTERNAL_SERVER_ERROR.
@@ -1268,7 +1292,7 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
     /* initialize the userid if there's a username passed in, and we haven't
      * yet. */
     if (user && rn->vas_userid == NULL) {
-        vaserr = vas_id_alloc(sc->vas_ctx, user, &rn->vas_userid);
+        vaserr = auth_vas_cached_id_alloc(cache, user, &rn->vas_userid);
 
 	if (vaserr) {
 	    rn->vas_userid = NULL; /* Ensure. */
