@@ -65,9 +65,6 @@ auth_vas_cache_lock(auth_vas_cache *cache);
 void
 auth_vas_cache_unlock(auth_vas_cache *cache);
 
-void
-auth_vas_cache_flush(auth_vas_cache *cache);
-
 
 vas_err_t
 auth_vas_user_alloc(auth_vas_cache *cache, const char *username, auth_vas_user **user);

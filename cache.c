@@ -392,21 +392,5 @@ finish:
     return result;
 }
 
-/**
- *
- * @warn This function is incomplete and might not actually flush the cache.
- *
- * @see auth_vas_cache_cleanup
- */
-void
-auth_vas_cache_flush(auth_vas_cache *cache)
-{
-    cache->username = NULL;
-    cache->basic_password = NULL;
-    /* TODO: Free the cache->vas_userid? */
-    /* ... probably. */
-    /* And the cache->vas_auth */
-}
-
 /* vim: ts=8 sw=4 noet tw=80
  */
