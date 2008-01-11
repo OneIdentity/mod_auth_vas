@@ -1271,7 +1271,6 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, auth_vas_rnote **rn_ptr)
     if (rn == NULL) {
 
         TRACE_R(r, "%s: creating rnote", __func__);
-Decided I have to create a wrapped object with reference counting.:mod_auth_vas.c
         rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
 
         /* initialize the rnote and set it on the record */
