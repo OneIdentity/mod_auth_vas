@@ -332,6 +332,42 @@ auth_vas_user_use_gss_result(
     return vaserr;
 }
 
+/**
+ * Get a vas_user_t for the given auth_vas_user.
+ * None of the things we use a vas_user_t for hit the network, so there's no
+ * need to cache or share the user object. This is a pass-through for
+ * vas_user_init.
+ */
+vas_err_t
+auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
+{
+    /* Use username instead of principal_name because any other name is
+     * susceptible to failure when username-attr-name is not userPrincipalName.
+     */
+    return vas_user_init(avuser->cache->vas_ctx, avuser->vas_id,
+	    avuser->username, 0, vasuserp);
+}
+
+/**
+ * Get the user's username, as they provided it.
+ * Generally you should use this for any libvas object initialisations instead
+ * of the userPrincipalName (auth_vas_user_get_principal_name), because
+ * usernames are resolved according to username-attr-name which is not
+ * necessarily the userPrincipalName.
+ */
+const char *
+auth_vas_user_get_name(const auth_vas_user *user)
+{
+    return user->username;
+}
+
+/**
+ * Get the user's userPrincipalName.
+ * Generally you should use auth_vas_user_get_name for any libvas object
+ * initialisations instead of this, because
+ * usernames are resolved according to username-attr-name which is not
+ * necessarily the userPrincipalName.
+ */
 const char *
 auth_vas_user_get_principal_name(const auth_vas_user *user)
 {

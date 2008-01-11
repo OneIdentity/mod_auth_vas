@@ -76,6 +76,9 @@ void
 auth_vas_user_unref(auth_vas_user *user);
 
 const char *
+auth_vas_user_get_name(const auth_vas_user *user);
+
+const char *
 auth_vas_user_get_principal_name(const auth_vas_user *user);
 
 vas_err_t
@@ -86,6 +89,9 @@ auth_vas_user_use_gss_result(auth_vas_user *user, gss_cred_id_t cred, gss_ctx_id
 
 vas_err_t
 auth_vas_is_user_in_group(auth_vas_user *user, const char *group);
+
+vas_err_t
+auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp);
 
 #ifdef __cplusplus
 } /* extern C */
