@@ -76,6 +76,7 @@ struct auth_vas_user {
     vas_user_t	*vas_user;
     vas_auth_t	*vas_authctx; /**< To be set by vas_gss_auth() or vas_auth() */
     char	*username; /**< As provided by the client */
+    char	*principal_name; /**< Krb5 userPrincipalName */
     char	*password;
     int	credflags; /**< Flags used when establishing credentials */
 };
@@ -269,14 +270,24 @@ auth_vas_user_alloc(
     cached_user = apr_hash_get(cache->users, username, APR_HASH_KEY_STRING);
 
     if (!cached_user) {
+	char *upn;
+
 	vaserr = vas_id_alloc(cache->vas_ctx, username, &local_id);
 	if (vaserr)
 	    RETURN(vaserr);
 
+	vaserr = vas_id_get_name(cache->vas_ctx, local_id, &upn, NULL);
+	if (vaserr) {
+	    /* We'd better fail the whole function. */
+	    vas_id_free(cache->vas_ctx, local_id);
+	    RETURN(vaserr);
+	}
+
 	cached_user = malloc(sizeof(*cached_user));
 	cached_user->cache = cache;
 	cached_user->username = strdup(username);
-	user->vas_id = local_id;
+	cached_user->vas_id = local_id;
+	cached_user->principal_name = upn;
 
 	auth_vas_user_ref(cached_user); /* For the cache */
 	apr_hash_set(cache->users, user->username, APR_HASH_KEY_STRING, user);
@@ -292,6 +303,39 @@ finish:
     auth_vas_cache_unlock(cache);
 
     return result;
+}
+
+/**
+ * Sets the user's vas_auth state based on GSS authentication.
+ * If the cached user already has a vas_auth state then the existing one is
+ * kept. Whether an existing cached vas_auth context is used or whether a new
+ * one is derived from the given GSS authentication parameters is transparent
+ * to the caller.
+ *
+ * Based on vas_gss_auth, and has the same return codes.
+ */
+vas_err_t
+auth_vas_user_use_gss_result(
+	auth_vas_user *user,
+	gss_cred_id_t cred,
+	gss_ctx_id_t context)
+{
+    vas_err_t vaserr;
+
+    if (user->vas_authctx) /* cached */
+	return VAS_ERR_SUCCESS;
+
+    vaserr = vas_gss_auth(user->cache->vas_ctx, cred, context, &user->vas_authctx);
+    if (vaserr)
+	user->vas_authctx = NULL; /* ensure */
+
+    return vaserr;
+}
+
+const char *
+auth_vas_user_get_principal_name(const auth_vas_user *user)
+{
+    return user->principal_name;
 }
 
 /**
@@ -319,6 +363,9 @@ auth_vas_user_unref(auth_vas_user *user) {
 
     if (user->refcount == 0) {
 	vas_ctx_t *vasctx = user->cache->vas_ctx;
+
+	if (user->principal_name)
+	    free(user->principal_name);
 
 	if (user->username)
 	    free(user->username);
