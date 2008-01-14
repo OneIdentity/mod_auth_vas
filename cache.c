@@ -1,7 +1,7 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  *
- *   Copyright 2007 Quest Software, Inc.
+ *   Copyright 2008 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -43,8 +43,7 @@
  *   (service-to-user) association and should fit most authentication use cases.
  *   In particular it matches the mod_auth_vas use case ;)
  *
- *   The API is vaguely similar to the libvas API so it should be easy to adapt
- *   to, the major differences are:
+ *   Major differences from the libvas API are:
  *   - Users are represented by an auth_vas_user rather than a vas_id_t.
  *   - Credential establishment and authentication are done in one step, by
  *     auth_vas_user_authenticate.
@@ -54,6 +53,8 @@
  *   Most functions are not thread safe. Be careful.
  *
  */
+
+#include <apr_hash.h>
 
 #include "cache.h"
 
@@ -111,11 +112,10 @@ struct auth_vas_cache {
  * own memory pool, but its parent process does. We use that one.)
  */
 auth_vas_cache *
-auth_vas_cache_new(server_rec *server)
+auth_vas_cache_new(server_rec *server, vas_ctx_t *vas_ctx, vas_id_t *vas_serverid)
 {
-    apr_status_t *aprerr;
+    apr_status_t aprerr;
     auth_vas_cache *cache = NULL;
-    auth_vas_server_config *serverconf;
 
     /* Should we allocate the cache out of the cache subpool instead?
      * Only necessary if caches are destroyed more frequently than processes
@@ -143,9 +143,8 @@ auth_vas_cache_new(server_rec *server)
 
     cache->users = apr_hash_make(cache->pool);
 
-    serverconf = GET_SERVER_CONFIG(request->server->module_config);
-    cache->vas_ctx = serverconf->vas_ctx;
-    cache->vas_serverid = serverconf->vas_serverid;
+    cache->vas_ctx = vas_ctx;
+    cache->vas_serverid = vas_serverid;
 
     return cache;
 }
@@ -168,9 +167,11 @@ auth_vas_cache_cleanup(auth_vas_cache *cache)
 	    index;
 	    index = apr_hash_next(index))
     {
+	void *vuserp;
 	auth_vas_user *user;
 
-	user = apr_hash_this(index, NULL, NULL, &user);
+	apr_hash_this(index, NULL, NULL, &vuserp);
+	user = (auth_vas_user*)vuserp;
 	/* No need to remove the user from the hash table, it will be done by
 	 * the pool destructor below. */
 	auth_vas_user_unref(user);
@@ -191,9 +192,9 @@ void
 auth_vas_cache_lock(auth_vas_cache *cache) {
     apr_status_t aprerr;
     
-    aprerr = apr_thread_mutex_lock(&cache->mutex);
+    aprerr = apr_thread_mutex_lock(cache->mutex);
     if (aprerr)
-	LOG_P_ERROR(LOG_CRIT, aprerr, "Cannot lock cache mutex");
+	LOG_P_ERROR(APLOG_CRIT, aprerr, cache->pool, "Cannot lock cache mutex");
 }
 
 /**
@@ -207,9 +208,9 @@ void
 auth_vas_cache_unlock(auth_vas_cache *cache) {
     apr_status_t aprerr;
 
-    aprerr = apr_thread_mutex_unlock(&cache->mutex);
+    aprerr = apr_thread_mutex_unlock(cache->mutex);
     if (aprerr)
-	LOG_P_ERROR(LOG_ERR, aprerr, "Cannot unlock cache mutex");
+	LOG_P_ERROR(APLOG_ERR, aprerr, cache->pool, "Cannot unlock cache mutex");
 }
 
 /**
@@ -252,13 +253,15 @@ vas_err_t
 auth_vas_user_alloc(
 	auth_vas_cache *cache,
 	const char *username,
-	auth_vas_user **user)
+	auth_vas_user **outuser)
 {
-    vas_err_t result; /**< This function's return code. */
-    vas_err_t vaserr; /**< Temp storage */
-    apr_status_t aprerr;
+    vas_err_t result; /* This function's return code. */
+    vas_err_t vaserr; /* Temp storage */
     vas_id_t *local_id;
     auth_vas_user *cached_user;
+
+    LOG_P_ERROR(APLOG_DEBUG, 0, cache->pool,
+	    "%s: Hello World!", __func__);
 
     auth_vas_cache_lock(cache);
     /* Use the RETURN() macro from here on */
@@ -283,19 +286,19 @@ auth_vas_user_alloc(
 	    RETURN(vaserr);
 	}
 
-	cached_user = malloc(sizeof(*cached_user));
+	cached_user = calloc(1, sizeof(*cached_user));
 	cached_user->cache = cache;
 	cached_user->username = strdup(username);
 	cached_user->vas_id = local_id;
 	cached_user->principal_name = upn;
 
 	auth_vas_user_ref(cached_user); /* For the cache */
-	apr_hash_set(cache->users, user->username, APR_HASH_KEY_STRING, user);
+	apr_hash_set(cache->users, cached_user->username, APR_HASH_KEY_STRING, cached_user);
     }
 
     /* Success */
     auth_vas_user_ref(cached_user); /* For the caller */
-    *user = cached_user;
+    *outuser = cached_user;
 
     RETURN(VAS_ERR_SUCCESS);
 
@@ -344,7 +347,7 @@ auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
     /* Use username instead of principal_name because any other name is
      * susceptible to failure when username-attr-name is not userPrincipalName.
      */
-    return vas_user_init(avuser->cache->vas_ctx, avuser->vas_id,
+    return vas_user_init(avuser->cache->vas_ctx, avuser->cache->vas_serverid,
 	    avuser->username, 0, vasuserp);
 }
 
@@ -442,8 +445,8 @@ auth_vas_user_authenticate(
 	int credflags,
 	const char *password)
 {
-    vas_err_t result; /**< Our return code */
-    vas_err_t vaserr; /**< Temp storage */
+    vas_err_t result; /* Our return code */
+    vas_err_t vaserr; /* Temp storage */
 
     if (credflags == user->credflags && user->password != NULL) {
 	/* We already know the user's password */

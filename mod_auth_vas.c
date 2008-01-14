@@ -448,7 +448,7 @@ set_user_obj(request_rec *r)
     if (vaserr) {
 	rn->vas_user_obj = NULL;
 
-	LOG_RERROR(LOG_ERR, 0, r,
+	LOG_RERROR(APLOG_ERR, 0, r,
 		"%s: Failed to get user object for %.100s: %s",
 		__func__,
 		RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
@@ -816,8 +816,13 @@ match_container(request_rec *r, const char *container, int log_level)
     if ((err = rnote_get(sc, r, &rnote)))
 	RETURN(err);
 
-    if ((err = set_user_obj(r)))
-	RETURN(err);
+    if ((vaserr = auth_vas_user_get_vas_user(rnote->user, &vasuser))) {
+	LOG_RERROR(log_level, 0, r,
+		"%s: fatal vas error for user_init: %d, %s",
+		__func__,
+		vaserr, vas_err_get_string(sc->vas_ctx, 1));
+	RETURN(HTTP_FORBIDDEN);
+    }
 
     if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, vasuser,
 		    &dn )) != VAS_ERR_SUCCESS ) 
@@ -1233,7 +1238,7 @@ initialize_user(request_rec *request, const char *username) {
 
     /* This is a soft assertion */
     if (rnote->user != NULL) {
-	LOG_RERROR(LOG_ERR, 0, request,
+	LOG_RERROR(APLOG_ERR, 0, request,
 		"%s: User is already set. Overriding it.", __func__);
 	auth_vas_user_unref(rnote->user);
 	rnote->user = NULL;
@@ -1392,6 +1397,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    goto done;
 	}
 
+	/* FIXME: Call initialize_user instead? */
 	/* Create the remote user object now that we have their name */
 	ASSERT(rn->user == NULL);
 	vaserr = auth_vas_user_alloc(sc->cache, RUSER(r), &rn->user);
@@ -1405,15 +1411,24 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	}
 
 	/* Save the VAS auth context */
-	vaserr = auth_vas_user_use_gss_result(rn->user, rn->deleg_cred, rn->gss_ctx);
+	{
+	    gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
+	    vas_gss_acquire_cred(sc->vas_ctx, sc->vas_serverid, &minor_status, GSS_C_ACCEPT, &servercred);
+
+	vaserr = auth_vas_user_use_gss_result(rn->user, servercred, rn->gss_ctx);
 	if (vaserr) {
 	    result = HTTP_UNAUTHORIZED;
 	    /* We know that the cache & user stuff uses the same vas context as
 	     * the server, but using the vas_ctx here still feels dirty. */
-	    LOG_RERROR(LOG_ERR, 0, r,
+	    LOG_RERROR(APLOG_ERR, 0, r,
 		    "%s: auth_vas_user_use_gss_result failed: %s", __func__,
 		    vas_err_get_string(sc->vas_ctx, 1));
 	    goto done;
+	}
+
+	/* FIXME: free properly */
+	gss_release_cred(&minor_status, &servercred);
+
 	}
 
 	/* Keep a copy of the client's mechanism name in the connection note */
@@ -1432,7 +1447,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
 	TRACE_R(r, "waiting for more tokens from client");
 	result = HTTP_UNAUTHORIZED;
-    } else if (memcmp(auth_param, "TlRM", 4) == 0) {
+    } else if (strcmp(auth_param, "TlRM") == 0) {
 	const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
 	LOG_RERROR(APLOG_ERR, 0, r,
 		    "NTLM authentication attempted");
@@ -1686,7 +1701,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
         vas_auth_free(sc->vas_ctx, vasauth);
     }
 
-    sc->cache = auth_vas_cache_new(s);
+    sc->cache = auth_vas_cache_new(s, sc->vas_ctx, sc->vas_serverid);
 }
 
 /**
@@ -1819,7 +1834,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	    
 	    mask = slash + 1;
 	    if (!*mask) {
-		LOG_RERROR(LOG_WARNING, 0, r,
+		LOG_RERROR(APLOG_WARNING, 0, r,
 			"Coercing empty netmask to the default (%s)",
 			default_mask);
 		mask = default_mask;
@@ -2268,7 +2283,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
     ASSERT(attr[0]);
 
     if (strcasecmp(attr, "userPrincipalName") == 0) {
-	LOG_RERROR(LOG_DEBUG, 0, r,
+	LOG_RERROR(APLOG_DEBUG, 0, r,
 		"%s: Returning early because REMOTE_USER is already the UPN",
 		__func__);
 	return;
@@ -2278,7 +2293,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
      * per-connection not per-request */
     /* XXX: It might have to be changed to a different attr */
     if(strchr(RUSER(r), '@') == NULL) {
-	LOG_RERROR(LOG_DEBUG, 0, r,
+	LOG_RERROR(APLOG_DEBUG, 0, r,
 		"%s: REMOTE_USER appears to already have been set to %s",
 		__func__, RUSER(r));
 	return;
@@ -2306,7 +2321,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    if (strcasecmp(map->ldap_attr, attr) == 0) {
 		char *attrval;
 
-		LOG_RERROR(LOG_DEBUG, 0, r,
+		LOG_RERROR(APLOG_DEBUG, 0, r,
 			"%s: Using vas cache for lookup of %s attribute",
 			__func__, attr);
 
@@ -2330,7 +2345,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    const char ug = *attr; /* u or g */
 	    struct passwd *pw;
 
-	    LOG_RERROR(LOG_DEBUG, 0, r,
+	    LOG_RERROR(APLOG_DEBUG, 0, r,
 		    "%s: Using vas cache for lookup of %cidNumber attribute",
 		    __func__, ug);
 	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid,
@@ -2348,7 +2363,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	}
     }
 
-    LOG_RERROR(LOG_DEBUG, 0, r,
+    LOG_RERROR(APLOG_DEBUG, 0, r,
 	    "%s: VAS cache lookup unavailable for %s, doing LDAP query",
 	    __func__, attr);
 
@@ -2411,7 +2426,7 @@ localize_remote_user(request_rec *r, const char *unused)
 	/* User is probably not Unix-enabled. Try stripping the realm anyway
 	 * for consistency */
 
-	LOG_RERROR(LOG_DEBUG, aprst, r,
+	LOG_RERROR(APLOG_DEBUG, aprst, r,
 		"apr_uid_get failed for %s (normal for non-Unix users), "
 		"using strcmp method",
 		RUSER(r));
@@ -2422,7 +2437,7 @@ localize_remote_user(request_rec *r, const char *unused)
 
     /* Unix-enabled user, convert back to their name */
     if ((aprst = apr_uid_name_get(&username, uid, RUSER_POOL(r))) != OK) {
-	LOG_RERROR(LOG_ERR, aprst, r, "apr_uid_name_get failed for uid %d", uid);
+	LOG_RERROR(APLOG_ERR, aprst, r, "apr_uid_name_get failed for uid %d", uid);
 	return;
     }
 
@@ -2719,7 +2734,7 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     return (void *)merged_dc;
 }
 
-/** Passed a auth_vas_server_config pointer */
+/** Passed an auth_vas_server_config pointer */
 static CLEANUP_RET_TYPE
 auth_vas_server_config_destroy(void *data)
 {
@@ -2727,7 +2742,10 @@ auth_vas_server_config_destroy(void *data)
     
     if (sc != NULL) {
 
-	auth_vas_cache_cleanup(sc->cache);
+	if (sc->cache) {
+	    auth_vas_cache_cleanup(sc->cache);
+	    sc->cache = NULL;
+	}
         
 	/* sc->default_realm is always handled by apache */
 

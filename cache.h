@@ -3,7 +3,7 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  *
- *   Copyright 2007 Quest Software, Inc.
+ *   Copyright 2008 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -40,6 +40,7 @@
 #include <httpd.h>
 #include <http_log.h>
 #include <vas.h>
+#include <vas_gss.h>
 
 #include "compat.h"
 
@@ -54,7 +55,7 @@ typedef struct auth_vas_user auth_vas_user;
 /* functions */
 
 auth_vas_cache *
-auth_vas_cache_new(server_rec *request);
+auth_vas_cache_new(server_rec *server, vas_ctx_t *vas_ctx, vas_id_t *vas_serverid);
 
 void
 auth_vas_cache_cleanup(auth_vas_cache *cache);
@@ -67,7 +68,7 @@ auth_vas_cache_unlock(auth_vas_cache *cache);
 
 
 vas_err_t
-auth_vas_user_alloc(auth_vas_cache *cache, const char *username, auth_vas_user **user);
+auth_vas_user_alloc(auth_vas_cache *cache, const char *username, auth_vas_user **outuser);
 
 void
 auth_vas_user_ref(auth_vas_user *user);
