@@ -172,13 +172,16 @@ auth_vas_cache_cleanup(auth_vas_cache *cache)
 
 	apr_hash_this(index, NULL, NULL, &vuserp);
 	user = (auth_vas_user*)vuserp;
-	/* No need to remove the user from the hash table, it will be done by
-	 * the pool destructor below. */
+
+	/* Remove user from cache */
+	apr_hash_set(cache->users, user->username, APR_HASH_KEY_STRING, NULL);
+
+	/* Remove the cache's reference to the user */
 	auth_vas_user_unref(user);
     }
 
-    apr_pool_destroy(cache->pool);
-    cache->pool = NULL;
+    /* APR 1.2 doesn't allow us to destroy cache->pool.
+     * If we do, it tries to destroy it again later and crashes. */
 }
 
 /**
