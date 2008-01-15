@@ -1,5 +1,5 @@
-#ifndef MAV_CACHE_H
-#define MAV_CACHE_H
+#ifndef MAV_USER_H
+#define MAV_USER_H
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  *
@@ -37,53 +37,51 @@
  *     Ted Percival <ted.percival@quest.com>
  */
 
-#include <apr_pools.h>
 #include <vas.h>
+#include <vas_gss.h>
+
+#include "cache.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* types */
-typedef struct auth_vas_cache auth_vas_cache;
+typedef struct auth_vas_user auth_vas_user;
 
 /* functions */
 
-auth_vas_cache *
-auth_vas_cache_new(
-	apr_pool_t *parent_pool,
-	vas_ctx_t *vas_ctx,
-	vas_id_t *vas_serverid,
-	void (*unref_cb)(void *));
+vas_err_t
+auth_vas_user_alloc(auth_vas_cache *cache, const char *username, auth_vas_user **outuser);
 
 void
-auth_vas_cache_cleanup(auth_vas_cache *cache);
+auth_vas_user_ref(auth_vas_user *user);
 
 void
-auth_vas_cache_lock(auth_vas_cache *cache);
+auth_vas_user_unref(auth_vas_user *user);
 
-void
-auth_vas_cache_unlock(auth_vas_cache *cache);
+const char *
+auth_vas_user_get_name(const auth_vas_user *user);
 
-void
-auth_vas_cache_insert(auth_vas_cache *cache, const char *key, const void *value);
+const char *
+auth_vas_user_get_principal_name(const auth_vas_user *user);
 
-void
-auth_vas_cache_remove(auth_vas_cache *cache, const char *key);
+vas_err_t
+auth_vas_user_authenticate(auth_vas_user *user, int credflags, const char *password);
 
-void *
-auth_vas_cache_get(auth_vas_cache *cache, const char *key);
+vas_err_t
+auth_vas_user_use_gss_result(auth_vas_user *user, gss_cred_id_t cred, gss_ctx_id_t context);
 
-vas_ctx_t *
-auth_vas_cache_get_vasctx(const auth_vas_cache *cache);
+vas_err_t
+auth_vas_is_user_in_group(auth_vas_user *user, const char *group);
 
-vas_id_t *
-auth_vas_cache_get_serverid(const auth_vas_cache *cache);
+vas_err_t
+auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp);
 
 #ifdef __cplusplus
 } /* extern C */
 #endif
 
-#endif /* MAV_CACHE_H */
+#endif /* MAV_USER_H */
 /* vim: ts=8 sw=4 noet
  */

@@ -48,7 +48,9 @@
 # endif
 #endif
 
-#include <http_config.h> /* To determine the version of Apache */
+/* To determine the version of Apache */
+#include <httpd.h>
+#include <http_config.h>
 
 #if !defined(STANDARD20_MODULE_STUFF)
 # define APXS1 1 /* Apache 1.3.x */

@@ -64,6 +64,7 @@
 
 #include "compat.h"
 #include "cache.h"
+#include "user.h"
 
 /** Macro for returning a value from the match functions via a cleanup label
  * (called finish) to make the code read more easily. */
@@ -1701,7 +1702,8 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
         vas_auth_free(sc->vas_ctx, vasauth);
     }
 
-    sc->cache = auth_vas_cache_new(s, sc->vas_ctx, sc->vas_serverid);
+    sc->cache = auth_vas_cache_new(s->process->pool, sc->vas_ctx, sc->vas_serverid,
+	    (void(*)(void*))auth_vas_user_unref);
 }
 
 /**
