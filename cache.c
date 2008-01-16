@@ -38,6 +38,9 @@
  *   A cache. Designed to be used for caching data retrieved from libvas,
  *   particularly users or groups.
  *
+ *   Uses a hash table for fast lookups and a home-brewed doubly-linked,
+ *   double-ended queue for expiring old items.
+ *
  *   Most functions are not thread safe. Be careful.
  *
  */
@@ -51,6 +54,7 @@
 
 /* Defaults */
 #define DEFAULT_EXPIRE_SECONDS 60
+#define DEFAULT_MAX_CACHE_SIZE 200
 
 /**
  * Cache item, mainly for tracking when it was inserted to determine when it
@@ -58,8 +62,16 @@
  */
 typedef struct auth_vas_cache_item auth_vas_cache_item;
 struct auth_vas_cache_item {
-    apr_time_t insertion_time;
+
+    /** For removing items that are stale. */
+    apr_time_t expiry;
+
+    /** The user data. */
     void *item;
+
+    /** Pointer for a linked list. Used for removing items if the cache fills.
+     */
+    auth_vas_cache_item *younger, *older;
 };
 
 /**
@@ -88,9 +100,25 @@ struct auth_vas_cache {
     /** Function to be called after removing an item from the cache. */
     void (*unref_item_cb)(void *item);
 
+    /** Linked list of items, for removing cached items efficiently. */
+    auth_vas_cache_item *youngest, *oldest;
+
     /* Limits */
-    apr_interval_time_t max_age; /**< Max age in µs */
+    apr_interval_time_t max_age_us; /**< Max age in µs */
+    unsigned int max_size; /**< Max number of elements for the cache to hold. */
+
+    /** Function to retrieve a value's key. Makes cache expiration a lot easier.
+     * The cache will only call this for items that it holds a reference to. */
+    const char *(*get_key_cb)(void *item);
 };
+
+
+static void
+auth_vas_cache_remove_items_from(auth_vas_cache *cache, auth_vas_cache_item *item);
+
+static void
+auth_vas_cache_remove_expired_items(auth_vas_cache *cache);
+
 
 /**
  * Creates a new auth_vas_cache, allocated from the given memory pool
@@ -104,12 +132,15 @@ struct auth_vas_cache {
  * @param vas_serverid Server ID to associate with cached items (optional).
  * @param unref_cb Function to call immediately after removing an item from the
  *                 cache, for example to free or unref an object. May be NULL.
+ * @param get_key_cb Function to get the item's key. See the auth_vas_cache
+ *                   documentation for details.
  */
 auth_vas_cache *
 auth_vas_cache_new(apr_pool_t *parent_pool,
 	vas_ctx_t *vas_ctx,
 	vas_id_t *vas_serverid,
-	void (*unref_cb)(void *))
+	void (*unref_cb)(void *),
+	const char *(*get_key_cb)(void *))
 {
     apr_status_t aprerr;
     auth_vas_cache *cache = NULL;
@@ -143,8 +174,10 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
     cache->vas_ctx = vas_ctx;
     cache->vas_serverid = vas_serverid;
     cache->unref_item_cb = unref_cb;
+    cache->get_key_cb = get_key_cb;
 
-    cache->max_age = DEFAULT_EXPIRE_SECONDS * APR_USEC_PER_SEC;
+    cache->max_age_us = apr_time_from_sec(DEFAULT_EXPIRE_SECONDS);
+    cache->max_size = DEFAULT_MAX_CACHE_SIZE;
 
     return cache;
 }
@@ -178,6 +211,9 @@ auth_vas_cache_flush(auth_vas_cache *cache)
 
 	free(item);
     }
+
+    cache->youngest = NULL;
+    cache->oldest = NULL;
 
     /* APR 1.2 doesn't allow us to destroy cache->pool.
      * If we do, it tries to destroy it again later and crashes. */
@@ -216,9 +252,12 @@ auth_vas_cache_unlock(auth_vas_cache *cache) {
 
 /**
  * Inserts an item.
+ *
+ * The caller must increase the ref count on the object before passing it to
+ * this function (if ref counting is used).
  */
 void
-auth_vas_cache_insert(auth_vas_cache *cache, const char *key, const void *value)
+auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
 {
     auth_vas_cache_item *new_item;
 
@@ -226,27 +265,95 @@ auth_vas_cache_insert(auth_vas_cache *cache, const char *key, const void *value)
     if (!new_item)
 	return;
 
-    new_item->insertion_time = apr_time_now();
+    new_item->expiry = apr_time_now() + cache->max_age_us;
     new_item->item = value;
+
+    /* Make sure there is room for this item */
+    if (apr_hash_count(cache->table) == cache->max_size) {
+
+	if (apr_time_now() < cache->oldest->expiry) {
+	    /* No expired items. Notify the user and remove the oldest one */
+	    LOG_P_ERROR(APLOG_INFO, 0, cache->pool,
+		    "%s: Removing unexpired item to make room, "
+		    "consider increasing the cache size or decreasing the object lifetime",
+		    __func__);
+	    auth_vas_cache_remove_items_from(cache, cache->oldest);
+	} else {
+	    /* At least one expired item. Clean up as many as possible. */
+	    auth_vas_cache_remove_expired_items(cache);
+	}
+    }
+
+    if (cache->youngest) { /* There are other items */
+	new_item->older = cache->youngest;
+	cache->youngest->younger = new_item;
+    } else { /* No other items */
+	cache->oldest = new_item;
+    }
+
+    cache->youngest = new_item;
 
     apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, new_item);
 }
 
 /**
- * Removes an item.
- * XXX: Should this unref the item?
+ * Removes all items older than and including the given item.
  */
-void
-auth_vas_cache_remove(auth_vas_cache *cache, const char *key)
+static void
+auth_vas_cache_remove_items_from(auth_vas_cache *cache, auth_vas_cache_item *item)
 {
+    auth_vas_cache_item *next_item;
+
+    /* Remove the younger item's pointer to this one */
+    if (item == cache->youngest) {
+	cache->youngest = NULL;
+	cache->oldest = NULL;
+    } else {
+	/* There is a younger item, which is now the oldest. The youngest is unchanged. */
+	item->younger->older = NULL;
+	cache->oldest = item->younger;
+    }
+
+    /* Now all the pointers are fixed up, go on a rampage removing all the items. */
+
+    do {
+	next_item = item->older;
+
+	/* Remove from hash table */
+	apr_hash_set(cache->table, cache->get_key_cb(item->item), APR_HASH_KEY_STRING, NULL);
+
+	/* Unref the user item */
+	if (cache->unref_item_cb)
+	    cache->unref_item_cb(item->item);
+
+	/* Free the container object */
+	free(item);
+    } while (next_item);
+}
+
+static void
+auth_vas_cache_remove_expired_items(auth_vas_cache *cache)
+{
+    apr_time_t now;
     auth_vas_cache_item *item;
 
-    item = apr_hash_get(cache->table, key, APR_HASH_KEY_STRING);
-    if (!item)
-	return;
+    if (cache->oldest == NULL)
+	return; /* no items */
 
-    apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, NULL);
-    free(item);
+    now = apr_time_now();
+
+    /* Find the youngest expired item.
+     * On loaded servers (where performance matters most) there will be less
+     * expired than active objects, so start from the oldest. */
+    for (item = cache->oldest; item && item->expiry < now; item = item->younger)
+	;
+
+    /* We went too far by one */
+    if (item)
+	item = item->older;
+
+    if (item)
+	auth_vas_cache_remove_items_from(cache, item);
 }
 
 void *
@@ -258,9 +365,9 @@ auth_vas_cache_get(auth_vas_cache *cache, const char *key)
     if (!item)
 	return NULL;
 
-    if (apr_time_now() - item->insertion_time > cache->max_age) {
+    if (item->expiry < apr_time_now()) {
 	/* Expired */
-	auth_vas_cache_remove(cache, key);
+	auth_vas_cache_remove_expired_items(cache);
 	return NULL;
     }
 
@@ -279,12 +386,34 @@ auth_vas_cache_get_serverid(const auth_vas_cache *cache) {
 
 unsigned int
 auth_vas_cache_get_max_age(const auth_vas_cache *cache) {
-    return apr_time_sec(cache->max_age);
+    return apr_time_sec(cache->max_age_us);
 }
 
 void
 auth_vas_cache_set_max_age(auth_vas_cache *cache, unsigned int seconds) {
-    cache->max_age = apr_time_from_sec(seconds);
+    cache->max_age_us = apr_time_from_sec(seconds);
+}
+
+unsigned int
+auth_vas_cache_get_max_size(const auth_vas_cache *cache) {
+    return cache->max_size;
+}
+
+void
+auth_vas_cache_set_max_size(auth_vas_cache *cache, unsigned int new_size) {
+    unsigned int num_items;
+
+    if (new_size < 1) /* Some dolt will try it */
+	new_size = 1;
+
+    num_items = apr_hash_count(cache->table);
+
+    while (num_items > new_size) {
+	auth_vas_cache_remove_items_from(cache, cache->oldest);
+	--num_items;
+    }
+
+    cache->max_size = new_size;
 }
 
 /* vim: ts=8 sw=4 noet tw=80

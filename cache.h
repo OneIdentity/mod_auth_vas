@@ -50,11 +50,11 @@ typedef struct auth_vas_cache auth_vas_cache;
 /* functions */
 
 auth_vas_cache *
-auth_vas_cache_new(
-	apr_pool_t *parent_pool,
+auth_vas_cache_new(apr_pool_t *parent_pool,
 	vas_ctx_t *vas_ctx,
 	vas_id_t *vas_serverid,
-	void (*unref_cb)(void *));
+	void (*unref_cb)(void *),
+	const char *(*get_key_cb)(void *));
 
 void
 auth_vas_cache_flush(auth_vas_cache *cache);
@@ -66,10 +66,7 @@ void
 auth_vas_cache_unlock(auth_vas_cache *cache);
 
 void
-auth_vas_cache_insert(auth_vas_cache *cache, const char *key, const void *value);
-
-void
-auth_vas_cache_remove(auth_vas_cache *cache, const char *key);
+auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value);
 
 void *
 auth_vas_cache_get(auth_vas_cache *cache, const char *key);
@@ -85,6 +82,12 @@ auth_vas_cache_get_max_age(const auth_vas_cache *cache);
 
 void
 auth_vas_cache_set_max_age(auth_vas_cache *cache, unsigned int seconds);
+
+unsigned int
+auth_vas_cache_get_max_size(const auth_vas_cache *cache);
+
+void
+auth_vas_cache_set_max_size(auth_vas_cache *cache, unsigned int new_size);
 
 #ifdef __cplusplus
 } /* extern C */
