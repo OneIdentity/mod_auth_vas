@@ -80,6 +80,12 @@ auth_vas_cache_get_vasctx(const auth_vas_cache *cache);
 vas_id_t *
 auth_vas_cache_get_serverid(const auth_vas_cache *cache);
 
+unsigned int
+auth_vas_cache_get_max_age(const auth_vas_cache *cache);
+
+void
+auth_vas_cache_set_max_age(auth_vas_cache *cache, unsigned int seconds);
+
 #ifdef __cplusplus
 } /* extern C */
 #endif

@@ -49,6 +49,19 @@
 #include "compat.h"
 #include "cache.h"
 
+/* Defaults */
+#define DEFAULT_EXPIRE_SECONDS 60
+
+/**
+ * Cache item, mainly for tracking when it was inserted to determine when it
+ * should be expired from the cache.
+ */
+typedef struct auth_vas_cache_item auth_vas_cache_item;
+struct auth_vas_cache_item {
+    apr_time_t insertion_time;
+    void *item;
+};
+
 /**
  * Per-server structure for caching remote user authentication information.
  */
@@ -61,7 +74,7 @@ struct auth_vas_cache {
      * process exits. See auth_vas_cache_cleanup for cleanup details. */
     apr_pool_t	*pool;
 
-    /** Hashed data. */
+    /** Hashed data (hash table of auth_vas_cached_item). */
     apr_hash_t	*table;
 
     /** Convenience pointer to the vas_ctx owned by the server_rec. Do not
@@ -74,6 +87,9 @@ struct auth_vas_cache {
 
     /** Function to be called after removing an item from the cache. */
     void (*unref_item_cb)(void *item);
+
+    /* Limits */
+    apr_interval_time_t max_age; /**< Max age in µs */
 };
 
 /**
@@ -127,6 +143,8 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
     cache->vas_ctx = vas_ctx;
     cache->vas_serverid = vas_serverid;
     cache->unref_item_cb = unref_cb;
+
+    cache->max_age = DEFAULT_EXPIRE_SECONDS * APR_USEC_PER_SEC;
 
     return cache;
 }
@@ -200,22 +218,57 @@ auth_vas_cache_unlock(auth_vas_cache *cache) {
 	LOG_P_ERROR(APLOG_ERR, aprerr, cache->pool, "Cannot unlock cache mutex");
 }
 
+/**
+ * Inserts an item.
+ */
 void
 auth_vas_cache_insert(auth_vas_cache *cache, const char *key, const void *value)
 {
-    apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, value);
+    auth_vas_cache_item *new_item;
+
+    new_item = calloc(1, sizeof(*new_item));
+    if (!new_item)
+	return;
+
+    new_item->insertion_time = apr_time_now();
+    new_item->item = value;
+
+    apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, new_item);
 }
 
+/**
+ * Removes an item.
+ * XXX: Should this unref the item?
+ */
 void
 auth_vas_cache_remove(auth_vas_cache *cache, const char *key)
 {
+    auth_vas_cache_item *item;
+
+    item = apr_hash_get(cache->table, key, APR_HASH_KEY_STRING);
+    if (!item)
+	return;
+
     apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, NULL);
+    free(item);
 }
 
 void *
 auth_vas_cache_get(auth_vas_cache *cache, const char *key)
 {
-    return apr_hash_get(cache->table, key, APR_HASH_KEY_STRING);
+    auth_vas_cache_item *item;
+
+    item = apr_hash_get(cache->table, key, APR_HASH_KEY_STRING);
+    if (!item)
+	return NULL;
+
+    if (apr_time_now() - item->insertion_time > cache->max_age) {
+	/* Expired */
+	auth_vas_cache_remove(cache, key);
+	return NULL;
+    }
+
+    return item->item;
 }
 
 vas_ctx_t *
@@ -226,6 +279,16 @@ auth_vas_cache_get_vasctx(const auth_vas_cache *cache) {
 vas_id_t *
 auth_vas_cache_get_serverid(const auth_vas_cache *cache) {
     return cache->vas_serverid;
+}
+
+unsigned int
+auth_vas_cache_get_max_age(const auth_vas_cache *cache) {
+    return apr_time_sec(cache->max_age);
+}
+
+void
+auth_vas_cache_set_max_age(auth_vas_cache *cache, unsigned int seconds) {
+    cache->max_age = apr_time_from_sec(seconds);
 }
 
 /* vim: ts=8 sw=4 noet tw=80
