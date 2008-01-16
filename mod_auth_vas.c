@@ -2745,7 +2745,7 @@ auth_vas_server_config_destroy(void *data)
     if (sc != NULL) {
 
 	if (sc->cache) {
-	    auth_vas_cache_cleanup(sc->cache);
+	    auth_vas_cache_flush(sc->cache);
 	    sc->cache = NULL;
 	}
         

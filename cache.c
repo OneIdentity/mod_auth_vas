@@ -150,16 +150,10 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 }
 
 /**
- * Cleans up the given cache - freeing resources that can be freed, including
- * the cache's child pool. Anything allocated from a parent pool, such as the
- * cache itself will (of course) not be freed.
- *
- * This function can be used when the cache is no longer required.
- * As it should only be called by the server cleanup function, it won't be run
- * in parallel and does not require locking.
+ * Flushes the cache.
  */
 void
-auth_vas_cache_cleanup(auth_vas_cache *cache)
+auth_vas_cache_flush(auth_vas_cache *cache)
 {
     apr_hash_index_t *index;
 
@@ -169,18 +163,20 @@ auth_vas_cache_cleanup(auth_vas_cache *cache)
     {
 	const void *key;
 	apr_ssize_t keylength;
-	void *value;
+	auth_vas_cache_item *item;
 
 	/* We know the key is a string, but we might as well just keep this
 	 * generic and use whatever the hash table says the key length is. */
-	apr_hash_this(index, &key, &keylength, &value);
+	apr_hash_this(index, &key, &keylength, (void**)&item);
 
 	/* Remove item from cache */
 	apr_hash_set(cache->table, key, keylength, NULL);
 
 	/* Remove the cache's reference to the item */
 	if (cache->unref_item_cb)
-	    cache->unref_item_cb(value);
+	    cache->unref_item_cb(item->item);
+
+	free(item);
     }
 
     /* APR 1.2 doesn't allow us to destroy cache->pool.

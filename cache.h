@@ -57,7 +57,7 @@ auth_vas_cache_new(
 	void (*unref_cb)(void *));
 
 void
-auth_vas_cache_cleanup(auth_vas_cache *cache);
+auth_vas_cache_flush(auth_vas_cache *cache);
 
 void
 auth_vas_cache_lock(auth_vas_cache *cache);
