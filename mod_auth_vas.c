@@ -442,7 +442,8 @@ set_user_obj(request_rec *r)
 	rn->vas_user_obj = NULL;
 
 	LOG_RERROR(LOG_ERR, 0, r,
-		"Failed to get user object for %.100s: %s",
+		"%s: Failed to get user object for %.100s: %s",
+		__func__,
 		RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
 
 	if (vaserr == VAS_ERR_NOT_FOUND) /* No such user */
@@ -681,7 +682,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     }
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_user_get_pwinfo(): %s",
+                   "%s: vas_user_get_pwinfo(): %s", __func__,
                    vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
@@ -794,7 +795,7 @@ match_container(request_rec *r, const char *container, int log_level)
     
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "match_container: unable to acquire lock");
+                   "%s: unable to acquire lock", __func__);
 	return err;
     }
     /* Use RETURN() from here on */
@@ -815,8 +816,8 @@ match_container(request_rec *r, const char *container, int log_level)
 		    &dn )) != VAS_ERR_SUCCESS ) 
     {
 	LOG_RERROR(log_level, 0, r,
-	       	"match_container: fatal vas error for user_get_dn: %d, %s",
-	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
+	       	"%s: fatal vas error for user_get_dn: %d, %s",
+	       	__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -825,8 +826,8 @@ match_container(request_rec *r, const char *container, int log_level)
 	RETURN(OK);
     } else {
         LOG_RERROR(APLOG_INFO, 0, r,
-	       	"match_container: user dn %s not in container %s",
-	       	dn, container);
+	       	"%s: user dn %s not in container %s",
+	       	__func__, dn, container);
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -930,8 +931,8 @@ auth_vas_auth_checker(request_rec *r)
 
     ASSERT(r != NULL);
     dc = GET_DIR_CONFIG(r->per_dir_config);
-    TRACE_R(r, "auth_vas_auth_checker: user=%s authtype=%s",
-	RUSER(r), RAUTHTYPE(r));
+    TRACE_R(r, "%s: user=%s authtype=%s",
+	__func__, RUSER(r), RAUTHTYPE(r));
 
     /* Ignore authz requests for non-VAS authentication */
     if (!is_our_auth_type(r))
@@ -941,7 +942,7 @@ auth_vas_auth_checker(request_rec *r)
 	if (!USING_AUTH_AUTHORITATIVE(dc))
 	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
-	      "auth_vas_auth_checker: no VAS context for server; FORBIDDEN");
+	      "%s: no VAS context for server; FORBIDDEN", __func__);
 	return HTTP_FORBIDDEN;
     }
 
@@ -973,7 +974,7 @@ auth_vas_auth_checker(request_rec *r)
 
 	if (!match->name) {
 	    LOG_RERROR(APLOG_ERR, 0, r,
-		"auth_vas_auth_checker: Unknown requirement '%s'" , type);
+		"%s: Unknown requirement '%s'", __func__, type);
 	    continue;
 	}
 
@@ -1022,8 +1023,8 @@ auth_vas_auth_checker(request_rec *r)
 	return DECLINED;
 
     LOG_RERROR(APLOG_ERR, 0, r,
-		  "auth_vas_auth_checker: Denied access to "
-		  " user '%s' for uri '%s'", RUSER(r), r->uri);
+		  "%s: Denied access to user '%s' for uri '%s'",
+		  __func__, RUSER(r), r->uri);
     return HTTP_FORBIDDEN;
 }
 
@@ -1044,11 +1045,11 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
-    TRACE_R(r, "do_basic_accept: user='%s' password=...", user);
+    TRACE_R(r, "%s: user='%s' password=...", __func__, username);
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "do_basic_accept: unable to acquire lock");
+                   "%s: unable to acquire lock", __func__);
 	return err;
     }
     /* Use RETURN() from here on */
@@ -1211,12 +1212,12 @@ auth_vas_cleanup_request(void *data)
     /* "A cleanup function can safely allocate memory from the pool that is
      * being cleaned up." - APR 1.2 docs. */
 
-    TRACE_R(r, "auth_vas_cleanup_request");
+    TRACE_R(r, "%s", __func__);
     rn = GET_RNOTE(r);
     if (rn != NULL) {
 	if (LOCK_VAS(r))
 	    LOG_RERROR(APLOG_WARNING, 0, r,
-		    "auth_vas_cleanup_request: cannot acquire lock to release resources");
+		    "%s: cannot acquire lock to release resources", __func__);
 
 	rnote_fini(r, rn);
 	UNLOCK_VAS(r);
@@ -1240,7 +1241,8 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
     
     rn = GET_RNOTE(r);
     if (rn == NULL) {
-        TRACE_R(r, "rnote_get: creating rnote");
+
+        TRACE_R(r, "%s: creating rnote", __func__);
         rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
 
         /* initialize the rnote and set it on the record */
@@ -1251,7 +1253,7 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
         apr_pool_cleanup_register(r->pool, r, auth_vas_cleanup_request,
 	       	apr_pool_cleanup_null);
     } else {
-        TRACE_R(r, "rnote_get: reusing existing rnote");
+        TRACE_R(r, "%s: reusing existing rnote", __func__);
     }
 
     /* Don't allow an empty-string be sent as username to VAS
@@ -1322,13 +1324,13 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     ASSERT(r != NULL);
     ASSERT(auth_line != NULL);
 
-    TRACE_R(r, "do_gss_spnego_accept: line='%.16s...'", auth_line);
+    TRACE_R(r, "%s: line='%.16s...'", __func__, auth_line);
 
     /* Get the parameter after "Authorization" */
     auth_param = ap_getword_white(r->pool, &auth_line);
     if (auth_param == NULL) {
 	LOG_RERROR(APLOG_NOTICE, 0, r,
-	   "auth_vas: Client sent empty Negotiate auth-data parameter");
+	   "%s: Client sent empty Negotiate auth-data parameter", __func__);
 	return DECLINED;
     }
 
@@ -1340,7 +1342,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     if ((result = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
-	   "do_gss_spnego_accept: unable to acquire lock");
+	   "%s: unable to acquire lock", __func__);
 	return result;
     }
 
@@ -1477,7 +1479,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else {
 	/* Any other result means we send back an Unauthorized result */
 	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_gss_spnego_accept: %s",
+                   "%s: %s",
+		   __func__,
                    vas_err_get_string(sc->vas_ctx, 1));
 	result = HTTP_UNAUTHORIZED;
     }
@@ -1487,7 +1490,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     if (GSS_ERROR(gsserr))
 	LOG_RERROR(APLOG_ERR, 0, r,
-		   "vas_gss_spnego_accept: %s",
+		   "%s: %s",
+		   __func__,
 		   vas_err_get_string(sc->vas_ctx, 1));
 
     UNLOCK_VAS(r);
@@ -1563,23 +1567,23 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     auth_vas_server_config *sc;
     char *tmp_realm;
 
-    TRACE_S(s, "auth_vas_server_init(host=%s)", s->server_hostname);
+    TRACE_S(s, "%s(host=%s)", __func__, s->server_hostname);
 
     sc = GET_SERVER_CONFIG(s->module_config);
     TRACE_S(s, "sc=%x", (int)sc);
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
-	    "auth_vas_server_init: no server config");
+	    "%s: no server config", __func__);
 	return;
     }
 
     if (sc->vas_ctx != NULL) {
-	TRACE_S(s, "auth_vas_server_init: already initialised");
+	TRACE_S(s, "%s: already initialised", __func__);
 	return;
     }
 
-    TRACE_S(s, "auth_vas_server_init: spn='%s'", sc->service_principal);
+    TRACE_S(s, "%s: spn='%s'", __func__, sc->service_principal);
 
     /* Obtain a new VAS context for the web server */
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
@@ -1963,7 +1967,7 @@ auth_vas_check_user_id(request_rec *r)
 
     /* Pull the auth type from .htaccess or <Directory> */
     type = ap_auth_type(r);
-    TRACE_R(r, "auth_vas_check_user_id: auth_type=%s", type);
+    TRACE_R(r, "%s: auth_type=%s", __func__, type);
 
     /*
      * Ignore requests that aren't for VAS.
@@ -1980,7 +1984,7 @@ auth_vas_check_user_id(request_rec *r)
 	if (!USING_AUTH_AUTHORITATIVE(dc))
 	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
-	      "auth_vas_check_user_id: no VAS context");
+	      "%s: no VAS context", __func__);
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -2134,7 +2138,7 @@ auth_vas_suexec(const request_rec *r)
     if (apr_uid_get(&id->uid, &id->gid, RUSER(r), r->pool) != APR_SUCCESS)
 	return NULL;
 
-    TRACE_R(r, "auth_vas_suexec: RUSER=%s uid=%d gid=%d", RUSER(r),
+    TRACE_R(r, "%s: RUSER=%s uid=%d gid=%d", __func__, RUSER(r),
 	    (int)id->uid, (int)id->gid);
 
     id->userdir = 0;
@@ -2219,7 +2223,7 @@ export_cc(request_rec *r)
 
     /* Allow subprocesses see the cred cache path */
     path = apr_pstrdup(r->pool, krb5_cc_get_name(krb5ctx, ccache));
-    TRACE_R(r, "auth_vas: cred cache at %s", path);
+    TRACE_R(r, "%s: cred cache at %s", __func__, path);
     apr_table_setn(r->subprocess_env, "KRB5CCNAME", path);
 
     /* XXX for SUEXEC the file would have to be chowned */
@@ -2617,7 +2621,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
     auth_vas_dir_config *dc;
 
     dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *dc);
-    TRACE_P(p, "auth_vas_create_dir_config");
+    TRACE_P(p, __func__);
     if (dc != NULL) {
 	dc->auth_negotiate = FLAG_UNSET;
 	dc->negotiate_subnets = NULL;
@@ -2650,7 +2654,7 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     auth_vas_dir_config *merged_dc;
 
     merged_dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *merged_dc);
-    TRACE_P(p, "auth_vas_merge_dir_config");
+    TRACE_P(p, __func__);
     if (merged_dc != NULL) {
 	merged_dc->auth_negotiate = FLAG_MERGE(base_dc->auth_negotiate,
 		new_dc->auth_negotiate);
@@ -2756,7 +2760,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy,
 	    apr_pool_cleanup_null);
     
-    TRACE_P(p, "auth_vas_create_server_config (%s:%u)",
+    TRACE_P(p, "%s (%s:%u)", __func__,
 	    s->server_hostname ? s->server_hostname : "<global>", s->port);
     return (void *)sc;
 }
