@@ -2881,8 +2881,6 @@ module AP_MODULE_DECLARE_DATA auth_vas_module =
     auth_vas_register_hooks		/* register_hooks */
 };
 
-extern module mod_auth_vas_module __attribute__((alias("auth_vas_module")));
-
 #else /* APXS1 */
 
 /*
