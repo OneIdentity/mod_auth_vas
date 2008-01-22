@@ -87,6 +87,9 @@ if test x"$apxs_target" = x"error"; then
     AC_MSG_FAILURE([$APXS does not appear to work])
 fi
 
+# Add APXS's CPPFLAGS to regular CPPFLAGS, for tests
+CPPFLAGS="`$APXS -q CPPFLAGS` $CPPFLAGS"
+
 APXSFLAGS=
 
 #other apxs vars:
@@ -307,6 +310,16 @@ fi
 if test x"$VASCONFIG" = x"no"; then
     AC_MSG_FAILURE([vas-config not found; is vasdev installed?])
 fi
+
+APR_CONFIG=`$APXS -q APR_CONFIG`
+APR_INCLUDES=`$APR_CONFIG --includes`
+APR_LINK_LD=`$APR_CONFIG --link-ld`
+AC_SUBST([APR_CONFIG])
+AC_SUBST([APR_INCLUDES])
+AC_SUBST([APR_LINK_LD])
+#APR_CFLAGS=`$APR_CONFIG --cflags`
+#APR_CPPFLAGS=`$APR_CONFIG --cppflags`
+#APR_LDFLAGS=`$APR_CONFIG --ldflags`
 
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Note: can't have -rpath in linker flags when apxs is using libtool

@@ -118,4 +118,14 @@ redhat-ap2-rpm: redhat.spec .rpmmacros
 redhat.spec: redhat.spec.in
 	    $(subst) < $^ > $@
 
+check_PROGRAMS = \
+		 test-cache \
+		 #
 
+TESTS = $(check_PROGRAMS)
+
+test_cache_SOURCES = test-cache.c cache.c cache.h compat.h
+test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS)
+test_cache_CFLAGS = $(VAS_CFLAGS)
+#test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)
+test_cache_LDFLAGS = $(APR_LDFLAGS) $(APR_LINK_LD)
