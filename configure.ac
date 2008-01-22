@@ -1,8 +1,11 @@
 # (c) 2006 Quest Software. All right reserved.
 
 AC_INIT([mod_auth_vas], 
-        [3.5.3.]esyscmd(if test -d .git; then git-svn log | head -2 | tail -1 | cut -d' ' -f 1 | tr -d 'r\012';
-			else (svnversion . /trunk || echo 0) | tr : _ | tr -d \\012; fi),
+	dnl The --tags option can be removed once there is an annotated tag
+	dnl on the branch. (Old svn tags were imported as lightweight tags.)
+	dnl For exported trees, the version is derived from the NEWS file.
+	[esyscmd(if test -d .git; then echo -n `git-describe --tags``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
+	     echo -n `head -n1 NEWS | cut -d' ' -f1`.exp; fi)],
 	[support@quest.com])
 AC_PREREQ(2.55)
 AC_CONFIG_AUX_DIR([.])
