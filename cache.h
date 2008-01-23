@@ -60,12 +60,6 @@ void
 auth_vas_cache_flush(auth_vas_cache *cache);
 
 void
-auth_vas_cache_lock(auth_vas_cache *cache);
-
-void
-auth_vas_cache_unlock(auth_vas_cache *cache);
-
-void
 auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value);
 
 void *

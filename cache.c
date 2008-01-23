@@ -78,9 +78,6 @@ struct auth_vas_cache_item {
  * Per-server structure for caching remote user authentication information.
  */
 struct auth_vas_cache {
-    /** For locking the cache. */
-    apr_thread_mutex_t	*mutex;
-
     /** The pool to allocate data for the cache from. Beware about putting large
      * amounts of data in the pool - it is only cleaned up when the server
      * process exits. See auth_vas_cache_cleanup for cleanup details. */
@@ -162,13 +159,6 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 	return NULL;
     }
 
-    aprerr = apr_thread_mutex_create(&cache->mutex, APR_THREAD_MUTEX_UNNESTED, cache->pool);
-    if (aprerr) {
-	LOG_P_ERROR(APLOG_ERR, aprerr, cache->pool,
-		"Failed to create cache mutex");
-	return NULL;
-    }
-
     cache->table = apr_hash_make(cache->pool);
 
     cache->vas_ctx = vas_ctx;
@@ -218,37 +208,6 @@ auth_vas_cache_flush(auth_vas_cache *cache)
 
     /* APR 1.2 doesn't allow us to destroy cache->pool.
      * If we do, it tries to destroy it again later and crashes. */
-}
-
-/**
- * Locks the cache mutex.
- * Can be used by external code to synchronise access to cached data.
- *
- * @sa auth_vas_cache_unlock
- */
-void
-auth_vas_cache_lock(auth_vas_cache *cache) {
-    apr_status_t aprerr;
-    
-    aprerr = apr_thread_mutex_lock(cache->mutex);
-    if (aprerr)
-	LOG_P_ERROR(APLOG_CRIT, aprerr, cache->pool, "Cannot lock cache mutex");
-}
-
-/**
- * Unlocks the cache mutex.
- * Can be used by external code to synchronise access to cached data, such as
- * use robjects.
- *
- * @sa auth_vas_cache_lock
- */
-void
-auth_vas_cache_unlock(auth_vas_cache *cache) {
-    apr_status_t aprerr;
-
-    aprerr = apr_thread_mutex_unlock(cache->mutex);
-    if (aprerr)
-	LOG_P_ERROR(APLOG_ERR, aprerr, cache->pool, "Cannot unlock cache mutex");
 }
 
 /**

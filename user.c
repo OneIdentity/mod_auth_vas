@@ -49,9 +49,9 @@
  *   - Credential establishment and authentication are done in one step, by
  *     auth_vas_user_authenticate.
  *   - User objects are reference counted and shared. Access to them should be
- *     locked, the auth_vas_cache_*lock functions can be used for this purpose.
+ *     locked.
  *
- *   Most functions are not thread safe. Be careful.
+ *   Functions are not thread safe. Be careful.
  *
  */
 
@@ -64,9 +64,6 @@
  *
  * Can also represent a service (really, anything that can be represented by
  * a vas_id_t -- anything with a userPrincipalName).
- *
- * Operations on the user object are generally NOT THREAD-SAFE so the caller
- * must handle locking.
  *
  * All vas_* objects are associated with the cache's vas_ctx_t, so libvas
  * functions are called using user->cache->vas_ctx as the vas_ctx_t.
@@ -120,7 +117,6 @@ auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
 
 /**
  * Get (and cache) the auth_vas_user for the given username.
- * This function locks the cache. Callers must not.
  */
 vas_err_t
 auth_vas_user_alloc(
@@ -133,9 +129,6 @@ auth_vas_user_alloc(
     vas_ctx_t *vasctx; /* Don't free */
     vas_id_t *local_id;
     auth_vas_user *cached_user;
-
-    auth_vas_cache_lock(cache);
-    /* Use the RETURN() macro from here on */
 
     vasctx = auth_vas_cache_get_vasctx(cache);
 
@@ -176,8 +169,6 @@ auth_vas_user_alloc(
     RETURN(VAS_ERR_SUCCESS);
 
 finish:
-    auth_vas_cache_unlock(cache);
-
     return result;
 }
 

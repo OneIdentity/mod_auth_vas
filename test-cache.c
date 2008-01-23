@@ -244,6 +244,7 @@ void ap_log_perror(const char *file, int line, int level,
 int main(int argc, char *argv[]) {
     int failures = 0;
     apr_pool_t *pool;
+    auth_vas_cache *cache;
 
     if (apr_app_initialize(&argc, (const char *const **)&argv, NULL))
 	FAIL("apr initialisation");
