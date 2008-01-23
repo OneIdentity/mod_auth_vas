@@ -45,6 +45,94 @@
 	return 1; \
     } while (0)
 
+/** Exits immediately with a failure code.
+ * For functions that need to indicate an error but have no other means to do
+ * so. */
+#define ABORT(msg) \
+    do { \
+	fprintf(stderr, "%s\n", msg); \
+	exit(1); \
+    } while (0)
+
+typedef struct cached_data cached_data;
+struct cached_data {
+    char *key;
+    int value; /* Some arbitrary value, can be assigned incrementally */
+    unsigned refcount;
+};
+
+static void
+unref_cached_data(void *vobj) {
+    cached_data *obj = (cached_data*)vobj;
+
+    if (!obj)
+	ABORT("unrefed a NULL pointer");
+
+    if (obj->refcount < 1)
+	ABORT("unrefed an object with refcount < 1");
+
+    --obj->refcount;
+
+    if (obj->refcount == 0) {
+	free(obj->key);
+	free(obj);
+    }
+}
+
+static const char *
+get_cached_data_key_cb(void *vobj) {
+    cached_data *obj = (cached_data*)vobj;
+
+    if (!obj)
+	ABORT("tried to get key for a NULL object");
+
+    return obj->key;
+}
+
+/**
+ * Tests that the cache can be flushed and then continue to be used.
+ */
+static int
+test_flush(apr_pool_t *parent_pool) {
+    int failures = 0;
+    auth_vas_cache *cache;
+    cached_data *obj, *cached_obj;
+    int i;
+
+    cache = auth_vas_cache_new(parent_pool, NULL, NULL, &unref_cached_data, &get_cached_data_key_cb);
+    if (!cache)
+	FAIL("Could not create cache for flush test");
+
+    /* Create an object. Flush. Try a get on the object and ensure it fails. */
+    obj = calloc(1, sizeof(*obj));
+    obj->key = strdup("foo");
+    obj->value = 1;
+    obj->refcount = 1; /* One ref for this function, so it isn't freed. */
+
+    /* Two iterations of: insert, get, flush, get. */
+    for (i = 0; i < 2; ++i) {
+
+	/* XXX: Having to bump the refcount externally is easy to forget. */
+	++obj->refcount; /* For the cache. */
+
+	auth_vas_cache_insert(cache, obj->key, obj);
+	cached_obj = (cached_data *)auth_vas_cache_get(cache, obj->key);
+
+	if (!cached_obj)
+	    FAIL("Failed to get cached object before flushing");
+
+	auth_vas_cache_flush(cache);
+
+	cached_obj = (cached_data *)auth_vas_cache_get(cache, obj->key);
+	if (cached_obj)
+	    FAIL("Cache returned an object after flushing");
+    }
+
+    unref_cached_data(obj); /* Free our test obj */
+
+    return failures;
+}
+
 static void
 dummy_unref_cb(void *obj MAV_UNUSED) {
     /* no-op */
@@ -157,19 +245,19 @@ int main(int argc, char *argv[]) {
     int failures = 0;
     apr_pool_t *pool;
 
-    if (apr_app_initialize(&argc, &argv, NULL))
+    if (apr_app_initialize(&argc, (const char *const **)&argv, NULL))
 	FAIL("apr initialisation");
+
+    atexit(apr_terminate);
 
     if (apr_pool_create(&pool, NULL))
 	FAIL("creating master test pool");
 
     failures += test_max_age(pool);
-
     failures += test_max_size(pool);
+    failures += test_flush(pool);
 
     apr_pool_destroy(pool);
-
-    atexit(apr_terminate);
 
     return !!failures;
 }

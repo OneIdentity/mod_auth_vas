@@ -184,6 +184,7 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 
 /**
  * Flushes the cache.
+ * The cache can still be used as normal after a flush.
  */
 void
 auth_vas_cache_flush(auth_vas_cache *cache)
