@@ -138,11 +138,6 @@ typedef struct {
  */
 typedef struct {
     auth_vas_user *user;		/* User information (shared) */
-#if 0 /* Old data, now part of user ^ */
-    vas_id_t *vas_userid;		/* The user's identity */
-    char *vas_pname;			/* The user's principal name */
-    vas_auth_t *vas_authctx;		/* The VAS authentication context */
-#endif
     /* TODO: Set  the vas_user_obj when the auth_vas_user is set. */
     /* TODO: Make the vas_user_obj part of the auth_vas_user */
     vas_user_t *vas_user_obj;		/* The remote user object (lazy initialisation - possibly NULL) */
@@ -604,12 +599,6 @@ match_group(request_rec *r, const char *name, int log_level)
     	vas_auth_is_client_member(c,a,n)
 #endif
 
-#if 0
-    vaserr = vas_auth_check_client_membership(sc->vas_ctx,
-                                              sc->vas_serverid,
-                                              rnote->vas_authctx,
-                                              name);
-#endif
     vaserr = auth_vas_is_user_in_group(rnote->user, name);
     switch (vaserr) {
         case VAS_ERR_SUCCESS: /* user is member of group */
