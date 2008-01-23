@@ -280,7 +280,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
 #define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
 #define CMD_CACHESIZE		"AuthVasCacheSize"
-#define CMD_CACHETIME		"AuthVasCacheTime"
+#define CMD_CACHEEXPIRE		"AuthVasCacheExpire"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -328,7 +328,7 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_server_config, cache_size),
 		RSRC_CONF,
 		"Cache size (number of objects)"),
-    AP_INIT_TAKE1(CMD_CACHETIME, server_set_string_slot,
+    AP_INIT_TAKE1(CMD_CACHEEXPIRE, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, cache_time),
 		RSRC_CONF,
 		"Cache object lifetime (expiry)"),
@@ -1652,7 +1652,7 @@ set_cache_timeout(server_rec *server)
 
 	default:
 	    LOG_ERROR(APLOG_WARNING, 0, server,
-		    "%s: invalid " CMD_CACHETIME " setting: %s",
+		    "%s: invalid " CMD_CACHEEXPIRE " setting: %s",
 		    __func__, sc->cache_time);
     }
 
