@@ -361,4 +361,21 @@ AC_TYPE_SIZE_T
 dnl Added in autoconf 2.59c
 dnl AC_TYPE_UINT32_T
 
+# See if the compiler & linker understand --coverage
+old_CFLAGS=$CFLAGS
+old_LDFLAGS=$LDFLAGS
+CFLAGS="--coverage $CFLAGS"
+LDFLAGS="--coverage $LDFLAGS"
+AC_MSG_CHECKING([whether $CC understands --coverage])
+AC_LINK_IFELSE([int main(void) { return 0; }],
+	[have_coverage_flags=yes
+	 AC_SUBST([COVERAGE_CFLAGS], [--coverage])
+	 AC_SUBST([COVERAGE_LDFLAGS], [--coverage])],
+	[have_coverage_flags=no])
+AC_MSG_RESULT([$have_coverage_flags])
+AM_CONDITIONAL([HAVE_COVERAGE], [test "$have_coverage_flags" = "yes"])
+# Restore flags, we don't want coverage information in the regular binaries
+CFLAGS=$old_CFLAGS
+LDFLAGS=$old_LDFLAGS
+
 AC_OUTPUT

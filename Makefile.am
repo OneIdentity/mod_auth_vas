@@ -56,7 +56,7 @@ sbin_SCRIPTS=  setup-mod_auth_vas
 EXTRA_DIST=	NEWS README LICENCE examples
 EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf \
 		$(mod_auth_vas_HDRS) check-symbols.sh
-CLEANFILES=	setup-mod_auth_vas
+CLEANFILES=	setup-mod_auth_vas *.gcno *.gcda *.gcov
 
 EXTRA_DIST+=	setup-mod_auth_vas.in
 CLEANFILES+=	setup-mod_auth_vas
@@ -126,6 +126,19 @@ TESTS = $(check_PROGRAMS)
 
 test_cache_SOURCES = test-cache.c cache.c cache.h compat.h
 test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS)
-test_cache_CFLAGS = $(VAS_CFLAGS)
+test_cache_CFLAGS = $(VAS_CFLAGS) $(COVERAGE_CFLAGS)
 #test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)
-test_cache_LDFLAGS = $(APR_LDFLAGS) $(APR_LINK_LD)
+test_cache_LDFLAGS = $(APR_LDFLAGS) $(APR_LINK_LD) $(COVERAGE_LDFLAGS)
+
+if HAVE_COVERAGE
+
+# Produces a code coverage report
+coverage: check
+	gcov *.gcda
+
+else # !HAVE_COVERAGE
+
+# No-op
+coverage:
+
+endif # !HAVE_COVERAGE
