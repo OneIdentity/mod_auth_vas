@@ -82,6 +82,8 @@ typedef struct {
     auth_vas_cache	*cache;     /* See cache.h */
     const char *service_principal;  /* VASServicePrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
+    char *cache_size;               /* Configured cache size */
+    char *cache_time;               /* Configured cache lifetime */
 } auth_vas_server_config;
 
 /*
@@ -277,6 +279,8 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
 #define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
+#define CMD_CACHESIZE		"AuthVasCacheSize"
+#define CMD_CACHETIME		"AuthVasCacheTime"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -320,6 +324,14 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_server_config, default_realm),
 		RSRC_CONF,
 		"Default realm for authorization"),
+    AP_INIT_TAKE1(CMD_CACHESIZE, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, cache_size),
+		RSRC_CONF,
+		"Cache size (number of objects)"),
+    AP_INIT_TAKE1(CMD_CACHETIME, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, cache_time),
+		RSRC_CONF,
+		"Cache object lifetime (expiry)"),
     { NULL }
 };
 
@@ -1556,6 +1568,98 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     return result;
 }
 
+static void
+set_cache_size(server_rec *server)
+{
+    auth_vas_server_config *sc;
+    apr_int64_t size;
+    char *end;
+
+    sc = GET_SERVER_CONFIG(server->module_config);
+
+    if (!sc->cache_size) /* Not configured */
+	return;
+
+    size = apr_strtoi64(sc->cache_size, &end, 10);
+
+    if (*end == '\0') {
+	/* Clamp the size to [1,UINT_MAX] */
+	if (size < 1)
+	    size = 1;
+	if (size > UINT_MAX)
+	    size = UINT_MAX;
+
+	auth_vas_cache_set_max_size(sc->cache, (unsigned int) size);
+    } else {
+	LOG_ERROR(APLOG_WARNING, 0, server,
+		"%s: invalid " CMD_CACHESIZE " setting: %s",
+		__func__, sc->cache_size);
+    }
+
+    LOG_ERROR(APLOG_DEBUG, 0, server,
+	    "%s: cache size is %u",
+	    __func__, auth_vas_cache_get_max_size(sc->cache));
+}
+
+/**
+ * Sets the cache timeout for the server cache based on the string-format
+ * timeout value in the server config.
+ *
+ * The string may end with the suffix 'h', 'm', or 's' for Hours, Minutes and
+ * Seconds. An unadorned value means seconds.
+ *
+ * The value must be an integer.
+ */
+static void
+set_cache_timeout(server_rec *server)
+{
+    auth_vas_server_config *sc;
+    apr_int64_t secs;
+    char *end;
+    int multiplier = 1; /* Using a separate var to detect integer overflow */
+
+    sc = GET_SERVER_CONFIG(server->module_config);
+
+    if (!sc->cache_time) /* Not configured */
+	return;
+
+    secs = apr_strtoi64(sc->cache_time, &end, 10);
+
+    /* Clamp the time to [0,UINT_MAX] */
+    if (secs < 0)
+	secs = 0;
+    if (secs > UINT_MAX)
+	secs = UINT_MAX;
+
+    /* Process (h)our/(m)inute/(s)econd suffixes.
+     * Makes liberal use of fall-throughs. */
+    switch (*end) {
+	case 'h':
+	    multiplier *= 60;
+	case 'm':
+	    multiplier *= 60;
+
+	    /* Prevent wrapping */
+	    if (secs > (UINT_MAX / multiplier))
+		secs = UINT_MAX / multiplier;
+	    else
+		secs *= multiplier;
+
+	case 's':
+	case '\0':
+	    auth_vas_cache_set_max_age(sc->cache, (unsigned int) secs);
+	    break;
+
+	default:
+	    LOG_ERROR(APLOG_WARNING, 0, server,
+		    "%s: invalid " CMD_CACHETIME " setting: %s",
+		    __func__, sc->cache_time);
+    }
+
+    LOG_ERROR(APLOG_DEBUG, 0, server,
+	    "%s: cache lifetime is %u seconds",
+	    __func__, auth_vas_cache_get_max_age(sc->cache));
+}
 
 /**
  * Initialises the VAS context for a server.
@@ -1694,6 +1798,9 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     sc->cache = auth_vas_cache_new(s->process->pool, sc->vas_ctx, sc->vas_serverid,
 	    (void(*)(void*))auth_vas_user_unref,
 	    (const char*(*)(void*))auth_vas_user_get_name);
+
+    set_cache_size(s);
+    set_cache_timeout(s);
 }
 
 /**
