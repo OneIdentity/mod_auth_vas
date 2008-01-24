@@ -258,10 +258,9 @@ void ap_log_perror(const char *file, int line, int level,
 static int
 test_full_cache(apr_pool_t *pool) {
     auth_vas_cache *cache;
-    static int dummy_vasid, dummy_vasctx;
     cached_data *obj, *fromcache;
 
-    cache = init_cache_or_die(pool, (vas_ctx_t*)&dummy_vasctx, (vas_id_t*)&dummy_vasid);
+    cache = init_cache_or_die(pool, NULL, NULL);
     auth_vas_cache_set_max_size(cache, 1);
 
     /* The first object is throwaway so that cache has something to push out to
@@ -274,7 +273,7 @@ test_full_cache(apr_pool_t *pool) {
     auth_vas_cache_insert(cache, obj->key, obj);
 
     if (auth_vas_cache_get(cache, "one") != NULL)
-	FAIL("Got the first object from the cache, but it should have expired.");
+	FAIL("Got the first object from the cache, but it should have been forced out.");
 
     fromcache = auth_vas_cache_get(cache, "two");
     if (!fromcache)
@@ -288,6 +287,46 @@ test_full_cache(apr_pool_t *pool) {
     cached_data_unref(fromcache);
     cached_data_unref(obj);
 
+    return 0;
+}
+
+/**
+ * Tests that the vasctx and vas_serverid can be retrieved and match what was
+ * put in. */
+static int
+test_vasobjs(apr_pool_t *pool) {
+    auth_vas_cache *cache;
+    static int dummy_vasid, dummy_vasctx;
+
+    cache = init_cache_or_die(pool, (vas_ctx_t*)&dummy_vasctx, (vas_id_t*)&dummy_vasid);
+    if (auth_vas_cache_get_vasctx(cache) != (vas_ctx_t*)&dummy_vasctx)
+	FAIL("Failed to get the vasctx that the cache was initialised with");
+
+    if (auth_vas_cache_get_serverid(cache) != (vas_id_t*)&dummy_vasid)
+	FAIL("Failed to get the serverid that the cache was initialised with");
+
+    auth_vas_cache_flush(cache);
+    return 0;
+}
+
+/** Tests that multiple items can be added and remove.
+ * Exercises the linked list and pointer operations. */
+static int
+test_multiple_items(apr_pool_t *pool) {
+    auth_vas_cache *cache;
+    cached_data *obj;
+
+    cache = init_cache_or_die(pool, NULL, NULL);
+
+    obj = cached_data_new("one", 1);
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    obj = cached_data_new("two", 2);
+    auth_vas_cache_insert(cache, obj->key, obj);
+
+    /* If it hasn't segfaulted, I guess that's good enough */
+    auth_vas_cache_flush(cache);
     return 0;
 }
 
@@ -307,6 +346,8 @@ int main(int argc, char *argv[]) {
     failures += test_max_size(pool);
     failures += test_flush(pool);
     failures += test_full_cache(pool);
+    failures += test_vasobjs(pool);
+    failures += test_multiple_items(pool);
 
     apr_pool_destroy(pool);
 
