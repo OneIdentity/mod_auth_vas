@@ -807,8 +807,8 @@ match_container(request_rec *r, const char *container, int log_level)
 		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
     {
         LOG_RERROR(log_level, 0, r,
-	       	"match_container: fatal vas error for user_init: %d, %s",
-	       	vaserr, vas_err_get_string(sc->vas_ctx, 1));
+		"match_container: error initializing user object: %d, %s",
+		vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -816,8 +816,8 @@ match_container(request_rec *r, const char *container, int log_level)
 		    &dn )) != VAS_ERR_SUCCESS ) 
     {
 	LOG_RERROR(log_level, 0, r,
-	       	"%s: fatal vas error for user_get_dn: %d, %s",
-	       	__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
+		"%s: error getting user's distinguishedName: %d, %s",
+		__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -826,8 +826,8 @@ match_container(request_rec *r, const char *container, int log_level)
 	RETURN(OK);
     } else {
         LOG_RERROR(APLOG_INFO, 0, r,
-	       	"%s: user dn %s not in container %s",
-	       	__func__, dn, container);
+		"%s: user dn %s not in container %s",
+		__func__, dn, container);
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -2301,7 +2301,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		char *attrval;
 
 		LOG_RERROR(LOG_DEBUG, 0, r,
-			"%s: Using vas cache for lookup of %s attribute",
+			"%s: Using VAS cache for lookup of %s attribute",
 			__func__, attr);
 
 		if (map->vas_func(sc->vas_ctx, sc->vas_serverid,
@@ -2311,7 +2311,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		    free(attrval);
 		} else { /* VAS error */
 		    LOG_RERROR(APLOG_ERR, 0, r,
-			    "Error looking up %s attribute in vas cache: %s",
+			    "Error looking up %s attribute in VAS cache: %s",
 			    attr, vas_err_get_string(sc->vas_ctx, 1));
 		}
 		goto finish;
@@ -2325,7 +2325,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    struct passwd *pw;
 
 	    LOG_RERROR(LOG_DEBUG, 0, r,
-		    "%s: Using vas cache for lookup of %cidNumber attribute",
+		    "%s: Using VAS cache for lookup of %cidNumber attribute",
 		    __func__, ug);
 	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid,
 			rn->vas_user_obj, &pw) == VAS_ERR_SUCCESS)
@@ -2335,7 +2335,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		free(pw);
 	    } else { /* VAS error (or user is not Unix-enabled) */
 		LOG_RERROR(APLOG_ERR, 0, r,
-			"Error looking up %cidNumber attribute in vas cache: %s",
+			"Error looking up %cidNumber attribute in VAS cache: %s",
 			ug, vas_err_get_string(sc->vas_ctx, 1));
 	    }
 	    goto finish;
