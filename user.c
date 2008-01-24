@@ -52,7 +52,6 @@
  *     locked.
  *
  *   Functions are not thread safe. Be careful.
- *
  */
 
 #include "compat.h"

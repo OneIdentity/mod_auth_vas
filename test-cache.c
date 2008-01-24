@@ -33,7 +33,6 @@
  *
  *   Authors:
  *     Ted Percival <ted.percival@quest.com>
- *
  */
 
 #include "compat.h"

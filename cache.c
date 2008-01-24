@@ -42,7 +42,6 @@
  *   double-ended queue for expiring old items.
  *
  *   Most functions are not thread safe. Be careful.
- *
  */
 
 #include <apr_hash.h>
