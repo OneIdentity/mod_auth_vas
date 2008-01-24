@@ -61,8 +61,36 @@ struct cached_data {
     unsigned refcount;
 };
 
+/**
+ * Return a new cache object.
+ * If the object cannot be allocated, this function aborts the process.
+ * Ergo it always returns a valid pointer.
+ */
+static cached_data *
+cached_data_new(const char *key, int value) {
+    cached_data *d;
+
+    d = calloc(1, sizeof(*d));
+    if (!d)
+	ABORT("Out of memory allocating a cached data test object");
+
+    d->key = strdup(key);
+    d->value = value;
+    d->refcount = 1; /* The caller */
+
+    return d;
+}
+
 static void
-unref_cached_data(void *vobj) {
+cached_data_ref(void *vobj) {
+    cached_data *d = (cached_data*)vobj;
+
+    ++d->refcount;
+
+}
+
+static void
+cached_data_unref(void *vobj) {
     cached_data *obj = (cached_data*)vobj;
 
     if (!obj)
@@ -90,6 +118,24 @@ get_cached_data_key_cb(void *vobj) {
 }
 
 /**
+ * Creates an auth_vas_cache for storing cached_data objects.
+ * The vasctx and serverid parameters may be NULL.
+ */
+static auth_vas_cache *
+init_cache_or_die(apr_pool_t *parent_pool, vas_ctx_t *vasctx, vas_id_t *serverid)
+{
+    auth_vas_cache *cache;
+
+    cache = auth_vas_cache_new(parent_pool, vasctx, serverid,
+	    &cached_data_ref, &cached_data_unref, &get_cached_data_key_cb);
+
+    if (!cache)
+	ABORT("Could not create cache");
+
+    return cache;
+}
+
+/**
  * Tests that the cache can be flushed and then continue to be used.
  */
 static int
@@ -99,27 +145,20 @@ test_flush(apr_pool_t *parent_pool) {
     cached_data *obj, *cached_obj;
     int i;
 
-    cache = auth_vas_cache_new(parent_pool, NULL, NULL, &unref_cached_data, &get_cached_data_key_cb);
-    if (!cache)
-	FAIL("Could not create cache for flush test");
+    cache = init_cache_or_die(parent_pool, NULL, NULL);
 
     /* Create an object. Flush. Try a get on the object and ensure it fails. */
-    obj = calloc(1, sizeof(*obj));
-    obj->key = strdup("foo");
-    obj->value = 1;
-    obj->refcount = 1; /* One ref for this function, so it isn't freed. */
+    obj = cached_data_new("foo", 1);
 
     /* Two iterations of: insert, get, flush, get. */
     for (i = 0; i < 2; ++i) {
-
-	/* XXX: Having to bump the refcount externally is easy to forget. */
-	++obj->refcount; /* For the cache. */
-
 	auth_vas_cache_insert(cache, obj->key, obj);
 	cached_obj = (cached_data *)auth_vas_cache_get(cache, obj->key);
 
 	if (!cached_obj)
 	    FAIL("Failed to get cached object before flushing");
+
+	cached_data_unref(cached_obj);
 
 	auth_vas_cache_flush(cache);
 
@@ -128,34 +167,9 @@ test_flush(apr_pool_t *parent_pool) {
 	    FAIL("Cache returned an object after flushing");
     }
 
-    unref_cached_data(obj); /* Free our test obj */
+    cached_data_unref(obj); /* Free our test obj */
 
     return failures;
-}
-
-static void
-dummy_unref_cb(void *obj MAV_UNUSED) {
-    /* no-op */
-}
-
-const char *
-dummy_get_key_cb(void *obj) {
-    return "dummy";
-}
-
-/**
- * Initialises a dummy cache.
- * Returns 0 on success, nonzero on failure.
- */
-static int
-init_dummy_cache(auth_vas_cache **cache, apr_pool_t *parent_pool) {
-    auth_vas_cache *newcache;
-
-    newcache = auth_vas_cache_new(parent_pool, NULL, NULL, &dummy_unref_cb, &dummy_get_key_cb);
-    if (newcache)
-	*cache = newcache;
-
-    return newcache ? 0 : 1;
 }
 
 static int
@@ -163,8 +177,7 @@ test_max_age(apr_pool_t *parent_pool) {
     auth_vas_cache *cache;
     unsigned int max_age;
 
-    if (init_dummy_cache(&cache, parent_pool))
-	return 1;
+    cache = init_cache_or_die(parent_pool, NULL, NULL);
 
     max_age = auth_vas_cache_get_max_age(cache);
     ++max_age;
@@ -174,6 +187,7 @@ test_max_age(apr_pool_t *parent_pool) {
 		max_age, auth_vas_cache_get_max_age(cache));
 	return 1;
     }
+    auth_vas_cache_flush(cache);
 
     return 0;
 }
@@ -184,8 +198,7 @@ test_max_size(apr_pool_t *parent_pool) {
     unsigned int max_size;
     int failures = 0;
 
-    if (init_dummy_cache(&cache, parent_pool))
-	return 1;
+    cache = init_cache_or_die(parent_pool, NULL, NULL);
 
     max_size = auth_vas_cache_get_max_size(cache);
 
@@ -208,6 +221,8 @@ test_max_size(apr_pool_t *parent_pool) {
 	fprintf(stderr, "Cache max size could be set to zero.");
 	++failures;
     }
+
+    auth_vas_cache_flush(cache);
 
     return failures;
 }
@@ -241,10 +256,45 @@ void ap_log_perror(const char *file, int line, int level,
     fprintf(stderr, "\n");
 }
 
+static int
+test_full_cache(apr_pool_t *pool) {
+    auth_vas_cache *cache;
+    static int dummy_vasid, dummy_vasctx;
+    cached_data *obj, *fromcache;
+
+    cache = init_cache_or_die(pool, (vas_ctx_t*)&dummy_vasctx, (vas_id_t*)&dummy_vasid);
+    auth_vas_cache_set_max_size(cache, 1);
+
+    /* The first object is throwaway so that cache has something to push out to
+     * make room for the second. We don't hold a ref to the first object. */
+    obj = cached_data_new("one", 1);
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    obj = cached_data_new("two", 2);
+    auth_vas_cache_insert(cache, obj->key, obj);
+
+    if (auth_vas_cache_get(cache, "one") != NULL)
+	FAIL("Got the first object from the cache, but it should have expired.");
+
+    fromcache = auth_vas_cache_get(cache, "two");
+    if (!fromcache)
+	FAIL("Second item could not be retrieved from the cache");
+    if (fromcache != obj)
+	FAIL("Second item was not what we expected");
+
+    /* Success, clean up. */
+    auth_vas_cache_flush(cache);
+
+    cached_data_unref(fromcache);
+    cached_data_unref(obj);
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int failures = 0;
     apr_pool_t *pool;
-    auth_vas_cache *cache;
 
     if (apr_app_initialize(&argc, (const char *const **)&argv, NULL))
 	FAIL("apr initialisation");
@@ -257,6 +307,7 @@ int main(int argc, char *argv[]) {
     failures += test_max_age(pool);
     failures += test_max_size(pool);
     failures += test_flush(pool);
+    failures += test_full_cache(pool);
 
     apr_pool_destroy(pool);
 

@@ -158,7 +158,7 @@ auth_vas_user_alloc(
 	cached_user->vas_id = local_id;
 	cached_user->principal_name = upn;
 
-	auth_vas_user_ref(cached_user); /* For the cache */
+	/* Cache refs the user object for itself */
 	auth_vas_cache_insert(cache, cached_user->username, cached_user);
     }
 

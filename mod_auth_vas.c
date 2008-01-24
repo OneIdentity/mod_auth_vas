@@ -1796,6 +1796,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     }
 
     sc->cache = auth_vas_cache_new(s->process->pool, sc->vas_ctx, sc->vas_serverid,
+	    (void(*)(void*))auth_vas_user_ref,
 	    (void(*)(void*))auth_vas_user_unref,
 	    (const char*(*)(void*))auth_vas_user_get_name);
 

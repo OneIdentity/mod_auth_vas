@@ -94,6 +94,11 @@ struct auth_vas_cache {
      * server_rec. Do not free. */
     vas_id_t	*vas_serverid;
 
+    /** Function to be called when an item is added to the cache, and when it is
+     * returned in an auth_vas_cache_get call. And any other time that a
+     * reference to the item is held. */
+    void (*ref_item_cb)(void *item);
+
     /** Function to be called after removing an item from the cache. */
     void (*unref_item_cb)(void *item);
 
@@ -136,6 +141,7 @@ auth_vas_cache *
 auth_vas_cache_new(apr_pool_t *parent_pool,
 	vas_ctx_t *vas_ctx,
 	vas_id_t *vas_serverid,
+	void (*ref_cb)(void *),
 	void (*unref_cb)(void *),
 	const char *(*get_key_cb)(void *))
 {
@@ -163,6 +169,7 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 
     cache->vas_ctx = vas_ctx;
     cache->vas_serverid = vas_serverid;
+    cache->ref_item_cb = ref_cb;
     cache->unref_item_cb = unref_cb;
     cache->get_key_cb = get_key_cb;
 
@@ -215,6 +222,9 @@ auth_vas_cache_flush(auth_vas_cache *cache)
  *
  * The caller must increase the ref count on the object before passing it to
  * this function (if ref counting is used).
+ *
+ * The key should be a string stored in the object. Otherwise you might find the
+ * API difficult to work with.
  */
 void
 auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
@@ -252,6 +262,10 @@ auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
     }
 
     cache->youngest = new_item;
+
+    /* Ref the item now that it's going into the cache. */
+    if (cache->ref_item_cb)
+	cache->ref_item_cb(value);
 
     apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, new_item);
 }
@@ -330,6 +344,10 @@ auth_vas_cache_get(auth_vas_cache *cache, const char *key)
 	auth_vas_cache_remove_expired_items(cache);
 	return NULL;
     }
+
+    /* Ref the item for the caller */
+    if (cache->ref_item_cb)
+	cache->ref_item_cb(item->item);
 
     return item->item;
 }

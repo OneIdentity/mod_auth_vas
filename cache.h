@@ -53,6 +53,7 @@ auth_vas_cache *
 auth_vas_cache_new(apr_pool_t *parent_pool,
 	vas_ctx_t *vas_ctx,
 	vas_id_t *vas_serverid,
+	void (*ref_cb)(void *),
 	void (*unref_cb)(void *),
 	const char *(*get_key_cb)(void *));
 
