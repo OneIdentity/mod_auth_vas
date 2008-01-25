@@ -1568,11 +1568,16 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     return result;
 }
 
+
 static void
 set_cache_size(server_rec *server)
 {
     auth_vas_server_config *sc;
+#if defined(APXS1)
+    long int size;
+#else /* APXS2 */
     apr_int64_t size;
+#endif /* APXS2 */
     char *end;
 
     sc = GET_SERVER_CONFIG(server->module_config);
@@ -1580,7 +1585,11 @@ set_cache_size(server_rec *server)
     if (!sc->cache_size) /* Not configured */
 	return;
 
+#if defined(APXS1)
+    size = strtol(sc->cache_size, &end, 10);
+#else /* APXS2 */
     size = apr_strtoi64(sc->cache_size, &end, 10);
+#endif /* APXS2 */
 
     if (*end == '\0') {
 	/* Clamp the size to [1,UINT_MAX] */
@@ -1614,7 +1623,11 @@ static void
 set_cache_timeout(server_rec *server)
 {
     auth_vas_server_config *sc;
+#if defined(APXS1)
+    long int secs;
+#else /* APXS2 */
     apr_int64_t secs;
+#endif /* APXS2 */
     char *end;
     int multiplier = 1; /* Using a separate var to detect integer overflow */
 
@@ -1623,7 +1636,11 @@ set_cache_timeout(server_rec *server)
     if (!sc->cache_time) /* Not configured */
 	return;
 
+#if defined(APXS1)
+    secs = strtol(sc->cache_time, &end, 10);
+#else /* APXS2 */
     secs = apr_strtoi64(sc->cache_time, &end, 10);
+#endif /* APXS2 */
 
     /* Clamp the time to [0,UINT_MAX] */
     if (secs < 0)
