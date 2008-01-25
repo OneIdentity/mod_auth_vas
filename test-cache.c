@@ -35,6 +35,8 @@
  *     Ted Percival <ted.percival@quest.com>
  */
 
+#include <unistd.h> /* for sleep(3) */
+
 #include "compat.h"
 #include "cache.h"
 
@@ -330,6 +332,70 @@ test_multiple_items(apr_pool_t *pool) {
     return 0;
 }
 
+/**
+ * Tests inserting a new item when the cache is full and there are expired items.
+ * This might seem silly, but there is a different code path for inserting items
+ * when the cache is full and there are expired items to be purged. */
+static int
+test_insert_with_expired(apr_pool_t *pool) {
+    auth_vas_cache *cache;
+    cached_data *obj;
+
+    cache = init_cache_or_die(pool, NULL, NULL);
+
+    auth_vas_cache_set_max_age(cache, 1); /* 1 second */
+    auth_vas_cache_set_max_size(cache, 1); /* 1 obj */
+
+    obj = cached_data_new("expireme", 1);
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    sleep(1); /* Expire the old item */
+
+    obj = cached_data_new("cacheme", 2);
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    if (auth_vas_cache_get(cache, "expireme") != NULL)
+	FAIL("Retrieved an item that should have been expired");
+
+    /* Don't bother getting the "cacheme" object, if we're running on a slow
+     * machine it might have expired already. */
+
+    auth_vas_cache_flush(cache);
+
+    return 0;
+}
+
+static int
+test_shrink_cache(apr_pool_t *pool) {
+    auth_vas_cache *cache;
+    cached_data *obj;
+    size_t i;
+    const char *const keys[] = { "one", "two", "three" };
+
+    cache = init_cache_or_die(pool, NULL, NULL);
+
+    for (i = 0; i < (sizeof(keys) / sizeof(keys[0])); ++i) {
+	obj = cached_data_new(keys[i], i + 1);
+	auth_vas_cache_insert(cache, obj->key, obj);
+	cached_data_unref(obj);
+    }
+
+    auth_vas_cache_set_max_size(cache, 1);
+
+    /* Get the last item */
+    obj = auth_vas_cache_get(cache, "three");
+    if (!obj)
+	FAIL("Last item was not retrievable after shrinking the cache");
+
+    cached_data_unref(obj);
+
+    auth_vas_cache_flush(cache);
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     int failures = 0;
     apr_pool_t *pool;
@@ -348,6 +414,8 @@ int main(int argc, char *argv[]) {
     failures += test_full_cache(pool);
     failures += test_vasobjs(pool);
     failures += test_multiple_items(pool);
+    failures += test_insert_with_expired(pool);
+    failures += test_shrink_cache(pool);
 
     apr_pool_destroy(pool);
 
