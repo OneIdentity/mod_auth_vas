@@ -3,6 +3,9 @@
 	- Added AuthVasKeytabFile option for explicitly specifying the location
 	  of the keytab file to use for server credentials (bug #369).
 
+	- Only try to add the +DAportable compile flag on HP-UX.
+	  Thanks Scott Steverson. (Bug #477).
+
 3.5.3   (2007-12-19)
 
 	- Fixed "Require container" not allowing anyone access (bug #450).
