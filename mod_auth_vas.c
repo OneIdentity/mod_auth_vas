@@ -1045,7 +1045,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
-    TRACE_R(r, "%s: user='%s' password=...", __func__, username);
+    TRACE_R(r, "%s: user='%s' password=...", __func__, user);
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
