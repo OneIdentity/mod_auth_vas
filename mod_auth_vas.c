@@ -79,6 +79,7 @@ typedef struct {
     vas_id_t    *vas_serverid;      /* The server ID context */
     const char *service_principal;  /* VASServicePrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
+    char *keytab_filename;          /* AuthVasKeytabFile */
 } auth_vas_server_config;
 
 /*
@@ -273,6 +274,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
 #define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
+#define CMD_KEYTABFILE		"AuthVasKeytabFile"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -316,6 +318,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_server_config, default_realm),
 		RSRC_CONF,
 		"Default realm for authorization"),
+    AP_INIT_TAKE1(CMD_KEYTABFILE, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, keytab_filename),
+		RSRC_CONF,
+		"Keytab file to use for authentication"),
     { NULL }
 };
 
@@ -1637,7 +1643,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                                           VAS_ID_FLAG_USE_MEMORY_CCACHE |
                                           VAS_ID_FLAG_KEEP_COPY_OF_CRED |
                                           VAS_ID_FLAG_NO_INITIAL_TGT,
-                                          NULL);
+                                          sc->keytab_filename);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
                   "vas_id_establish_cred_keytab failed, err = %s",
@@ -2722,6 +2728,7 @@ auth_vas_server_config_destroy(void *data)
     if (sc != NULL) {
         
 	/* sc->default_realm is always handled by apache */
+	/* sc->keytab_filename is always handled by apache */
 
         if (sc->vas_serverid != NULL) {
             vas_id_free(sc->vas_ctx, sc->vas_serverid);
