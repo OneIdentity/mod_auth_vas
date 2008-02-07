@@ -158,19 +158,6 @@
 #endif /* Apache 2.0.x */
 
 /*
- * Miscellaneous constants.
- */
-#define VAS_AUTH_TYPE		    "VAS"
-#define DEFAULT_SERVICE_PRINCIPAL   "HTTP/"
-
-/* Flag values for directory configuration */
-#define FLAG_UNSET	(-1)
-#define FLAG_OFF	0
-#define FLAG_ON		1
-#define FLAG_MERGE(basef,newf) ((newf) == FLAG_UNSET ? (basef) : (newf))
-#define TEST_FLAG_DEFAULT(f,def)  ((f) == FLAG_UNSET ? (def) : (f))
-
-/*
  * Trace macros for verbose debugging.
  *  TRACE_P - trace using a memory pool
  *  TRACE_S - trace in a server context
