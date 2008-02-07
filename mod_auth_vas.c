@@ -80,7 +80,7 @@ typedef struct {
     vas_ctx_t   *vas_ctx;           /* The global VAS context - needs locking */
     vas_id_t	*vas_serverid;      /* The server identity */
     auth_vas_cache	*cache;     /* See cache.h */
-    const char *service_principal;  /* VASServicePrincipal or NULL */
+    const char *server_principal;   /* AuthVasServerPrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
     char *cache_size;               /* Configured cache size */
     char *cache_time;               /* Configured cache lifetime */
@@ -134,6 +134,18 @@ typedef struct {
 #define USING_AUTH_NEGOTIATE(dc) \
     USING_AUTH_DEFAULT(dc, auth_negotiate,     DEFAULT_USING_AUTH_NEGOTIATE)
     
+/*
+ * Miscellaneous constants.
+ */
+#define VAS_AUTH_TYPE		    "VAS"
+#define DEFAULT_SERVER_PRINCIPAL    "HTTP/"
+
+/* Flag values for directory configuration */
+#define FLAG_UNSET	(-1)
+#define FLAG_OFF	0
+#define FLAG_ON		1
+#define FLAG_MERGE(basef,newf) ((newf) == FLAG_UNSET ? (basef) : (newf))
+#define TEST_FLAG_DEFAULT(f,def)  ((f) == FLAG_UNSET ? (def) : (f))
 
 /*
  * Per-request note data - exists for lifetime of request only.
@@ -275,7 +287,8 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_EXPORTDELEG		"AuthVasExportDelegated"
 #define CMD_LOCALIZEREMOTEUSER	"AuthVasLocalizeRemoteUser" /**< Deprecated */
 #define CMD_REMOTEUSERMAP	"AuthVasRemoteUserMap"
-#define CMD_SPN			"AuthVasServicePrincipal"
+#define CMD_SPN			"AuthVasServerPrincipal"
+#define CMD_OLDSPN		"AuthVasServicePrincipal" /**< Deprecated */
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
 #define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
@@ -317,9 +330,13 @@ static const command_rec auth_vas_cmds[] =
 		ACCESS_CONF | OR_AUTHCFG,
 		"Error page or string to provide when a client attempts unsupported NTLM authentication"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, service_principal),
+		APR_OFFSETOF(auth_vas_server_config, server_principal),
 		RSRC_CONF,
-		"Service Principal Name for the server"),
+		"User Principal Name (LDAP userPrincipalName) for the server"),
+    AP_INIT_TAKE1(CMD_OLDSPN, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, server_principal),
+		RSRC_CONF,
+		"User Principal Name (LDAP userPrincipalName) for the server (deprecated in favor of "CMD_SPN")"),
     AP_INIT_TAKE1(CMD_REALM, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, default_realm),
 		RSRC_CONF,
@@ -1714,7 +1731,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	return;
     }
 
-    TRACE_S(s, "%s: spn='%s'", __func__, sc->service_principal);
+    TRACE_S(s, "%s: spn='%s'", __func__, sc->server_principal);
 
     /* Obtain a new VAS context for the web server */
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
@@ -1750,12 +1767,12 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     
     /* Create the vas_id for the server */
     vaserr = vas_id_alloc(sc->vas_ctx, 
-                          sc->service_principal, 
+                          sc->server_principal,
                           &sc->vas_serverid);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
                   "vas_id_alloc failed on %s, err = %s",
-                  sc->service_principal,
+                  sc->server_principal,
                   vas_err_get_string(sc->vas_ctx, 1));
 	return;
     }
@@ -1775,7 +1792,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                   vas_err_get_string(sc->vas_ctx, 1));
 	return;
     } else {
-        TRACE_S(s, "successfully established creds for %s", sc->service_principal);
+        TRACE_S(s, "successfully established creds for %s", sc->server_principal);
     }
 
     /* If this SPN is also a UPN, it should be able to authenticate against
@@ -1796,7 +1813,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	    LOG_ERROR(APLOG_INFO, 0, s,
 		      "Credential test for %s failed with %s, "
 		      "this is harmless if it is a service alias",
-		      sc->service_principal,
+		      sc->server_principal,
 		      krb5_get_error_name(errinfo->code));
 	} else {
 	    LOG_ERROR(APLOG_ERR, 0, s,
@@ -1808,7 +1825,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	    vas_err_info_free(errinfo);
     } else {
         TRACE_S(s, "Successfully authenticated to %s with keytab",
-		sc->service_principal);
+		sc->server_principal);
         vas_auth_free(sc->vas_ctx, vasauth);
     }
 
@@ -2896,7 +2913,7 @@ auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     sc = (auth_vas_server_config *)apr_pcalloc(p, sizeof *sc);
     if (sc != NULL) {
 	/* XXX Shouldn't we default to "HTTP/" + s->server_hostname ? */
-	sc->service_principal = DEFAULT_SERVICE_PRINCIPAL;
+	sc->server_principal = DEFAULT_SERVER_PRINCIPAL;
     }
     
     /* register our server config cleanup function */
