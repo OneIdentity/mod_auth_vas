@@ -78,12 +78,13 @@
  */
 typedef struct {
     vas_ctx_t   *vas_ctx;           /* The global VAS context - needs locking */
-    vas_id_t	*vas_serverid;      /* The server identity */
-    auth_vas_cache	*cache;     /* See cache.h */
-    const char *server_principal;   /* AuthVasServerPrincipal or NULL */
+    vas_id_t    *vas_serverid;      /* The server identity */
+    auth_vas_cache      *cache;     /* See cache.h */
+    const char  *server_principal;  /* AuthVasServerPrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
     char *cache_size;               /* Configured cache size */
     char *cache_time;               /* Configured cache lifetime */
+    char *keytab_filename;          /* AuthVasKeytabFile */
 } auth_vas_server_config;
 
 /*
@@ -294,6 +295,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
 #define CMD_CACHESIZE		"AuthVasCacheSize"
 #define CMD_CACHEEXPIRE		"AuthVasCacheExpire"
+#define CMD_KEYTABFILE		"AuthVasKeytabFile"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -349,6 +351,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_server_config, cache_time),
 		RSRC_CONF,
 		"Cache object lifetime (expiry)"),
+    AP_INIT_TAKE1(CMD_KEYTABFILE, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, keytab_filename),
+		RSRC_CONF,
+		"Keytab file to use for authentication"),
     { NULL }
 };
 
@@ -837,7 +843,7 @@ match_container(request_rec *r, const char *container, int log_level)
 
     if ((vaserr = auth_vas_user_get_vas_user(rnote->user, &vasuser))) {
 	LOG_RERROR(log_level, 0, r,
-		"%s: fatal vas error for user_init: %d, %s",
+		"%s: error initializing user object: %d, %s",
 		__func__,
 		vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
@@ -847,8 +853,8 @@ match_container(request_rec *r, const char *container, int log_level)
 		    &dn )) != VAS_ERR_SUCCESS ) 
     {
 	LOG_RERROR(log_level, 0, r,
-	       	"%s: fatal vas error for user_get_dn: %d, %s",
-	       	__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
+		"%s: error getting user's distinguishedName: %d, %s",
+		__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -857,8 +863,8 @@ match_container(request_rec *r, const char *container, int log_level)
 	RETURN(OK);
     } else {
         LOG_RERROR(APLOG_INFO, 0, r,
-	       	"%s: user dn %s not in container %s",
-	       	__func__, dn, container);
+		"%s: user dn %s not in container %s",
+		__func__, dn, container);
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -1076,7 +1082,7 @@ do_basic_accept(request_rec *r, const char *username, const char *password)
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
-    TRACE_R(r, "%s: user='%s' password=...", __func__, username);
+    TRACE_R(r, "%s: user='%s' password=...", __func__, user);
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
@@ -1785,7 +1791,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                                           VAS_ID_FLAG_USE_MEMORY_CCACHE |
                                           VAS_ID_FLAG_KEEP_COPY_OF_CRED |
                                           VAS_ID_FLAG_NO_INITIAL_TGT,
-                                          NULL);
+                                          sc->keytab_filename);
     if (vaserr != VAS_ERR_SUCCESS) {
 	LOG_ERROR(APLOG_ERR, 0, s,
                   "vas_id_establish_cred_keytab failed, err = %s",
@@ -2456,7 +2462,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		char *attrval;
 
 		LOG_RERROR(APLOG_DEBUG, 0, r,
-			"%s: Using vas cache for lookup of %s attribute",
+			"%s: Using VAS cache for lookup of %s attribute",
 			__func__, attr);
 
 		if (map->vas_func(sc->vas_ctx, sc->vas_serverid,
@@ -2466,7 +2472,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		    free(attrval);
 		} else { /* VAS error */
 		    LOG_RERROR(APLOG_ERR, 0, r,
-			    "Error looking up %s attribute in vas cache: %s",
+			    "Error looking up %s attribute in VAS cache: %s",
 			    attr, vas_err_get_string(sc->vas_ctx, 1));
 		}
 		goto finish;
@@ -2480,7 +2486,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    struct passwd *pw;
 
 	    LOG_RERROR(APLOG_DEBUG, 0, r,
-		    "%s: Using vas cache for lookup of %cidNumber attribute",
+		    "%s: Using VAS cache for lookup of %cidNumber attribute",
 		    __func__, ug);
 	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid,
 			rn->vas_user_obj, &pw) == VAS_ERR_SUCCESS)
@@ -2490,7 +2496,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		free(pw);
 	    } else { /* VAS error (or user is not Unix-enabled) */
 		LOG_RERROR(APLOG_ERR, 0, r,
-			"Error looking up %cidNumber attribute in vas cache: %s",
+			"Error looking up %cidNumber attribute in VAS cache: %s",
 			ug, vas_err_get_string(sc->vas_ctx, 1));
 	    }
 	    goto finish;
@@ -2882,6 +2888,7 @@ auth_vas_server_config_destroy(void *data)
 	}
         
 	/* sc->default_realm is always handled by apache */
+	/* sc->keytab_filename is always handled by apache */
 
         if (sc->vas_serverid != NULL) {
             vas_id_free(sc->vas_ctx, sc->vas_serverid);

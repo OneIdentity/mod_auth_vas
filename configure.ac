@@ -169,13 +169,16 @@ if test x"$ac_cv_var_bexpall" != x"yes"; then
 	LDFLAGS="$LDFLAGS_save"
 fi
 
-#-- use the +DAportable flag if it is supported
-CFLAGS_save="$CFLAGS"
-CFLAGS="$CFLAGS +DAportable"
-AC_CACHE_CHECK([whether $CC understands +DAPortable], [ac_cv_var_daportable],
-    [AC_TRY_LINK([],[],[ac_cv_var_daportable=yes],[ac_cv_var_daportable=no])])
-if test x"$ac_cv_var_daportable" != x"yes"; then
-    CFLAGS="$CFLAGS_save"
+#-- use the +DAportable flag on HP-UX if it is supported
+# Feel free to find a more reliable way to detect HP-UX
+if test `uname -s` = "HP-UX"; then
+    CFLAGS_save="$CFLAGS"
+    CFLAGS="$CFLAGS +DAportable"
+    AC_CACHE_CHECK([whether $CC understands +DAportable], [ac_cv_var_daportable],
+	[AC_TRY_LINK([],[],[ac_cv_var_daportable=yes],[ac_cv_var_daportable=no])])
+    if test x"$ac_cv_var_daportable" != x"yes"; then
+	CFLAGS="$CFLAGS_save"
+    fi
 fi
 
 dnl Try to figure out what extension apxs uses by compiling a simple
