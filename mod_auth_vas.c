@@ -872,7 +872,11 @@ finish:
 static int
 match_valid_user(request_rec *r, const char *ignored, int log_level)
 {
-    /* XXX should check to see if the user has been disabled */
+    /* There's a great feature that checking for valid-user doesn't cause any
+     * VAS lookups, so valid-user can be used to authorize a user in any
+     * domain that the server has a keytab for (and the client has a ticket
+     * for). Don't change this. */
+
     if (RUSER(r) != NULL)
 	return OK;
     else
