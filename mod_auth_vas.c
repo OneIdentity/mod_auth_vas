@@ -1965,7 +1965,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	char addr[sizeof("255.255.255.255")], *slash;
 	int length;
 	const char *mask;
-	const char const default_mask[] = "32";
+	const char default_mask[] = "32";
 
 	slash = strchr(value, '/');
 
