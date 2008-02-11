@@ -44,12 +44,17 @@
  *   Most functions are not thread safe. Be careful.
  */
 
-#include <apr_hash.h>
 #include <httpd.h>
 #include <http_log.h>
 
 #include "compat.h"
 #include "cache.h"
+
+#if defined(APXS1)
+# include "apr_hash.h"
+#else /* APXS2 */
+# include <apr_hash.h>
+#endif /* APXS2 */
 
 /* Defaults */
 #define DEFAULT_EXPIRE_SECONDS 60
@@ -157,12 +162,21 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 	return NULL;
     }
 
+#if defined (APXS1)
+    cache->pool = ap_make_sub_pool(parent_pool);
+    if (!cache->pool) {
+	LOG_P_ERROR(APLOG_ERR, 0, parent_pool,
+		"Failed to create cache memory pool");
+	return NULL;
+    }
+#else /* APXS2 */
     aprerr = apr_pool_create(&cache->pool, parent_pool);
     if (aprerr) {
 	LOG_P_ERROR(APLOG_ERR, aprerr, parent_pool,
 		"Failed to create cache memory pool");
 	return NULL;
     }
+#endif /* APXS2 */
 
     cache->table = apr_hash_make(cache->pool);
 
