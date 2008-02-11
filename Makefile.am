@@ -53,7 +53,7 @@ check-local: mod_auth_vas$(DSOEXT)
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
 
-EXTRA_DIST=	NEWS README LICENCE examples
+EXTRA_DIST=	NEWS README LICENCE NOTICE examples
 EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf \
 		$(mod_auth_vas_HDRS) check-symbols.sh
 CLEANFILES=	setup-mod_auth_vas *.gcno *.gcda *.gcov
