@@ -80,7 +80,7 @@ static apr_hash_entry_t **alloc_array(apr_hash_t *ht, unsigned int max)
    return apr_pcalloc(ht->pool, sizeof(*ht->array) * (max + 1));
 }
 
-APR_DECLARE(apr_hash_t *) apr_hash_make(apr_pool_t *pool)
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_make(apr_pool_t *pool)
 {
     apr_hash_t *ht;
     ht = apr_palloc(pool, sizeof(apr_hash_t));
@@ -93,7 +93,7 @@ APR_DECLARE(apr_hash_t *) apr_hash_make(apr_pool_t *pool)
     return ht;
 }
 
-APR_DECLARE(apr_hash_t *) apr_hash_make_custom(apr_pool_t *pool,
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_make_custom(apr_pool_t *pool,
                                                apr_hashfunc_t hash_func)
 {
     apr_hash_t *ht = apr_hash_make(pool);
@@ -106,7 +106,7 @@ APR_DECLARE(apr_hash_t *) apr_hash_make_custom(apr_pool_t *pool,
  * Hash iteration functions.
  */
 
-APR_DECLARE(apr_hash_index_t *) apr_hash_next(apr_hash_index_t *hi)
+APR_DECLARE(apr_hash_index_t *) auth_vas_apr_hash_next(apr_hash_index_t *hi)
 {
     hi->this = hi->next;
     while (!hi->this) {
@@ -119,7 +119,7 @@ APR_DECLARE(apr_hash_index_t *) apr_hash_next(apr_hash_index_t *hi)
     return hi;
 }
 
-APR_DECLARE(apr_hash_index_t *) apr_hash_first(apr_pool_t *p, apr_hash_t *ht)
+APR_DECLARE(apr_hash_index_t *) auth_vas_apr_hash_first(apr_pool_t *p, apr_hash_t *ht)
 {
     apr_hash_index_t *hi;
     if (p)
@@ -134,7 +134,7 @@ APR_DECLARE(apr_hash_index_t *) apr_hash_first(apr_pool_t *p, apr_hash_t *ht)
     return apr_hash_next(hi);
 }
 
-APR_DECLARE(void) apr_hash_this(apr_hash_index_t *hi,
+APR_DECLARE(void) auth_vas_apr_hash_this(apr_hash_index_t *hi,
                                 const void **key,
                                 apr_ssize_t *klen,
                                 void **val)
@@ -166,7 +166,7 @@ static void expand_array(apr_hash_t *ht)
     ht->max = new_max;
 }
 
-APR_DECLARE_NONSTD(unsigned int) apr_hashfunc_default(const char *char_key,
+APR_DECLARE_NONSTD(unsigned int) auth_vas_apr_hashfunc_default(const char *char_key,
                                                       apr_ssize_t *klen)
 {
     unsigned int hash = 0;
@@ -273,7 +273,7 @@ static apr_hash_entry_t **find_entry(apr_hash_t *ht,
     return hep;
 }
 
-APR_DECLARE(apr_hash_t *) apr_hash_copy(apr_pool_t *pool,
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_copy(apr_pool_t *pool,
                                         const apr_hash_t *orig)
 {
     apr_hash_t *ht;
@@ -310,7 +310,7 @@ APR_DECLARE(apr_hash_t *) apr_hash_copy(apr_pool_t *pool,
     return ht;
 }
 
-APR_DECLARE(void *) apr_hash_get(apr_hash_t *ht,
+APR_DECLARE(void *) auth_vas_apr_hash_get(apr_hash_t *ht,
                                  const void *key,
                                  apr_ssize_t klen)
 {
@@ -322,7 +322,7 @@ APR_DECLARE(void *) apr_hash_get(apr_hash_t *ht,
         return NULL;
 }
 
-APR_DECLARE(void) apr_hash_set(apr_hash_t *ht,
+APR_DECLARE(void) auth_vas_apr_hash_set(apr_hash_t *ht,
                                const void *key,
                                apr_ssize_t klen,
                                const void *val)
@@ -350,19 +350,19 @@ APR_DECLARE(void) apr_hash_set(apr_hash_t *ht,
     /* else key not present and val==NULL */
 }
 
-APR_DECLARE(unsigned int) apr_hash_count(apr_hash_t *ht)
+APR_DECLARE(unsigned int) auth_vas_apr_hash_count(apr_hash_t *ht)
 {
     return ht->count;
 }
 
-APR_DECLARE(apr_hash_t*) apr_hash_overlay(apr_pool_t *p,
+APR_DECLARE(apr_hash_t*) auth_vas_apr_hash_overlay(apr_pool_t *p,
                                           const apr_hash_t *overlay,
                                           const apr_hash_t *base)
 {
     return apr_hash_merge(p, overlay, base, NULL, NULL);
 }
 
-APR_DECLARE(apr_hash_t *) apr_hash_merge(apr_pool_t *p,
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_merge(apr_pool_t *p,
                                          const apr_hash_t *overlay,
                                          const apr_hash_t *base,
                                          void * (*merger)(apr_pool_t *p,

@@ -66,12 +66,14 @@ typedef struct apr_hash_index_t apr_hash_index_t;
  * @param klen The length of the key, or APR_HASH_KEY_STRING to use the string
  *             length. If APR_HASH_KEY_STRING then returns the actual key length.
  */
-typedef unsigned int (*apr_hashfunc_t)(const char *key, apr_ssize_t *klen);
+#define apr_hashfunc_t auth_vas_apr_hashfunc_t
+typedef unsigned int (*auth_vas_apr_hashfunc_t)(const char *key, apr_ssize_t *klen);
 
 /**
  * The default hash function.
  */
-APR_DECLARE_NONSTD(unsigned int) apr_hashfunc_default(const char *key,
+#define apr_hashfunc_default     auth_vas_apr_hashfunc_default
+APR_DECLARE_NONSTD(unsigned int) auth_vas_apr_hashfunc_default(const char *key,
                                                       apr_ssize_t *klen);
 
 /**
@@ -79,7 +81,8 @@ APR_DECLARE_NONSTD(unsigned int) apr_hashfunc_default(const char *key,
  * @param pool The pool to allocate the hash table out of
  * @return The hash table just created
   */
-APR_DECLARE(apr_hash_t *) apr_hash_make(apr_pool_t *pool);
+#define apr_hash_make     auth_vas_apr_hash_make
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_make(apr_pool_t *pool);
 
 /**
  * Create a hash table with a custom hash function
@@ -87,7 +90,8 @@ APR_DECLARE(apr_hash_t *) apr_hash_make(apr_pool_t *pool);
  * @param hash_func A custom hash function.
  * @return The hash table just created
   */
-APR_DECLARE(apr_hash_t *) apr_hash_make_custom(apr_pool_t *pool,
+#define apr_hash_make_custom auth_vas_apr_hash_make_custom
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_make_custom(apr_pool_t *pool,
                                                apr_hashfunc_t hash_func);
 
 /**
@@ -97,7 +101,8 @@ APR_DECLARE(apr_hash_t *) apr_hash_make_custom(apr_pool_t *pool,
  * @return The hash table just created
  * @remark Makes a shallow copy
  */
-APR_DECLARE(apr_hash_t *) apr_hash_copy(apr_pool_t *pool,
+#define apr_hash_copy     auth_vas_apr_hash_copy
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_copy(apr_pool_t *pool,
                                         const apr_hash_t *h);
 
 /**
@@ -108,7 +113,8 @@ APR_DECLARE(apr_hash_t *) apr_hash_copy(apr_pool_t *pool,
  * @param val Value to associate with the key
  * @remark If the value is NULL the hash entry is deleted.
  */
-APR_DECLARE(void) apr_hash_set(apr_hash_t *ht, const void *key,
+#define apr_hash_set auth_vas_apr_hash_set
+APR_DECLARE(void) auth_vas_apr_hash_set(apr_hash_t *ht, const void *key,
                                apr_ssize_t klen, const void *val);
 
 /**
@@ -118,7 +124,8 @@ APR_DECLARE(void) apr_hash_set(apr_hash_t *ht, const void *key,
  * @param klen Length of the key. Can be APR_HASH_KEY_STRING to use the string length.
  * @return Returns NULL if the key is not present.
  */
-APR_DECLARE(void *) apr_hash_get(apr_hash_t *ht, const void *key,
+#define apr_hash_get auth_vas_apr_hash_get
+APR_DECLARE(void *) auth_vas_apr_hash_get(apr_hash_t *ht, const void *key,
                                  apr_ssize_t klen);
 
 /**
@@ -146,7 +153,8 @@ APR_DECLARE(void *) apr_hash_get(apr_hash_t *ht, const void *key,
  * }
  * @endcode
  */
-APR_DECLARE(apr_hash_index_t *) apr_hash_first(apr_pool_t *p, apr_hash_t *ht);
+#define apr_hash_first          auth_vas_apr_hash_first
+APR_DECLARE(apr_hash_index_t *) auth_vas_apr_hash_first(apr_pool_t *p, apr_hash_t *ht);
 
 /**
  * Continue iterating over the entries in a hash table.
@@ -154,7 +162,8 @@ APR_DECLARE(apr_hash_index_t *) apr_hash_first(apr_pool_t *p, apr_hash_t *ht);
  * @return a pointer to the updated iteration state.  NULL if there are no more
  *         entries.
  */
-APR_DECLARE(apr_hash_index_t *) apr_hash_next(apr_hash_index_t *hi);
+#define apr_hash_next           auth_vas_apr_hash_next
+APR_DECLARE(apr_hash_index_t *) auth_vas_apr_hash_next(apr_hash_index_t *hi);
 
 /**
  * Get the current entry's details from the iteration state.
@@ -165,7 +174,8 @@ APR_DECLARE(apr_hash_index_t *) apr_hash_next(apr_hash_index_t *hi);
  * @remark The return pointers should point to a variable that will be set to the
  *         corresponding data, or they may be NULL if the data isn't interesting.
  */
-APR_DECLARE(void) apr_hash_this(apr_hash_index_t *hi, const void **key,
+#define apr_hash_this auth_vas_apr_hash_this
+APR_DECLARE(void) auth_vas_apr_hash_this(apr_hash_index_t *hi, const void **key,
                                 apr_ssize_t *klen, void **val);
 
 /**
@@ -173,7 +183,8 @@ APR_DECLARE(void) apr_hash_this(apr_hash_index_t *hi, const void **key,
  * @param ht The hash table
  * @return The number of key/value pairs in the hash table.
  */
-APR_DECLARE(unsigned int) apr_hash_count(apr_hash_t *ht);
+#define apr_hash_count    auth_vas_apr_hash_count
+APR_DECLARE(unsigned int) auth_vas_apr_hash_count(apr_hash_t *ht);
 
 /**
  * Merge two hash tables into one new hash table. The values of the overlay
@@ -184,7 +195,8 @@ APR_DECLARE(unsigned int) apr_hash_count(apr_hash_t *ht);
  * @param base The table that represents the initial values of the new table
  * @return A new hash table containing all of the data from the two passed in
  */
-APR_DECLARE(apr_hash_t *) apr_hash_overlay(apr_pool_t *p,
+#define apr_hash_overlay  auth_vas_apr_hash_overlay
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_overlay(apr_pool_t *p,
                                            const apr_hash_t *overlay,
                                            const apr_hash_t *base);
 
@@ -202,7 +214,8 @@ APR_DECLARE(apr_hash_t *) apr_hash_overlay(apr_pool_t *p,
  * @param data Client data to pass to the merger function
  * @return A new hash table containing all of the data from the two passed in
  */
-APR_DECLARE(apr_hash_t *) apr_hash_merge(apr_pool_t *p,
+#define apr_hash_merge    auth_vas_apr_hash_merge
+APR_DECLARE(apr_hash_t *) auth_vas_apr_hash_merge(apr_pool_t *p,
                                          const apr_hash_t *h1,
                                          const apr_hash_t *h2,
                                          void * (*merger)(apr_pool_t *p,
