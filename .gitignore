@@ -27,3 +27,5 @@ setup-mod_auth_vas
 stamp-*
 tags
 mod_auth_vas-*.tar.gz
+mod_auth_vas.so
+test-cache

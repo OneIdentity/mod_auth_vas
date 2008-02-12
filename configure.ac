@@ -78,6 +78,17 @@ if test x"$APXS" = x"no"; then
 fi
 AC_SUBST(APXS)
 
+# APXSVERSION is only used in this script.
+# Testing for APXS1 is done everywhere else
+if echo "$APXS" | grep 2 >/dev/null; then
+    APXSVERSION=2
+else
+    APXSVERSION=1
+fi
+AC_SUBST(APXSVERSION)
+
+AM_CONDITIONAL(APXS1, [test $APXSVERSION = 1])
+
 dnl -- use this as a sanity test that apxs is working
 AC_MSG_CHECKING([Apache extension target])
 apxs_target=`$APXS -q TARGET || echo error`
@@ -85,6 +96,12 @@ AC_MSG_RESULT([$apxs_target])
 
 if test x"$apxs_target" = x"error"; then
     AC_MSG_FAILURE([$APXS does not appear to work])
+fi
+
+# Add APXS's CPPFLAGS to regular CPPFLAGS, for tests
+# APXS1 doesn't have a CPPFLAGS variable
+if test $APXSVERSION = 2; then
+    CPPFLAGS="`$APXS -q CPPFLAGS` $CPPFLAGS"
 fi
 
 APXSFLAGS=
@@ -123,7 +140,7 @@ if test "x$GCC" = "xyes"; then
     # On APXS1 we use symbols provided by the apache binary and not by
     # some library, which makes -Wl,-z,defs fail. So only use -Wl,-z,defs
     # if it looks like we are building for APXS2.
-    if echo "$APXS" | grep 2 >/dev/null; then
+    if test $APXSVERSION = 2; then
 	DESIRED_LDFLAGS="-Wl,-z,defs"
     else
 	DESIRED_LDFLAGS=
@@ -311,6 +328,21 @@ if test x"$VASCONFIG" = x"no"; then
     AC_MSG_FAILURE([vas-config not found; is vasdev installed?])
 fi
 
+if test $APXSVERSION = 2; then
+    APR_CONFIG=`$APXS -q APR_CONFIG`
+    APR_INCLUDES=`$APR_CONFIG --includes`
+    APR_LINK_LD=`$APR_CONFIG --link-ld`
+else # APXS1
+    # Required for checks
+    CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
+fi
+AC_SUBST([APR_CONFIG])
+AC_SUBST([APR_INCLUDES])
+AC_SUBST([APR_LINK_LD])
+#APR_CFLAGS=`$APR_CONFIG --cflags`
+#APR_CPPFLAGS=`$APR_CONFIG --cppflags`
+#APR_LDFLAGS=`$APR_CONFIG --ldflags`
+
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Note: can't have -rpath in linker flags when apxs is using libtool
 VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
@@ -350,5 +382,22 @@ AC_HEADER_STDC
 AC_TYPE_SIZE_T
 dnl Added in autoconf 2.59c
 dnl AC_TYPE_UINT32_T
+
+# See if the compiler & linker understand --coverage
+old_CFLAGS=$CFLAGS
+old_LDFLAGS=$LDFLAGS
+CFLAGS="--coverage $CFLAGS"
+LDFLAGS="--coverage $LDFLAGS"
+AC_MSG_CHECKING([whether $CC understands --coverage])
+AC_LINK_IFELSE([int main(void) { return 0; }],
+	[have_coverage_flags=yes
+	 AC_SUBST([COVERAGE_CFLAGS], [--coverage])
+	 AC_SUBST([COVERAGE_LDFLAGS], [--coverage])],
+	[have_coverage_flags=no])
+AC_MSG_RESULT([$have_coverage_flags])
+AM_CONDITIONAL([HAVE_COVERAGE], [test "$have_coverage_flags" = "yes"])
+# Restore flags, we don't want coverage information in the regular binaries
+CFLAGS=$old_CFLAGS
+LDFLAGS=$old_LDFLAGS
 
 AC_OUTPUT

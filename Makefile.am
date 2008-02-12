@@ -5,7 +5,8 @@ APXS_ACTIVATE=		# -a
 
 # We make the module noinst here, and install with apxs-install target
 noinst_DATA= 		mod_auth_vas$(DSOEXT)
-mod_auth_vas_SRCS=	mod_auth_vas.c compat.h
+mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c apr_hash.c
+mod_auth_vas_HDRS=	compat.h cache.h user.h apr_hash.h
 abs_builddir=		@abs_builddir@
 
 # Use -Wc and -Wl to protect linker options that aren't already protected
@@ -13,8 +14,8 @@ Wc=-Wc,
 Wl=-Wl,
 
 # NB: copy the sources locally so that apxs doesn't get confused
-mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
-	for f in $(mod_auth_vas_SRCS); do \
+mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
+	for f in $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS); do \
 	  cmp $(srcdir)/$$f ./$$f 2>/dev/null || \
 	    cp $(srcdir)/$$f . ; \
 	done
@@ -27,12 +28,12 @@ mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS)
 		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(VAS_LIBS:%=$(Wl)%)) \
 		-o $@ \
 		-n auth_vas \
-		mod_auth_vas.c
+		$(mod_auth_vas_SRCS)
 
 clean-local:
 	rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
 	: Remove sources from builddir
-	test "$(top_srcdir)" = "$(top_builddir)" || rm -f $(mod_auth_vas_SRCS)
+	test "$(top_srcdir)" = "$(top_builddir)" || rm -f $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
 
 # use apxs to install the module, inserting DESTDIR as best we can
 install-exec-local:
@@ -44,17 +45,23 @@ install-exec-local:
 		mod_auth_vas$(DSOEXT)
 
 # Ensure the module does not leak symbols
+if APXS1
+check-local: mod_auth_vas$(DSOEXT)
+	$(top_srcdir)/check-symbols.sh auth_vas $^
+else # APXS2
 # DSOEXT is usually .la but we want the .so. Some hackery required.
 check-local: mod_auth_vas$(DSOEXT)
 	eval `libtool --config | grep ^shrext_cmds` && \
 	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$$shrext_cmds
+endif # APXS2
 
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
 
-EXTRA_DIST=	NEWS README LICENCE examples
-EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf check-symbols.sh
-CLEANFILES=	setup-mod_auth_vas
+EXTRA_DIST=	NEWS README LICENCE NOTICE examples
+EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf \
+		$(mod_auth_vas_HDRS) check-symbols.sh
+CLEANFILES=	setup-mod_auth_vas *.gcno *.gcda *.gcov
 
 EXTRA_DIST+=	setup-mod_auth_vas.in
 CLEANFILES+=	setup-mod_auth_vas
@@ -116,4 +123,27 @@ redhat-ap2-rpm: redhat.spec .rpmmacros
 redhat.spec: redhat.spec.in
 	    $(subst) < $^ > $@
 
+check_PROGRAMS = \
+		 test-cache \
+		 #
 
+TESTS = $(check_PROGRAMS)
+
+test_cache_SOURCES = test-cache.c cache.c cache.h compat.h apr_hash.c apr_hash.h
+test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS)
+test_cache_CFLAGS = $(VAS_CFLAGS) $(COVERAGE_CFLAGS)
+#test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)
+test_cache_LDFLAGS = $(APR_LDFLAGS) $(APR_LINK_LD) $(COVERAGE_LDFLAGS)
+
+if HAVE_COVERAGE
+
+# Produces a code coverage report
+coverage: check
+	gcov *.gcda
+
+else # !HAVE_COVERAGE
+
+# No-op
+coverage:
+
+endif # !HAVE_COVERAGE

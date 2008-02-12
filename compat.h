@@ -48,7 +48,9 @@
 # endif
 #endif
 
-#include <http_config.h> /* To determine the version of Apache */
+/* To determine the version of Apache */
+#include <httpd.h>
+#include <http_config.h>
 
 #if !defined(STANDARD20_MODULE_STUFF)
 # define APXS1 1 /* Apache 1.3.x */
@@ -67,6 +69,7 @@
 # define apr_base64_decode_len	ap_base64decode_len
 # define apr_base64_encode	ap_base64encode
 # define apr_base64_encode_len	ap_base64encode_len
+# define apr_interval_time_t	uint64_t
 # define apr_status_t		int
 # define apr_pcalloc		ap_pcalloc
 # define apr_palloc		ap_palloc
@@ -75,6 +78,7 @@
 # define apr_pstrcat		ap_pstrcat
 # define apr_pstrdup		ap_pstrdup
 # define apr_pool_t		pool
+# define apr_ssize_t		ssize_t
 # define apr_table_t		table
 # define apr_table_clear	ap_clear_table
 # define apr_table_do		ap_table_do
@@ -87,6 +91,11 @@
 # define apr_thread_mutex_t	mutex
 # define apr_thread_mutex_lock ap_acquire_mutex
 # define apr_thread_mutex_unlock ap_release_mutex
+# define apr_time_t		uint64_t
+# define APR_USEC_PER_SEC	1000000ul
+# define apr_time_now()		(((apr_time_t)time(NULL)) * APR_USEC_PER_SEC)
+# define apr_time_from_sec(s)	((s) * APR_USEC_PER_SEC)
+# define apr_time_sec(us)	((us) / APR_USEC_PER_SEC)
 # define AP_INIT_FLAG(d,f,m,w,h)  {d,f,m,w,FLAG,h}
 # define AP_INIT_TAKE1(d,f,m,w,h) {d,f,m,w,TAKE1,h}
 # define AP_INIT_RAW_ARGS(d,f,m,w,h) {d,f,m,w,RAW_ARGS,h}
@@ -116,6 +125,10 @@
 #  define LOG_P_ERROR(l,x,p, ...) \
 	ap_log_printf(0, __VA_ARGS__)
 # endif
+
+# define APR_DECLARE(x) x
+# define APR_DECLARE_NONSTD(x) x
+# include "apr_hash.h"
 
 #define CLEANUP_RET_TYPE 	void
 #define CLEANUP_RETURN		return
@@ -256,5 +269,7 @@
 #else
 # define MAV_UNUSED
 #endif
+
+#define streq(a,b) (strcmp((a),(b))==0)
 
 #endif /* MAV_COMPAT_H */

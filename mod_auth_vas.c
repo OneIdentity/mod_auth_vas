@@ -63,6 +63,8 @@
 #endif
 
 #include "compat.h"
+#include "cache.h"
+#include "user.h"
 
 /** Macro for returning a value from the match functions via a cleanup label
  * (called finish) to make the code read more easily. */
@@ -76,9 +78,12 @@
  */
 typedef struct {
     vas_ctx_t   *vas_ctx;           /* The global VAS context - needs locking */
-    vas_id_t    *vas_serverid;      /* The server ID context */
-    const char *server_principal;   /* AuthVasServerPrincipal or NULL */
+    vas_id_t    *vas_serverid;      /* The server identity */
+    auth_vas_cache      *cache;     /* See cache.h */
+    const char  *server_principal;  /* AuthVasServerPrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
+    char *cache_size;               /* Configured cache size */
+    char *cache_time;               /* Configured cache lifetime */
     char *keytab_filename;          /* AuthVasKeytabFile */
 } auth_vas_server_config;
 
@@ -147,10 +152,10 @@ typedef struct {
  * Per-request note data - exists for lifetime of request only.
  */
 typedef struct {
-    vas_id_t *vas_userid;		/* The user's identity */
+    auth_vas_user *user;		/* User information (shared) */
+    /* TODO: Set  the vas_user_obj when the auth_vas_user is set. */
+    /* TODO: Make the vas_user_obj part of the auth_vas_user */
     vas_user_t *vas_user_obj;		/* The remote user object (lazy initialisation - possibly NULL) */
-    char *vas_pname;			/* The user's principal name */
-    vas_auth_t *vas_authctx;		/* The VAS authentication context */
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
     gss_buffer_desc client;		/* Exported mech name */
     gss_cred_id_t deleg_cred;		/* Delegated credential */
@@ -185,8 +190,8 @@ static void log_gss_error(const char *file, int line, int level,
 static void rnote_init(auth_vas_rnote *rn);
 static void rnote_fini(request_rec *r, auth_vas_rnote *rn);
 static CLEANUP_RET_TYPE auth_vas_cleanup_request(void *data);
-static int rnote_get(auth_vas_server_config *sc, request_rec *r, 
-	const char *user, auth_vas_rnote **rn_ptr);
+static int rnote_get(auth_vas_server_config *sc, request_rec *r,
+	auth_vas_rnote **rn_ptr);
 static int do_gss_spnego_accept(request_rec *r, const char *auth_line);
 static void auth_vas_server_init(apr_pool_t *p, server_rec *s);
 static void add_basic_auth_headers(request_rec *r);
@@ -215,6 +220,7 @@ static void set_remote_user(request_rec *r);
 static void set_remote_user_attr(request_rec *r, const char *line);
 static void localize_remote_user(request_rec *r, const char *line);
 static void localize_remote_user_strcmp(request_rec *r);
+static int initialize_user(request_rec *request, const char *username);
 
 /*
  * The per-process VAS mutex.
@@ -287,6 +293,8 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_REALM		"AuthVasDefaultRealm"
 #define CMD_USESUEXEC		"AuthVasSuexecAsRemoteUser"
 #define CMD_NTLMERRORDOCUMENT	"AuthVasNTLMErrorDocument"
+#define CMD_CACHESIZE		"AuthVasCacheSize"
+#define CMD_CACHEEXPIRE		"AuthVasCacheExpire"
 #define CMD_KEYTABFILE		"AuthVasKeytabFile"
 
 static const command_rec auth_vas_cmds[] =
@@ -335,6 +343,14 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_server_config, default_realm),
 		RSRC_CONF,
 		"Default realm for authorization"),
+    AP_INIT_TAKE1(CMD_CACHESIZE, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, cache_size),
+		RSRC_CONF,
+		"Cache size (number of objects)"),
+    AP_INIT_TAKE1(CMD_CACHEEXPIRE, server_set_string_slot,
+		APR_OFFSETOF(auth_vas_server_config, cache_time),
+		RSRC_CONF,
+		"Cache object lifetime (expiry)"),
     AP_INIT_TAKE1(CMD_KEYTABFILE, server_set_string_slot,
 		APR_OFFSETOF(auth_vas_server_config, keytab_filename),
 		RSRC_CONF,
@@ -458,13 +474,12 @@ set_user_obj(request_rec *r)
 
     /* Use RUSER(r) because any other name is susceptible to failure
      * when username-attr-name is not userPrincipalName. */
-    vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid, RUSER(r), 0,
-	    &rn->vas_user_obj);
+    vaserr = auth_vas_user_get_vas_user(rn->user, &rn->vas_user_obj);
 
     if (vaserr) {
 	rn->vas_user_obj = NULL;
 
-	LOG_RERROR(LOG_ERR, 0, r,
+	LOG_RERROR(APLOG_ERR, 0, r,
 		"%s: Failed to get user object for %.100s: %s",
 		__func__,
 		RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
@@ -512,7 +527,7 @@ match_user(request_rec *r, const char *name, int log_level)
     }
     /* Use RETURN() from here on */
 
-    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+    if ((err = rnote_get(sc, r, &rnote)))
 	RETURN(err);
 
     if ((err = set_user_obj(r)))
@@ -594,9 +609,11 @@ match_group(request_rec *r, const char *name, int log_level)
     }
     /* Use RETURN() from here on */
 
-    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+    if ((err = rnote_get(sc, r, &rnote)))
 	RETURN(err);
 
+#if 0 /* This is to be removed, but we do have a customer report saying they
+	 are hitting this (subcase 580317-3). */
     /* Make sure that we have a valid VAS authentication context.
      * If it's not there, then we'll just fail since there is
      * no available group information. */
@@ -607,6 +624,7 @@ match_group(request_rec *r, const char *name, int log_level)
                    rnote->vas_pname);
 	RETURN(HTTP_FORBIDDEN);
     }
+#endif
 
 #define VASVER ((VAS_API_VERSION_MAJOR * 10000) + \
     	        (VAS_API_VERSION_MINOR * 100)   + \
@@ -616,10 +634,7 @@ match_group(request_rec *r, const char *name, int log_level)
     	vas_auth_is_client_member(c,a,n)
 #endif
 
-    vaserr = vas_auth_check_client_membership(sc->vas_ctx,
-                                              sc->vas_serverid,
-                                              rnote->vas_authctx,
-                                              name);
+    vaserr = auth_vas_is_user_in_group(rnote->user, name);
     switch (vaserr) {
         case VAS_ERR_SUCCESS: /* user is member of group */
 	    RETURN(OK);
@@ -629,7 +644,7 @@ match_group(request_rec *r, const char *name, int log_level)
             LOG_RERROR(log_level, 0, r,
                        "%s: %s not member of %s",
 		       __func__,
-                       rnote->vas_pname,
+                       auth_vas_user_get_principal_name(rnote->user),
                        name);
 	    RETURN(HTTP_FORBIDDEN);
             break;
@@ -691,7 +706,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 	return err;
     }
 
-    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+    if ((err = rnote_get(sc, r, &rnote)))
 	RETURN(err);
 
     if ((err = set_user_obj(r)))
@@ -758,7 +773,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 	LOG_RERROR(log_level, 0, r,
 		   "%s: %s not member of %s",
 		   __func__,
-		   rnote->vas_pname,
+		   auth_vas_user_get_principal_name(rnote->user),
 		   name);
 	RETURN(HTTP_FORBIDDEN);
     }
@@ -823,14 +838,13 @@ match_container(request_rec *r, const char *container, int log_level)
     }
     /* Use RETURN() from here on */
 
-    if ((err = rnote_get(sc, r, RUSER(r), &rnote)))
+    if ((err = rnote_get(sc, r, &rnote)))
 	RETURN(err);
 
-    if ((vaserr = vas_user_init(sc->vas_ctx, sc->vas_serverid,
-		    rnote->vas_pname, 0, &vasuser)) != VAS_ERR_SUCCESS)
-    {
-        LOG_RERROR(log_level, 0, r,
-		"match_container: error initializing user object: %d, %s",
+    if ((vaserr = auth_vas_user_get_vas_user(rnote->user, &vasuser))) {
+	LOG_RERROR(log_level, 0, r,
+		"%s: error initializing user object: %d, %s",
+		__func__,
 		vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
     }
@@ -1058,13 +1072,13 @@ auth_vas_auth_checker(request_rec *r)
 /**
  * Authenticate a user using a plaintext password.
  *   @param r the request
- *   @param user the user's name
+ *   @param username the user's name
  *   @param password the password to authenticate against
  *   @return OK if credentials could be obtained for the user 
  *           with the given password to access this HTTP service
  */
 static int
-do_basic_accept(request_rec *r, const char *user, const char *password)
+do_basic_accept(request_rec *r, const char *username, const char *password)
 {
     int                     err;
     int                     result;
@@ -1072,7 +1086,7 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
-    TRACE_R(r, "%s: user='%s' password=...", __func__, user);
+    TRACE_R(r, "%s: user='%s' password=...", __func__, username);
 
     if ((err = LOCK_VAS(r))) {
 	LOG_RERROR(APLOG_ERR, 0, r,
@@ -1081,36 +1095,26 @@ do_basic_accept(request_rec *r, const char *user, const char *password)
     }
     /* Use RETURN() from here on */
 
-    /* get the note record with the user's id */
-    if ((err = rnote_get(sc, r, user, &rn)))
+    if ((err = rnote_get(sc, r, &rn)))
 	RETURN(err);
 
-    /* Check that the given password is correct */
-    vaserr = vas_id_establish_cred_password(sc->vas_ctx, rn->vas_userid,
-	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
-    if (vaserr != VAS_ERR_SUCCESS) {
-	LOG_RERROR(APLOG_ERR, 0, r,
-		"user %s: authentication failure for \"%s\": %s",
-		user, r->uri, vas_err_get_string(sc->vas_ctx, 1));
-	RETURN(HTTP_UNAUTHORIZED);
-    }
+    err = initialize_user(r, username);
+    if (err)
+	RETURN(err);
 
-    /* authenticate the user against our service, and store off the auth context
-     * into the connection note so that we can reuse that later for authz
-     * checks */
-    vaserr = vas_auth(sc->vas_ctx, rn->vas_userid, sc->vas_serverid,
-		&rn->vas_authctx);
-    if (vaserr != VAS_ERR_SUCCESS) {
-	LOG_RERROR(APLOG_ERR, 0, r,
-                   "vas_auth(user=%s): %s",
-                   user,
-                   vas_err_get_string(sc->vas_ctx, 1));
+    /* Authenticate */
+    vaserr = auth_vas_user_authenticate(rn->user,
+	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
+    if (vaserr) {
+	LOG_RERROR(APLOG_ERR, 0, r, /* This log message mimics mod_auth_basic's */
+		"user %s: authentication failure for \"%s\": %s",
+		username, r->uri, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_UNAUTHORIZED);
     }
 
     /* Authenticated */
     RAUTHTYPE(r) = "Basic";
-    RUSER(r) = apr_pstrdup(RUSER_POOL(r), rn->vas_pname);
+    RUSER(r) = apr_pstrdup(RUSER_POOL(r), auth_vas_user_get_principal_name(rn->user));
     RETURN(OK);
 
 finish:
@@ -1172,14 +1176,9 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
 static void
 rnote_init(auth_vas_rnote *rn)
 {
-    rn->vas_userid   = NULL;
-    rn->vas_user_obj = NULL;
-    rn->vas_pname    = NULL;
-    rn->vas_authctx  = NULL;
+    memset(rn, 0, sizeof(*rn));
     rn->gss_ctx = GSS_C_NO_CONTEXT;
-    rn->client.value = NULL;
     rn->deleg_cred = GSS_C_NO_CREDENTIAL;
-    rn->deleg_ccache = NULL;
 }
 
 /** Releases storage associated with the rnote.
@@ -1193,9 +1192,6 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
-    if (rn->vas_pname)
-        free(rn->vas_pname);
-    
     if (rn->deleg_ccache) {
 	krb5_context krb5ctx;
         if (!vas_krb5_get_context(sc->vas_ctx, &krb5ctx)) {
@@ -1218,14 +1214,8 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 		    "gss_delete_sec_context", gsserr, minor);
     }
 
-    if (rn->vas_user_obj)
-	vas_user_free(sc->vas_ctx, rn->vas_user_obj);
-    
-    if (rn->vas_userid)
-        vas_id_free(sc->vas_ctx, rn->vas_userid);
-
-    if (rn->vas_authctx)
-        vas_auth_free(sc->vas_ctx, rn->vas_authctx);
+    if (rn->user)
+	auth_vas_user_unref(rn->user);
 }
 
 /** This function is called when the request pool is being released.
@@ -1254,17 +1244,62 @@ auth_vas_cleanup_request(void *data)
 }
 
 /**
+ * Gets a user object for the given username and stores it in the request note.
+ * Both the request_rec and the username must not be NULL.
+ *
+ * Returns OK (0) on success or an HTTP error code on failure, usually
+ * HTTP_UNAUTHORIZED (meaning unauthenticated).
+ */
+static int
+initialize_user(request_rec *request, const char *username) {
+    vas_err_t result; /* Our return code */
+    vas_err_t vaserr; /* Temp storage */
+    auth_vas_server_config *sc;
+    auth_vas_rnote *rnote;
+
+    /* Empty username is an automatic authentication failure
+     * (and it used to trigger a bug in VAS, bug #9473). */
+    if (username[0] == '\0')
+        RETURN(HTTP_UNAUTHORIZED);
+
+    sc = GET_SERVER_CONFIG(request->server->module_config);
+    rnote = GET_RNOTE(request);
+
+    /* This is a soft assertion */
+    if (rnote->user != NULL) {
+	LOG_RERROR(APLOG_ERR, 0, request,
+		"%s: User is already set. Overriding it.", __func__);
+	auth_vas_user_unref(rnote->user);
+	rnote->user = NULL;
+    }
+
+    vaserr = auth_vas_user_alloc(sc->cache, username, &rnote->user);
+    if (vaserr) {
+	rnote->user = NULL; /* ensure */
+	LOG_RERROR(APLOG_ERR, 0, request,
+		"%s: Failed to initialize user for %s: %s",
+		__func__, username, vas_err_get_string(sc->vas_ctx, 1));
+	RETURN(HTTP_UNAUTHORIZED);
+    }
+
+    LOG_RERROR(APLOG_DEBUG, 0, request, "%s: Remote user principal name is %s",
+	    __func__, auth_vas_user_get_principal_name(rnote->user));
+
+    RETURN(OK);
+
+finish:
+    return result;
+}
+
+/**
  * Retrieves the request note for holding VAS information.
  * LOCK_VAS() must have been called prior to calling this.
  * @return 0 on success, or an HTTP error code on failure
  */
 static int
-rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
-       	  auth_vas_rnote **rn_ptr)
+rnote_get(auth_vas_server_config* sc, request_rec *r, auth_vas_rnote **rn_ptr)
 {
-    int             rval = HTTP_INTERNAL_SERVER_ERROR; 
     auth_vas_rnote  *rn = NULL;
-    vas_err_t       vaserr = VAS_ERR_SUCCESS;
     
     rn = GET_RNOTE(r);
     if (rn == NULL) {
@@ -1275,7 +1310,7 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
         /* initialize the rnote and set it on the record */
         rnote_init(rn);
         SET_RNOTE(r, rn);
-        
+
         /* Arrange to release the RNOTE data when the request completes */
         apr_pool_cleanup_register(r->pool, r, auth_vas_cleanup_request,
 	       	apr_pool_cleanup_null);
@@ -1283,50 +1318,9 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, const char *user,
         TRACE_R(r, "%s: reusing existing rnote", __func__);
     }
 
-    /* Don't allow an empty-string be sent as username to VAS
-     * (see VAS bug #9473), though even with that fixed, an empty username
-     * should be HTTP_UNAUTHORIZED rather than HTTP_INTERNAL_SERVER_ERROR.
-     */
-    if (user && user[0] == '\0') {
-        rval = HTTP_UNAUTHORIZED;
-        goto failure;
-    }
-
-    /* initialize the userid if there's a username passed in, and we haven't
-     * yet. */
-    if (user && rn->vas_userid == NULL) {
-        vaserr = vas_id_alloc(sc->vas_ctx, user, &rn->vas_userid);
-
-	if (vaserr) {
-	    rn->vas_userid = NULL; /* Ensure. */
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		    "%s: Failed to get vas_id_t for user %s: %s",
-		    __func__, user, vas_err_get_string(sc->vas_ctx, 1));
-	    goto failure;
-	}
-    }
-    if (rn->vas_userid && rn->vas_pname == NULL) {
-	vaserr = vas_id_get_name(sc->vas_ctx, rn->vas_userid,
-		&rn->vas_pname, NULL);
-	if (vaserr) {
-	    rn->vas_pname = NULL; /* Ensure. */
-	    LOG_RERROR(APLOG_ERR, 0, r, "Failed to get name from vas_id_t for user %s: %s",
-		    user, vas_err_get_string(sc->vas_ctx, 1));
-	    goto failure;
-	}
-	LOG_RERROR(APLOG_DEBUG, 0, r, "%s: Remote user principal name is %s",
-		__func__, rn->vas_pname);
-    }
-
     /* Success */
     *rn_ptr = rn;
     return 0;
-
-failure:
-    /* free the rnote and set it to NULL */
-    rnote_fini(r, rn);
-    *rn_ptr = NULL;
-    return rval;
 }
 
 
@@ -1374,7 +1368,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     }
 
     /* Store negotiation context in the connection record */
-    if ((result = rnote_get(sc, r, NULL, &rn))) {
+    if ((result = rnote_get(sc, r, &rn))) {
 	UNLOCK_VAS(r);
 	/* no other resources to free */
 	return result;
@@ -1391,7 +1385,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d",
             (int) in_token.length);
     gsserr = vas_gss_spnego_accept(sc->vas_ctx, sc->vas_serverid,
-	    &rn->vas_authctx, &rn->gss_ctx, NULL,
+	    NULL, &rn->gss_ctx, NULL,
 	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token,
 	    &rn->deleg_cred);
 
@@ -1399,6 +1393,10 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     if (gsserr == GSS_S_COMPLETE) {
 	OM_uint32       minor_status, err;
 	gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
+	vas_err_t	vaserr;
+	auth_vas_server_config	*sc;
+
+	sc = GET_SERVER_CONFIG(r->server->module_config);
 
 	/* Get the client's name */
 	err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
@@ -1408,14 +1406,6 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
 		    "gss_inquire_context", err, minor_status);
 	    goto done;
-	}
-
-	/* Keep a copy of the client's MN in the connection note */
-	err = gss_export_name(&minor_status, client_name, &rn->client);
-	if (err != GSS_S_COMPLETE) {
-	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
-		    "gss_export_name", err, minor_status);
 	}
 
 	/* Convert the client's name into a visible string */
@@ -1436,14 +1426,46 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    goto done;
 	}
 
-	/* Ensure the vas_userid is set.
-	 * Other mechs do this by passing the username into rnote_get() */
-	if (vas_id_alloc(sc->vas_ctx, RUSER(r), &rn->vas_userid) != VAS_ERR_SUCCESS) {
-	    rn->vas_userid = NULL;
-	    LOG_RERROR(APLOG_ERR, 0, r, "Error turning %s into a vas_id_t: %s",
-		    RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
+	/* FIXME: Call initialize_user instead? */
+	/* Create the remote user object now that we have their name */
+	ASSERT(rn->user == NULL);
+	vaserr = auth_vas_user_alloc(sc->cache, RUSER(r), &rn->user);
+	if (vaserr) {
+	    rn->user = NULL; /* ensure */
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "%s: Error allocating user object for %s",
+		    __func__, RUSER(r));
 	    result = HTTP_INTERNAL_SERVER_ERROR;
 	    goto done;
+	}
+
+	/* Save the VAS auth context */
+	{
+	    gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
+	    vas_gss_acquire_cred(sc->vas_ctx, sc->vas_serverid, &minor_status, GSS_C_ACCEPT, &servercred);
+
+	vaserr = auth_vas_user_use_gss_result(rn->user, servercred, rn->gss_ctx);
+	if (vaserr) {
+	    result = HTTP_UNAUTHORIZED;
+	    /* We know that the cache & user stuff uses the same vas context as
+	     * the server, but using the vas_ctx here still feels dirty. */
+	    LOG_RERROR(APLOG_ERR, 0, r,
+		    "%s: auth_vas_user_use_gss_result failed: %s", __func__,
+		    vas_err_get_string(sc->vas_ctx, 1));
+	    goto done;
+	}
+
+	/* FIXME: free properly */
+	gss_release_cred(&minor_status, &servercred);
+
+	}
+
+	/* Keep a copy of the client's mechanism name in the connection note */
+	err = gss_export_name(&minor_status, client_name, &rn->client);
+	if (err != GSS_S_COMPLETE) {
+	    result = HTTP_UNAUTHORIZED;
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
+		    "gss_export_name", err, minor_status);
 	}
 
 	TRACE_R(r, "authenticated user: '%s'", RUSER(r));
@@ -1454,7 +1476,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
 	TRACE_R(r, "waiting for more tokens from client");
 	result = HTTP_UNAUTHORIZED;
-    } else if (memcmp(auth_param, "TlRM", 4) == 0) {
+    } else if (strcmp(auth_param, "TlRM") == 0) {
 	const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
 	LOG_RERROR(APLOG_ERR, 0, r,
 		    "NTLM authentication attempted");
@@ -1491,7 +1513,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 			"not be able to access it.\n"
 			"<LI>Internet Explorer on Microsoft Windows 98 or NT 4.0\n"
 			"does not support the Kerberos authentication mechanism\n"
-			"supported by this server.\n"
+			"used by this server.\n"
 			"</UL>\n"
 			"<P>For further help, please contact your support personnel\n"
 			"or the server administrator.\n"
@@ -1573,6 +1595,115 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     return result;
 }
 
+
+static void
+set_cache_size(server_rec *server)
+{
+    auth_vas_server_config *sc;
+#if defined(APXS1)
+    long int size;
+#else /* APXS2 */
+    apr_int64_t size;
+#endif /* APXS2 */
+    char *end;
+
+    sc = GET_SERVER_CONFIG(server->module_config);
+
+    if (!sc->cache_size) /* Not configured */
+	return;
+
+#if defined(APXS1)
+    size = strtol(sc->cache_size, &end, 10);
+#else /* APXS2 */
+    size = apr_strtoi64(sc->cache_size, &end, 10);
+#endif /* APXS2 */
+
+    if (*end == '\0') {
+	/* Clamp the size to [1,UINT_MAX] */
+	if (size < 1)
+	    size = 1;
+	if (size > UINT_MAX)
+	    size = UINT_MAX;
+
+	auth_vas_cache_set_max_size(sc->cache, (unsigned int) size);
+    } else {
+	LOG_ERROR(APLOG_WARNING, 0, server,
+		"%s: invalid " CMD_CACHESIZE " setting: %s",
+		__func__, sc->cache_size);
+    }
+
+    LOG_ERROR(APLOG_DEBUG, 0, server,
+	    "%s: cache size is %u",
+	    __func__, auth_vas_cache_get_max_size(sc->cache));
+}
+
+/**
+ * Sets the cache timeout for the server cache based on the string-format
+ * timeout value in the server config.
+ *
+ * The string may end with the suffix 'h', 'm', or 's' for Hours, Minutes and
+ * Seconds. An unadorned value means seconds.
+ *
+ * The value must be an integer.
+ */
+static void
+set_cache_timeout(server_rec *server)
+{
+    auth_vas_server_config *sc;
+#if defined(APXS1)
+    long int secs;
+#else /* APXS2 */
+    apr_int64_t secs;
+#endif /* APXS2 */
+    char *end;
+    int multiplier = 1; /* Using a separate var to detect integer overflow */
+
+    sc = GET_SERVER_CONFIG(server->module_config);
+
+    if (!sc->cache_time) /* Not configured */
+	return;
+
+#if defined(APXS1)
+    secs = strtol(sc->cache_time, &end, 10);
+#else /* APXS2 */
+    secs = apr_strtoi64(sc->cache_time, &end, 10);
+#endif /* APXS2 */
+
+    /* Clamp the time to [0,UINT_MAX] */
+    if (secs < 0)
+	secs = 0;
+    if (secs > UINT_MAX)
+	secs = UINT_MAX;
+
+    /* Process (h)our/(m)inute/(s)econd suffixes.
+     * Makes liberal use of fall-throughs. */
+    switch (*end) {
+	case 'h':
+	    multiplier *= 60;
+	case 'm':
+	    multiplier *= 60;
+
+	    /* Prevent wrapping */
+	    if (secs > (UINT_MAX / multiplier))
+		secs = UINT_MAX / multiplier;
+	    else
+		secs *= multiplier;
+
+	case 's':
+	case '\0':
+	    auth_vas_cache_set_max_age(sc->cache, (unsigned int) secs);
+	    break;
+
+	default:
+	    LOG_ERROR(APLOG_WARNING, 0, server,
+		    "%s: invalid " CMD_CACHEEXPIRE " setting: %s",
+		    __func__, sc->cache_time);
+    }
+
+    LOG_ERROR(APLOG_DEBUG, 0, server,
+	    "%s: cache lifetime is %u seconds",
+	    __func__, auth_vas_cache_get_max_age(sc->cache));
+}
 
 /**
  * Initialises the VAS context for a server.
@@ -1702,12 +1833,19 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
 	if (errinfo)
 	    vas_err_info_free(errinfo);
-
     } else {
         TRACE_S(s, "Successfully authenticated to %s with keytab",
 		sc->server_principal);
         vas_auth_free(sc->vas_ctx, vasauth);
     }
+
+    sc->cache = auth_vas_cache_new(p, sc->vas_ctx, sc->vas_serverid,
+	    (void(*)(void*))auth_vas_user_ref,
+	    (void(*)(void*))auth_vas_user_unref,
+	    (const char*(*)(void*))auth_vas_user_get_name);
+
+    set_cache_size(s);
+    set_cache_timeout(s);
 }
 
 /**
@@ -1831,7 +1969,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	char addr[sizeof("255.255.255.255")], *slash;
 	int length;
 	const char *mask;
-	const char const default_mask[] = "32";
+	const char default_mask[] = "32";
 
 	slash = strchr(value, '/');
 
@@ -1840,7 +1978,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	    
 	    mask = slash + 1;
 	    if (!*mask) {
-		LOG_RERROR(LOG_WARNING, 0, r,
+		LOG_RERROR(APLOG_WARNING, 0, r,
 			"Coercing empty netmask to the default (%s)",
 			default_mask);
 		mask = default_mask;
@@ -2289,7 +2427,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
     ASSERT(attr[0]);
 
     if (strcasecmp(attr, "userPrincipalName") == 0) {
-	LOG_RERROR(LOG_DEBUG, 0, r,
+	LOG_RERROR(APLOG_DEBUG, 0, r,
 		"%s: Returning early because REMOTE_USER is already the UPN",
 		__func__);
 	return;
@@ -2299,7 +2437,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
      * per-connection not per-request */
     /* XXX: It might have to be changed to a different attr */
     if(strchr(RUSER(r), '@') == NULL) {
-	LOG_RERROR(LOG_DEBUG, 0, r,
+	LOG_RERROR(APLOG_DEBUG, 0, r,
 		"%s: REMOTE_USER appears to already have been set to %s",
 		__func__, RUSER(r));
 	return;
@@ -2327,7 +2465,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    if (strcasecmp(map->ldap_attr, attr) == 0) {
 		char *attrval;
 
-		LOG_RERROR(LOG_DEBUG, 0, r,
+		LOG_RERROR(APLOG_DEBUG, 0, r,
 			"%s: Using VAS cache for lookup of %s attribute",
 			__func__, attr);
 
@@ -2351,7 +2489,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    const char ug = *attr; /* u or g */
 	    struct passwd *pw;
 
-	    LOG_RERROR(LOG_DEBUG, 0, r,
+	    LOG_RERROR(APLOG_DEBUG, 0, r,
 		    "%s: Using VAS cache for lookup of %cidNumber attribute",
 		    __func__, ug);
 	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid,
@@ -2369,7 +2507,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	}
     }
 
-    LOG_RERROR(LOG_DEBUG, 0, r,
+    LOG_RERROR(APLOG_DEBUG, 0, r,
 	    "%s: VAS cache lookup unavailable for %s, doing LDAP query",
 	    __func__, attr);
 
@@ -2432,7 +2570,7 @@ localize_remote_user(request_rec *r, const char *unused)
 	/* User is probably not Unix-enabled. Try stripping the realm anyway
 	 * for consistency */
 
-	LOG_RERROR(LOG_DEBUG, aprst, r,
+	LOG_RERROR(APLOG_DEBUG, aprst, r,
 		"apr_uid_get failed for %s (normal for non-Unix users), "
 		"using strcmp method",
 		RUSER(r));
@@ -2443,7 +2581,7 @@ localize_remote_user(request_rec *r, const char *unused)
 
     /* Unix-enabled user, convert back to their name */
     if ((aprst = apr_uid_name_get(&username, uid, RUSER_POOL(r))) != OK) {
-	LOG_RERROR(LOG_ERR, aprst, r, "apr_uid_name_get failed for uid %d", uid);
+	LOG_RERROR(APLOG_ERR, aprst, r, "apr_uid_name_get failed for uid %d", uid);
 	return;
     }
 
@@ -2740,13 +2878,18 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     return (void *)merged_dc;
 }
 
-/** Passed a auth_vas_server_config pointer */
+/** Passed an auth_vas_server_config pointer */
 static CLEANUP_RET_TYPE
 auth_vas_server_config_destroy(void *data)
 {
     auth_vas_server_config *sc = (auth_vas_server_config *)data;
     
     if (sc != NULL) {
+
+	if (sc->cache) {
+	    auth_vas_cache_flush(sc->cache);
+	    sc->cache = NULL;
+	}
         
 	/* sc->default_realm is always handled by apache */
 	/* sc->keytab_filename is always handled by apache */
@@ -2958,3 +3101,6 @@ module MODULE_VAR_EXPORT auth_vas_module =
 };
 
 #endif /* apxs 1 */
+
+/* vim: ts=8 sw=4 noet tw=80
+ */
