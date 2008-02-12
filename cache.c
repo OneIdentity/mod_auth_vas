@@ -50,12 +50,6 @@
 #include "compat.h"
 #include "cache.h"
 
-#if defined(APXS1)
-# include "apr_hash.h"
-#else /* APXS2 */
-# include <apr_hash.h>
-#endif /* APXS2 */
-
 /* Defaults */
 #define DEFAULT_EXPIRE_SECONDS 60
 #define DEFAULT_MAX_CACHE_SIZE 200

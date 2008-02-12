@@ -128,7 +128,7 @@
 
 # define APR_DECLARE(x) x
 # define APR_DECLARE_NONSTD(x) x
-# include "apr_hash.h"
+# include "mav_apr_hash.h"
 
 #define CLEANUP_RET_TYPE 	void
 #define CLEANUP_RETURN		return
@@ -139,6 +139,7 @@
 # include <apr_tables.h>
 # include <apr_base64.h>
 # include <apr_general.h>
+# include <apr_hash.h>
 /* Always allocate RUSER(r) from RUSER_POOL(r) for the sake of Apache 1.3.
  * see http://httpd.apache.org/docs/1.3/misc/API.html#pools-used */
 # define RUSER(r) (r)->user

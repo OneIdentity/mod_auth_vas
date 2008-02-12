@@ -5,8 +5,8 @@ APXS_ACTIVATE=		# -a
 
 # We make the module noinst here, and install with apxs-install target
 noinst_DATA= 		mod_auth_vas$(DSOEXT)
-mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c apr_hash.c
-mod_auth_vas_HDRS=	compat.h cache.h user.h apr_hash.h
+mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c mav_apr_hash.c
+mod_auth_vas_HDRS=	compat.h cache.h user.h mav_apr_hash.h
 abs_builddir=		@abs_builddir@
 
 # Use -Wc and -Wl to protect linker options that aren't already protected
@@ -129,7 +129,7 @@ check_PROGRAMS = \
 
 TESTS = $(check_PROGRAMS)
 
-test_cache_SOURCES = test-cache.c cache.c cache.h compat.h apr_hash.c apr_hash.h
+test_cache_SOURCES = test-cache.c cache.c cache.h compat.h mav_apr_hash.c mav_apr_hash.h
 test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS)
 test_cache_CFLAGS = $(VAS_CFLAGS) $(COVERAGE_CFLAGS)
 #test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)
