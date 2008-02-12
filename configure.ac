@@ -78,6 +78,17 @@ if test x"$APXS" = x"no"; then
 fi
 AC_SUBST(APXS)
 
+# APXSVERSION is only used in this script.
+# Testing for APXS1 is done everywhere else
+if echo "$APXS" | grep 2 >/dev/null; then
+    APXSVERSION=2
+else
+    APXSVERSION=1
+fi
+AC_SUBST(APXSVERSION)
+
+AM_CONDITIONAL(APXS1, [test $APXSVERSION = 1])
+
 dnl -- use this as a sanity test that apxs is working
 AC_MSG_CHECKING([Apache extension target])
 apxs_target=`$APXS -q TARGET || echo error`
@@ -88,7 +99,10 @@ if test x"$apxs_target" = x"error"; then
 fi
 
 # Add APXS's CPPFLAGS to regular CPPFLAGS, for tests
-CPPFLAGS="`$APXS -q CPPFLAGS` $CPPFLAGS"
+# APXS1 doesn't have a CPPFLAGS variable
+if test $APXSVERSION = 2; then
+    CPPFLAGS="`$APXS -q CPPFLAGS` $CPPFLAGS"
+fi
 
 APXSFLAGS=
 
@@ -126,7 +140,7 @@ if test "x$GCC" = "xyes"; then
     # On APXS1 we use symbols provided by the apache binary and not by
     # some library, which makes -Wl,-z,defs fail. So only use -Wl,-z,defs
     # if it looks like we are building for APXS2.
-    if echo "$APXS" | grep 2 >/dev/null; then
+    if test $APXSVERSION = 2; then
 	DESIRED_LDFLAGS="-Wl,-z,defs"
     else
 	DESIRED_LDFLAGS=
@@ -314,9 +328,14 @@ if test x"$VASCONFIG" = x"no"; then
     AC_MSG_FAILURE([vas-config not found; is vasdev installed?])
 fi
 
-APR_CONFIG=`$APXS -q APR_CONFIG`
-APR_INCLUDES=`$APR_CONFIG --includes`
-APR_LINK_LD=`$APR_CONFIG --link-ld`
+if test $APXSVERSION = 2; then
+    APR_CONFIG=`$APXS -q APR_CONFIG`
+    APR_INCLUDES=`$APR_CONFIG --includes`
+    APR_LINK_LD=`$APR_CONFIG --link-ld`
+else # APXS1
+    # Required for checks
+    CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
+fi
 AC_SUBST([APR_CONFIG])
 AC_SUBST([APR_INCLUDES])
 AC_SUBST([APR_LINK_LD])

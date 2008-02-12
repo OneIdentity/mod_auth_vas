@@ -45,10 +45,15 @@ install-exec-local:
 		mod_auth_vas$(DSOEXT)
 
 # Ensure the module does not leak symbols
+if APXS1
+check-local: mod_auth_vas$(DSOEXT)
+	$(top_srcdir)/check-symbols.sh auth_vas $^
+else # APXS2
 # DSOEXT is usually .la but we want the .so. Some hackery required.
 check-local: mod_auth_vas$(DSOEXT)
 	eval `libtool --config | grep ^shrext_cmds` && \
 	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$$shrext_cmds
+endif # APXS2
 
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
@@ -124,7 +129,7 @@ check_PROGRAMS = \
 
 TESTS = $(check_PROGRAMS)
 
-test_cache_SOURCES = test-cache.c cache.c cache.h compat.h
+test_cache_SOURCES = test-cache.c cache.c cache.h compat.h apr_hash.c apr_hash.h
 test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS)
 test_cache_CFLAGS = $(VAS_CFLAGS) $(COVERAGE_CFLAGS)
 #test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)

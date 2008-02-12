@@ -93,7 +93,7 @@
 # define apr_thread_mutex_unlock ap_release_mutex
 # define apr_time_t		uint64_t
 # define APR_USEC_PER_SEC	1000000ul
-# define apr_time_now()		(time(NULL) * APR_USEC_PER_SEC)
+# define apr_time_now()		(((apr_time_t)time(NULL)) * APR_USEC_PER_SEC)
 # define apr_time_from_sec(s)	((s) * APR_USEC_PER_SEC)
 # define apr_time_sec(us)	((us) / APR_USEC_PER_SEC)
 # define AP_INIT_FLAG(d,f,m,w,h)  {d,f,m,w,FLAG,h}

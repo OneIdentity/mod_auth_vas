@@ -149,7 +149,6 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 	void (*unref_cb)(void *),
 	const char *(*get_key_cb)(void *))
 {
-    apr_status_t aprerr;
     auth_vas_cache *cache = NULL;
 
     /* Should we allocate the cache out of the cache subpool instead?
@@ -170,11 +169,15 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 	return NULL;
     }
 #else /* APXS2 */
-    aprerr = apr_pool_create(&cache->pool, parent_pool);
-    if (aprerr) {
-	LOG_P_ERROR(APLOG_ERR, aprerr, parent_pool,
-		"Failed to create cache memory pool");
-	return NULL;
+    {
+	apr_status_t aprerr;
+
+	aprerr = apr_pool_create(&cache->pool, parent_pool);
+	if (aprerr) {
+	    LOG_P_ERROR(APLOG_ERR, aprerr, parent_pool,
+		    "Failed to create cache memory pool");
+	    return NULL;
+	}
     }
 #endif /* APXS2 */
 
@@ -352,7 +355,7 @@ auth_vas_cache_get(auth_vas_cache *cache, const char *key)
     if (!item)
 	return NULL;
 
-    if (item->expiry < apr_time_now()) {
+    if (item->expiry <= apr_time_now()) {
 	/* Expired */
 	auth_vas_cache_remove_expired_items(cache);
 	return NULL;
