@@ -147,10 +147,10 @@ if test "x$GCC" = "xyes"; then
 	DESIRED_LDFLAGS=
     fi
 
-dnl    # Add stricter flags in developer mode
-dnl    if test "$enable_developer_mode" = "yes"; then
-dnl        DESIRED_CFLAGS="$DESIRED_CFLAGS -pedantic-errors -Wextra -Werror"
-dnl    fi
+    # Add stricter flags in developer mode
+    if test "$enable_developer_mode" = "yes"; then
+        DESIRED_CFLAGS="$DESIRED_CFLAGS -Wextra"
+    fi
 
     for flag in $DESIRED_CFLAGS; do
         AC_MSG_CHECKING([whether ${CC} accepts ${flag}])
