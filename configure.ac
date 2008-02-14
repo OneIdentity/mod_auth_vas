@@ -8,6 +8,7 @@ AC_INIT([mod_auth_vas],
 	     echo -n `head -n1 NEWS | cut -d' ' -f1`.exp; fi)],
 	[support@quest.com])
 AC_PREREQ(2.55)
+AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([foreign -Wall])
 

@@ -39,6 +39,8 @@
  *  MODAUTHVAS_DIAGNOSTIC - define this to enable assertions
  */
 
+#include <config.h>
+
 #include <string.h>
 
 #include <vas.h>
@@ -745,7 +747,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
 	}
         if ((err = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
-            LOG_RERROR(log_level, ret, r,
+            LOG_RERROR(log_level, 0, r,
                        "getgrnam_r: cannot access group '%s'", name);
             RETURN(HTTP_INTERNAL_SERVER_ERROR);
         }

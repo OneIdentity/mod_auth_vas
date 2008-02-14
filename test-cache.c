@@ -35,6 +35,8 @@
  *     Ted Percival <ted.percival@quest.com>
  */
 
+#include <config.h>
+
 #include <unistd.h> /* for sleep(3) */
 
 #include "compat.h"

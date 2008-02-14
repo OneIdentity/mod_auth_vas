@@ -16,6 +16,8 @@
  * This file has been modified by Quest Software, Inc.
  */
 
+#include <config.h>
+
 #include "compat.h"
 
 #if defined(APXS1)
