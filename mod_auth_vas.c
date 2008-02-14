@@ -70,6 +70,10 @@
 #include "cache.h"
 #include "user.h"
 
+#if HAVE_MOD_AUTH_H
+# include <mod_auth.h>
+#endif
+
 /** Macro for returning a value from the match functions via a cleanup label
  * (called finish) to make the code read more easily. */
 #define RETURN(r) do { \
@@ -225,6 +229,7 @@ static void set_remote_user_attr(request_rec *r, const char *line);
 static void localize_remote_user(request_rec *r, const char *line);
 static void localize_remote_user_strcmp(request_rec *r);
 static int initialize_user(request_rec *request, const char *username);
+static authn_status check_password(request_rec *r, const char *username, const char *password);
 
 /*
  * The per-process VAS mutex.
@@ -1075,59 +1080,89 @@ auth_vas_auth_checker(request_rec *r)
 
 /**
  * Authenticate a user using a plaintext password.
- *   @param r the request
- *   @param username the user's name
- *   @param password the password to authenticate against
- *   @return OK if credentials could be obtained for the user 
- *           with the given password to access this HTTP service
+ *
+ * This function is a wrapper around check_password for Apache
+ * versions < 2.2 that sets some state depending on whether authentication
+ * succeeded.
  */
 static int
 do_basic_accept(request_rec *r, const char *username, const char *password)
 {
-    int                     err;
-    int                     result;
+    switch(check_password(r, username, password)) {
+	case AUTH_GRANTED:
+	    RAUTHTYPE(r) = "Basic";
+	    return OK;
+
+	case AUTH_DENIED:
+	case AUTH_USER_FOUND:
+	case AUTH_USER_NOT_FOUND:
+	    add_auth_headers(r);
+	    return HTTP_UNAUTHORIZED;
+
+	case AUTH_GENERAL_ERROR:
+	default:
+	    return HTTP_INTERNAL_SERVER_ERROR;
+    };
+}
+
+/**
+ * Authenticate a user using a plaintext password.
+ *
+ * This is the Apache 2.2+ native auth checker. Earlier versions use the
+ * do_basic_accept wrapper which performs some other actions as well.
+ *
+ *   @param r the request
+ *   @param username the user's name
+ *   @param password the password to authenticate against
+ *   @return AUTH_GRANTED if credentials could be obtained for the user
+ *           with the given password to access this HTTP service, or one of the
+ *           other AUTH_* values on error.
+ */
+static authn_status
+check_password(request_rec *r, const char *username, const char *password)
+{
+    int                     result = AUTH_GENERAL_ERROR;
     vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
     TRACE_R(r, "%s: user='%s' password=...", __func__, username);
 
-    if ((err = LOCK_VAS(r))) {
+    if (LOCK_VAS(r)) {
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "%s: unable to acquire lock", __func__);
-	return err;
+	return AUTH_GENERAL_ERROR;
     }
     /* Use RETURN() from here on */
 
-    if ((err = rnote_get(sc, r, &rn)))
-	RETURN(err);
+    if (rnote_get(sc, r, &rn))
+	RETURN(AUTH_GENERAL_ERROR);
 
-    err = initialize_user(r, username);
-    if (err)
-	RETURN(err);
+    if (initialize_user(r, username))
+	RETURN(AUTH_GENERAL_ERROR);
 
     /* Authenticate */
+    /* XXX: Clearing the error is a hack to avoid misleading error messages if
+     * the error occurs within the auth_vas_cache and not within libvas. */
+    vas_err_clear(sc->vas_ctx);
+
     vaserr = auth_vas_user_authenticate(rn->user,
 	    VAS_ID_FLAG_USE_MEMORY_CCACHE, password);
     if (vaserr) {
 	LOG_RERROR(APLOG_ERR, 0, r, /* This log message mimics mod_auth_basic's */
 		"user %s: authentication failure for \"%s\": %s",
 		username, r->uri, vas_err_get_string(sc->vas_ctx, 1));
-	RETURN(HTTP_UNAUTHORIZED);
+	RETURN(AUTH_DENIED);
     }
 
     /* Authenticated */
-    RAUTHTYPE(r) = "Basic";
+    /* XXX: Is this necessary? If not, be sure to remove the
+     * assumption in set_remote_user that the RUSER is the UPN. */
     RUSER(r) = apr_pstrdup(RUSER_POOL(r), auth_vas_user_get_principal_name(rn->user));
-    RETURN(OK);
+    set_remote_user(r);
+    RETURN(AUTH_GRANTED);
 
 finish:
-
-    if (result == HTTP_UNAUTHORIZED) {
-	/* Prompt the client to try again */
-	add_auth_headers(r);
-    }
-
     /* Release resources */
     UNLOCK_VAS(r);
 
@@ -2912,7 +2947,6 @@ auth_vas_server_config_destroy(void *data)
     CLEANUP_RETURN;
 }
 
-
 /**
  * Creates and initialises a server configuration structure.
  * This function is called for each virtual host server at startup.
@@ -3012,6 +3046,13 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
   }
 #endif /* APXS1 */
 
+#if HAVE_MOD_AUTH_H
+static const authn_provider authn_vas_provider = {
+    check_password,
+    NULL /**< get_realm_hash, for Digest auth */
+};
+#endif
+
 /*
  * Module linkage structures.
  * Apache uses this at load time to discover the module entry points.
@@ -3027,6 +3068,11 @@ static void
 auth_vas_register_hooks(apr_pool_t *p)
 {
     auth_vas_print_version(p);
+
+#if HAVE_MOD_AUTH_H
+    /* The version argument is the interface version, not the module version */
+    ap_register_provider(p, AUTHN_PROVIDER_GROUP, "vas", "0", &authn_vas_provider);
+#endif
 
     ap_hook_post_config(auth_vas_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(auth_vas_child_init, NULL, NULL, APR_HOOK_MIDDLE);

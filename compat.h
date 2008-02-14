@@ -56,6 +56,16 @@
 # define APXS1 1 /* Apache 1.3.x */
 #endif
 
+#if !HAVE_MOD_AUTH_H /* Apache < 2.2 */
+typedef enum {
+    AUTH_DENIED,
+    AUTH_GRANTED,
+    AUTH_USER_FOUND,
+    AUTH_USER_NOT_FOUND,
+    AUTH_GENERAL_ERROR
+} authn_status;
+#endif /* !HAVE_MOD_AUTH_H */
+
 /*
  * Apache2 compatibility wrappers around the Apache1 API.
  * This is pretty awful, but it allows this module to
