@@ -16,7 +16,9 @@
  * This file has been modified by Quest Software, Inc.
  */
 
-#include <config.h>
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
 
 #include "compat.h"
 

@@ -35,7 +35,9 @@
  *     Ted Percival <ted.percival@quest.com>
  */
 
-#include <config.h>
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
 
 #include <unistd.h> /* for sleep(3) */
 

@@ -39,7 +39,9 @@
  *  MODAUTHVAS_DIAGNOSTIC - define this to enable assertions
  */
 
-#include <config.h>
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
 
 #include <string.h>
 

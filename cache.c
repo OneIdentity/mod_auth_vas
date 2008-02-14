@@ -44,7 +44,9 @@
  *   Most functions are not thread safe. Be careful.
  */
 
-#include <config.h>
+#ifdef HAVE_CONFIG_H
+# include <config.h>
+#endif
 
 #include <httpd.h>
 #include <http_log.h>

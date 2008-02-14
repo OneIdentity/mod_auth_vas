@@ -21,6 +21,7 @@ mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
 	done
 	$(APXS) -c $(APXSFLAGS) \
 		$(CPPFLAGS) \
+		$(DEFS) \
 		-DMODAUTHVAS_VERSION='\"$(PACKAGE_VERSION)\"' \
 		$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(CFLAGS:%=$(Wc)%)) \
 		$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(VAS_CFLAGS:%=$(Wc)%)) \
