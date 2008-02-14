@@ -1159,8 +1159,12 @@ check_password(request_rec *r, const char *username, const char *password)
     /* XXX: Is this necessary? If not, be sure to remove the
      * assumption in set_remote_user that the RUSER is the UPN. */
     RUSER(r) = apr_pstrdup(RUSER_POOL(r), auth_vas_user_get_principal_name(rn->user));
+
+    UNLOCK_VAS(r);
+    /* set_remote_user does its own locking if necessary */
     set_remote_user(r);
-    RETURN(AUTH_GRANTED);
+
+    return AUTH_GRANTED;
 
 finish:
     /* Release resources */
@@ -2761,6 +2765,8 @@ set_remote_user_map_conf(cmd_parms *cmd, void *struct_ptr, const char *args)
 
 /**
  * Sets RUSER(r) according to the remote_user_map configuration.
+ *
+ * Callers must not hold the VAS lock.
  */
 static void
 set_remote_user(request_rec *r)
