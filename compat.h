@@ -3,8 +3,6 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  * 
- * $Id$
- *
  *   Copyright 2007 Quest Software, Inc.
  *   All rights reserved.
  *
