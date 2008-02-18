@@ -1,0 +1,57 @@
+#!/bin/sh ./run-test
+# Ensures that mod_auth_vas works as a Basic authentication provider
+# Also checks that AuthVasRemoteUserMap applies to users authenticated in this way
+# Related to bug 482, because that's when I wrote the code
+description "Basic auth provider"
+
+TESTFILE=testprovider.txt
+OUTPUTFILE=/tmp/testprovider.$$.txt
+
+# Only run this test on 2.2 and later
+if [ -z "$APACHE" ]; then
+    echo "\$APACHE unset, skipping"
+    exit 0
+fi
+
+# Figure out what version this is
+VERSION=`$APACHE -V | grep '^Server version' | cut -d/ -f2 | cut -d' ' -f1`
+MAJOR_VERSION=`echo "$VERSION" | cut -d. -f1`
+MINOR_VERSION=`echo "$VERSION" | cut -d. -f2`
+
+if [ "$MAJOR_VERSION" -lt 2 ] || [ "$MAJOR_VERSION" -eq 2 ] && [ "$MINOR_VERSION" -lt 2 ]; then
+    echo "Server version $VERSION does not support authentication providers"
+    exit 0
+fi
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $OUTPUTFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType Basic
+		AuthName "mod_auth_vas as AuthType Basic provider"
+		AuthBasicProvider vas
+		AuthVasRemoteUserMap local
+		Require user $USER_nonunix
+	</Directory>
+.
+
+ap_conf_check
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+
+ap_start
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` $USER_nonunix:$PASSWD_nonunix $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as $USER_nonunix"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
+    fail "corrupt transfer"
