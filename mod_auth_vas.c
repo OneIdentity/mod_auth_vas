@@ -1021,7 +1021,7 @@ auth_vas_auth_checker(request_rec *r)
 		break;
 
 	if (!match->name) {
-	    LOG_RERROR(APLOG_ERR, 0, r,
+	    LOG_RERROR(USING_AUTH_AUTHORITATIVE(dc) ? APLOG_NOTICE : APLOG_INFO, 0, r,
 		"%s: Unknown requirement '%s'", __func__, type);
 	    continue;
 	}
