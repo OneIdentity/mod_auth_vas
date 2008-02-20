@@ -1062,7 +1062,7 @@ auth_vas_auth_checker(request_rec *r)
 
     }
     if (!valid_lines) {
-	LOG_RERROR(APLOG_WARNING, 0, r,
+	LOG_RERROR(USING_AUTH_AUTHORITATIVE(dc) ? APLOG_WARNING : APLOG_INFO, 0, r,
 		"No lines apply; consider 'Require valid-user'");
 	return DECLINED;
     }
