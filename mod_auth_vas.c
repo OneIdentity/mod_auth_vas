@@ -1480,6 +1480,11 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    goto done;
 	}
 
+	/* Set RUSER to the configured attribute.
+	 * This has to be done after user object initialisation to ensure
+	 * the right user object is created. */
+	set_remote_user(r);
+
 	/* Save the VAS auth context */
 	{
 	    gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
@@ -2809,8 +2814,6 @@ auth_vas_fixup(request_rec *r)
 
     TRACE_R(r, "auth_vas_fixup");
     export_cc(r);
-
-    set_remote_user(r);
 
     return OK;
 }

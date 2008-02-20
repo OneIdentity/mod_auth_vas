@@ -284,6 +284,14 @@ case "$PLATFORM" in
 	ap_stop () { ( $SUDO $APACHECTL stop > /dev/null) ; : ; }
 	ap_restart () { errormark && ( $SUDO $APACHECTL restart > /dev/null) ; }
 
+	# Debian's apache2 is configured through some environment variables in
+	# /etc/apache2/envvars since apache2 2.2.8-1. Without them, you can't call
+	# the apache2 binary directly or it will fail with
+	#   apache2: bad user name ${APACHE_RUN_USER}
+	if [ -r /etc/apache2/envvars ]; then
+	    . /etc/apache2/envvars
+	fi
+
 	test -x $FETCH || fail "$FETCH: not found"
 	VERSION=`strings /usr/lib/apache2/modules/mod_auth_vas.so | grep ^mod_auth_vas/ | cut -d/ -f2`
 	;;

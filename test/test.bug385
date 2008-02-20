@@ -1,0 +1,98 @@
+#!/bin/sh ./run-test
+# Ensures that mod_auth_vas does what an authnz module should do
+# This means checking that it works as an AuthBasicProvider (under the
+# name "vas") and that AuthVasRemoteUserMap is applied during
+# authentication, not during fixups -- when it is too late for an
+# authz to get a sensible (custom) name to match against.
+# The AuthVasRemoteUserMap check must be done for both Basic and
+# Negotiate because they each set the REMOTE_USER variable.
+description "authnz features; sets REMOTE_USER at the right time"
+
+TESTFILE=testprovider.txt
+OUTPUTFILE=/tmp/testprovider.$$.txt
+
+# Only run this test on 2.2 and later
+if [ -z "$APACHE" ]; then
+    echo "\$APACHE unset, skipping"
+    exit 0
+fi
+
+# Figure out what version this is
+VERSION=`$APACHE -V | grep '^Server version' | cut -d/ -f2 | cut -d' ' -f1`
+MAJOR_VERSION=`echo "$VERSION" | cut -d. -f1`
+MINOR_VERSION=`echo "$VERSION" | cut -d. -f2`
+
+if [ "$MAJOR_VERSION" -lt 2 ] || [ "$MAJOR_VERSION" -eq 2 ] && [ "$MINOR_VERSION" -lt 2 ]; then
+    echo "Server version $VERSION does not support authentication providers"
+    exit 0
+fi
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $OUTPUTFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType Basic
+		AuthName "mod_auth_vas as AuthType Basic provider"
+		AuthBasicProvider vas
+		AuthVasRemoteUserMap local
+		Require user $USER_nonunix
+	</Directory>
+.
+
+ap_conf_check
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+$SUDO chown $USER_test $DOC_DIR/$TESTFILE
+
+ap_start
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` $USER_nonunix:$PASSWD_nonunix $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as $USER_nonunix"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
+    fail "corrupt transfer"
+
+# Now test Negotiate
+# We can't use "Require user", "Require valid-user" or "Require group"
+# because they are all overloaded (implemented) by mod_auth_vas.
+# Instead we use mod_authz_owner's "Require file-owner".
+
+# -M outputs to stderr. Genius.
+if ! $APACHE -M 2>&1 | grep authz_owner_module >/dev/null; then
+    echo "WARNING: Skipping Negotiate test because mod_authz_owner is not loaded" >&2
+    exit 0
+fi
+
+ap_conf_restore
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasAuthoritative off
+		# Without this, REMOTE_USER will be the full UPN which
+		# will not string-match the file-owner
+		AuthVasRemoteUserMap local
+		Require file-owner
+	</Directory>
+.
+ap_conf_check
+ap_start
+
+vas_kinit $USER_test $PASSWD_test
+
+rm -f $OUTPUTFILE
+fetch_nego `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "could not fetch with Negotiate as $USER_test"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
+    fail "corrupt transfer"
+
+vas_kdestroy
