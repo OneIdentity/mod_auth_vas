@@ -141,7 +141,10 @@ typedef enum {
 #define CLEANUP_RET_TYPE 	void
 #define CLEANUP_RETURN		return
 
-# else /* !APXS1 (Apache 2.0.x) */
+/* Proxy type (forward proxy) */
+# define PROXYREQ_PROXY STD_PROXY
+
+#else /* !APXS1 (Apache 2.0.x) */
 
 # include <apr_strings.h>
 # include <apr_tables.h>
@@ -280,5 +283,7 @@ typedef enum {
 #endif
 
 #define streq(a,b) (strcmp((a),(b))==0)
+
+#define IS_FORWARD_PROXY_REQUEST(r) ((r)->proxyreq == PROXYREQ_PROXY)
 
 #endif /* MAV_COMPAT_H */

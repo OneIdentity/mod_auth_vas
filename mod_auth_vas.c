@@ -1613,8 +1613,11 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	strcpy(auth_out, NEGOTIATE_TEXT);
 	strncat(auth_out, out_token.value, out_token.length);
 
-	/* Add to the outgoing header set */
-	apr_table_set(r->err_headers_out, "WWW-Authenticate", auth_out);
+	/* Add to the outgoing header set. */
+	apr_table_setn(r->err_headers_out,
+		IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate"
+					    : "WWW-Authenticate",
+		auth_out);
 	/* add_basic_auth_headers(r); */
     }
 
@@ -1896,6 +1899,9 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
 /**
  * Appends the Basic auth header, if enabled
+ *
+ * The ap_note_auth_failure functions *replace* any existing WWW-Authenticate
+ * or Proxy-Authenticate header, so don't use them.
  */
 static void
 add_basic_auth_headers(request_rec *r)
@@ -1913,7 +1919,10 @@ add_basic_auth_headers(request_rec *r)
     if (USING_AUTH_BASIC(dc)) {
 	s = apr_psprintf(r->pool, "Basic realm=\"%s\"", sc->default_realm);
 	ASSERT(s != NULL);
-	apr_table_add(r->err_headers_out, "WWW-Authenticate", s);
+	apr_table_addn(r->err_headers_out,
+		IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate"
+					    : "WWW-Authenticate",
+		s);
     }
 }
 
@@ -2139,14 +2148,24 @@ is_negotiate_enabled_for_client(request_rec *r)
  *   WWW-Authenticate: Negotiate
  *   WWW-Authenticate: Basic realm="realm"	 (if enabled)
  * to the request's error response headers.
+ *
+ * Proxy-Authenticate is used instead of WWW-Authenticate in proxy mode.
+ *
+ * The ap_note_auth_failure functions *replace* any existing WWW-Authenticate
+ * or Proxy-Authenticate header, so don't use them.
  */
 static void
 add_auth_headers(request_rec *r)
 {
     ASSERT(r != NULL);
 
-    if (is_negotiate_enabled_for_client(r))
-	apr_table_add(r->err_headers_out, "WWW-Authenticate", "Negotiate");
+    if (is_negotiate_enabled_for_client(r)) {
+	apr_table_addn(r->err_headers_out,
+		IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate"
+					    : "WWW-Authenticate",
+		"Negotiate");
+    }
+
     add_basic_auth_headers(r);
 }
 
@@ -2203,7 +2222,9 @@ auth_vas_check_user_id(request_rec *r)
     requires = ap_requires(r);
 
     /* Pick out the client request's Authorization header(s) */
-    auth_line = apr_table_get(r->headers_in, "Authorization");
+    auth_line = apr_table_get(r->headers_in,
+	    IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authorization"
+					: "Authorization");
     if (!auth_line)
     {
 	if (USING_AUTH_NEGOTIATE(dc)) {
