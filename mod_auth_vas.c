@@ -180,12 +180,12 @@ static const char *set_remote_user_map_conf(cmd_parms *cmd, void *struct_ptr,
 static const char *set_negotiate_conf(cmd_parms *cmd, void *struct_ptr,
 	const char *args);
 static int server_ctx_is_valid(server_rec *s);
-static int match_user(request_rec *r, const char *name, int);
-static int match_group(request_rec *r, const char *nam, int);
-static int match_unix_group(request_rec *r, const char *nam, int);
+static int match_user(request_rec *r, const char *name);
+static int match_group(request_rec *r, const char *name);
+static int match_unix_group(request_rec *r, const char *name);
 static int dn_in_container(const char *dn, const char *container);
-static int match_container(request_rec *r, const char *container, int);
-static int match_valid_user(request_rec *r, const char *ignored, int);
+static int match_container(request_rec *r, const char *container);
+static int match_valid_user(request_rec *r, const char *ignored);
 static int is_our_auth_type(const request_rec *r);
 static int auth_vas_auth_checker(request_rec *r);
 static int do_basic_accept(request_rec *r, const char *user, 
@@ -508,7 +508,7 @@ set_user_obj(request_rec *r)
  *   @return OK if the user has the same name, otherwise HTTP_...
  */
 static int
-match_user(request_rec *r, const char *name, int log_level)
+match_user(request_rec *r, const char *name)
 {
     int                       err; /*< Temporary storage */
     int                       result; /*< This function's return code */
@@ -543,7 +543,7 @@ match_user(request_rec *r, const char *name, int log_level)
     /* Convert the required user name into a user obj */
     if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, 
 		&required_user) != VAS_ERR_SUCCESS) {
-	LOG_RERROR(log_level, 0, r,
+	LOG_RERROR(APLOG_DEBUG, 0, r,
 		   "vas_user_init(%.100s): %s", name,
 		   vas_err_get_string(sc->vas_ctx, 1));
 
@@ -593,7 +593,7 @@ finish:
  *   @return OK if group contains user, otherwise HTTP_...
  */
 static int
-match_group(request_rec *r, const char *name, int log_level)
+match_group(request_rec *r, const char *name)
 {
     vas_err_t                 vaserr;
     int                       result;
@@ -625,7 +625,7 @@ match_group(request_rec *r, const char *name, int log_level)
      * If it's not there, then we'll just fail since there is
      * no available group information. */
     if (rnote->vas_authctx == NULL) {
-        LOG_RERROR(log_level, 0, r,
+        LOG_RERROR(LOG_WARNING, 0, r,
                    "%s: no available auth context for %s",
 		   __func__,
                    rnote->vas_pname);
@@ -648,7 +648,7 @@ match_group(request_rec *r, const char *name, int log_level)
             break;
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
-            LOG_RERROR(log_level, 0, r,
+            LOG_RERROR(APLOG_DEBUG, 0, r,
                        "%s: %s not member of %s",
 		       __func__,
                        auth_vas_user_get_principal_name(rnote->user),
@@ -657,7 +657,7 @@ match_group(request_rec *r, const char *name, int log_level)
             break;
             
         case VAS_ERR_EXISTS: /* configured group not found */
-            LOG_RERROR(log_level, 0, r,
+            LOG_RERROR(APLOG_WARNING, 0, r,
                        "%s: group %s does not exist",
 		       __func__,
                        name);
@@ -665,7 +665,7 @@ match_group(request_rec *r, const char *name, int log_level)
             break;
             
         default: /* other type of error */
-            LOG_RERROR(log_level, 0, r,
+            LOG_RERROR(APLOG_ERR, 0, r,
                        "%s: fatal vas error: %s",
 		       __func__,
                        vas_err_get_string(sc->vas_ctx, 1));
@@ -687,7 +687,7 @@ finish:
  *   @return OK if group contains user, otherwise HTTP_...
  */
 static int
-match_unix_group(request_rec *r, const char *name, int log_level)
+match_unix_group(request_rec *r, const char *name)
 {
     vas_err_t                 vaserr;
     int                       result;
@@ -752,7 +752,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
 	}
         if ((err = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
-            LOG_RERROR(log_level, 0, r,
+            LOG_RERROR(APLOG_WARNING, 0, r,
                        "getgrnam_r: cannot access group '%s'", name);
             RETURN(HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -761,14 +761,14 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     errno = 0;
     gr = getgrnam(name);
     if (!gr && errno) {
-	LOG_RERROR_ERRNO(log_level, 0, r,
+	LOG_RERROR_ERRNO(APLOG_WARNING, 0, r,
                    "getgrnam: cannot access group '%s'", name);
 	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
 #endif
 
     if (!gr) {
-	LOG_RERROR(log_level, 0, r,
+	LOG_RERROR(APLOG_WARNING, 0, r,
 		"%s: No such group '%s'",
 		__func__, name);
 	RETURN(HTTP_FORBIDDEN);
@@ -785,7 +785,7 @@ match_unix_group(request_rec *r, const char *name, int log_level)
     if (user_matches) {
 	RETURN(OK);
     } else {
-	LOG_RERROR(log_level, 0, r,
+	LOG_RERROR(APLOG_DEBUG, 0, r,
 		   "%s: %s not member of %s",
 		   __func__,
 		   auth_vas_user_get_principal_name(rnote->user),
@@ -828,7 +828,7 @@ dn_in_container(const char *dn, const char *container)
  *   @return OK if container contains user, otherwise HTTP_...
  */
 static int
-match_container(request_rec *r, const char *container, int log_level)
+match_container(request_rec *r, const char *container)
 {
     int                       result;
     int                       err;
@@ -857,7 +857,7 @@ match_container(request_rec *r, const char *container, int log_level)
 	RETURN(err);
 
     if ((vaserr = auth_vas_user_get_vas_user(rnote->user, &vasuser))) {
-	LOG_RERROR(log_level, 0, r,
+	LOG_RERROR(APLOG_WARNING, 0, r,
 		"%s: error initializing user object: %d, %s",
 		__func__,
 		vaserr, vas_err_get_string(sc->vas_ctx, 1));
@@ -867,7 +867,7 @@ match_container(request_rec *r, const char *container, int log_level)
     if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, vasuser,
 		    &dn )) != VAS_ERR_SUCCESS ) 
     {
-	LOG_RERROR(log_level, 0, r,
+	LOG_RERROR(APLOG_WARNING, 0, r,
 		"%s: error getting user's distinguishedName: %d, %s",
 		__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
 	RETURN(HTTP_FORBIDDEN);
@@ -877,7 +877,7 @@ match_container(request_rec *r, const char *container, int log_level)
     if (dn_in_container(dn, container)) {
 	RETURN(OK);
     } else {
-        LOG_RERROR(APLOG_INFO, 0, r,
+        LOG_RERROR(APLOG_DEBUG, 0, r,
 		"%s: user dn %s not in container %s",
 		__func__, dn, container);
 	RETURN(HTTP_FORBIDDEN);
@@ -899,7 +899,7 @@ finish:
  *   @return OK if the user is valid.
  */
 static int
-match_valid_user(request_rec *r, const char *ignored, int log_level)
+match_valid_user(request_rec *r, const char *ignored)
 {
     /* There's a great feature that checking for valid-user doesn't cause any
      * VAS lookups, so valid-user can be used to authorize a user in any
@@ -919,7 +919,7 @@ match_valid_user(request_rec *r, const char *ignored, int log_level)
  */
 static const struct match {
     const char *name;
-    int (*func)(request_rec *r, const char *arg, int log_level);
+    int (*func)(request_rec *r, const char *arg);
     int has_args;
 } matchtab[] = {
     { "user",	    match_user,	      1 },
@@ -1048,8 +1048,7 @@ auth_vas_auth_checker(request_rec *r)
 
 		ASSERT(match != NULL);
 		ASSERT(match->func != NULL);
-                rval = (*match->func)(r, arg,
-                    USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_NOTICE);
+                rval = match->func(r, arg);
 		TRACE_R(r, "require %s \"%s\" -> %s", type, arg,
 			    rval == OK ? "OK" : "FAIL");
 		if (rval == OK)
@@ -1061,14 +1060,14 @@ auth_vas_auth_checker(request_rec *r)
 		LOG_RERROR(APLOG_WARNING, 0, r,
 		    "Ignoring unexpected arguments to 'Require %s'", type);
 	    }
-	    rval = (*match->func)(r, NULL,
-                USING_AUTH_AUTHORITATIVE(dc) ? APLOG_ERR : APLOG_NOTICE);
+	    rval = match->func(r, NULL);
 	    TRACE_R(r, "require %s  -> %s", type, rval == OK ? "OK" : "FAIL");
 	    if (rval == OK)
 		return OK;
 	}
 
     }
+
     if (!valid_lines) {
 	LOG_RERROR(USING_AUTH_AUTHORITATIVE(dc) ? APLOG_WARNING : APLOG_INFO, 0, r,
 		"No lines apply; consider 'Require valid-user'");
@@ -1078,9 +1077,12 @@ auth_vas_auth_checker(request_rec *r)
     if (!USING_AUTH_AUTHORITATIVE(dc)) 
 	return DECLINED;
 
+    /* Log message based on mod_authz_user's, but with better English (I hope) */
     LOG_RERROR(APLOG_ERR, 0, r,
-		  "%s: Denied access to user '%s' for uri '%s'",
-		  __func__, RUSER(r), r->uri);
+	    "%s: access to %s failed: user '%s' does not meet "
+	    "the 'require'ments to be allowed access",
+	    __func__, r->uri, RUSER(r));
+
     return HTTP_FORBIDDEN;
 }
 
