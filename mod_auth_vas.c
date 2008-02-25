@@ -680,6 +680,31 @@ finish:
 }
 
 /**
+ * Returns a string describing the error errnum, in a thread-safe way and
+ * possibly stored in the given buffer.
+ *
+ * This is the GNU-style strerror_r syntax.
+ */
+static char *sensible_strerror_r(int errnum, char *buf, size_t buflen) {
+#if HAVE_STRERROR_R
+# if STRERROR_R_CHAR_P /* GNU-style */
+
+    return strerror_r(errnum, buf, buflen);
+
+# else /* XSI/POSIX-compliant, returns int */
+
+    if (strerror_r(errnum, buf, buflen) == 0)
+	return buf;
+
+# endif
+#endif
+
+    /* No strerror_r or the XSI version failed */
+    apr_cpystrn(buf, "<unknown error>", buflen);
+    return buf;
+}
+
+/**
  * Checks if the authenticated user appears in a UNIX group
  * Assumes the server config has been initialised.
  *   @param r The authenticated request
@@ -753,11 +778,13 @@ match_unix_group(request_rec *r, const char *name)
 	}
         if ((err = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
             LOG_RERROR(APLOG_WARNING, 0, r,
-                       "getgrnam_r: cannot access group '%s'", name);
+                       "getgrnam_r: cannot access group '%s': %s", name,
+		       /* Reuse buf for the error message */
+		       sensible_strerror_r(err, buf, buflen));
             RETURN(HTTP_INTERNAL_SERVER_ERROR);
         }
     }
-#else
+#else /* !HAVE_GETGRNAM_R */
     errno = 0;
     gr = getgrnam(name);
     if (!gr && errno) {
@@ -765,7 +792,7 @@ match_unix_group(request_rec *r, const char *name)
                    "getgrnam: cannot access group '%s'", name);
 	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
-#endif
+#endif /* !HAVE_GETGRNAM_R */
 
     if (!gr) {
 	LOG_RERROR(APLOG_WARNING, 0, r,

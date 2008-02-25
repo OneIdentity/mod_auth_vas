@@ -379,6 +379,7 @@ AC_CHECK_FUNCS([getgrnam_r memset strcasecmp strchr strtol])
 AC_CHECK_HEADERS([string.h mod_auth.h])
 AC_C_CONST
 AC_FUNC_MEMCMP
+AC_FUNC_STRERROR_R
 AC_HEADER_STDC
 AC_TYPE_SIZE_T
 dnl Added in autoconf 2.59c
