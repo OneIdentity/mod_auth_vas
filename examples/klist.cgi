@@ -9,7 +9,7 @@ echo
 
 exec 2>&1
 
-echo You are $REMOTE_USER
+echo You are $REMOTE_USER, authenticated using $AUTH_TYPE
 
 if test -z $KRB5CCNAME; then
     echo "No credentials were delegated. Possible causes are:"
