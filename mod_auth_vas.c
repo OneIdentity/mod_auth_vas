@@ -758,13 +758,21 @@ match_unix_group(request_rec *r, const char *name, int log_level)
         }
     }
 #else
+    errno = 0;
     gr = getgrnam(name);
-    if (!gr) {
+    if (!gr && errno) {
 	LOG_RERROR_ERRNO(log_level, 0, r,
                    "getgrnam: cannot access group '%s'", name);
 	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
 #endif
+
+    if (!gr) {
+	LOG_RERROR(log_level, 0, r,
+		"%s: No such group '%s'",
+		__func__, name);
+	RETURN(HTTP_FORBIDDEN);
+    }
 
     /* Search the group list */
     for (sp = gr->gr_mem; sp && *sp; sp++) {
