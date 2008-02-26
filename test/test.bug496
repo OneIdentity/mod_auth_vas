@@ -1,0 +1,49 @@
+#!/bin/sh ./run-test
+# Ensure that Require unix-group matches the user's primary group
+# if it is not also a supplementary group.
+description "Require unix-group matches primary group"
+
+TESTFILE=testgr.txt
+OUTPUTFILE=/tmp/testgr.$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $OUTPUTFILE
+}
+
+if ! grep ^$GROUP_nearlocal /etc/group >/dev/null; then
+    echo IGNORED $TEST_DESC: $GROUP_nearlocal is not a local group in /etc/group
+    exit 0
+fi
+
+if grep ^$GROUP_nearlocal /etc/group | grep $USER_nearlocal >/dev/null; then
+    echo IGNORED $TEST_DESC: $USER_nearlocal should not be a supplementary member of $GROUP_nearlocal
+    exit 0
+fi
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		Require unix-group $GROUP_nearlocal
+	</Directory>
+.
+
+ap_conf_check
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+$SUDO chown $USER_test $DOC_DIR/$TESTFILE
+
+ap_start
+
+rm -f $OUTPUTFILE
+fetch_basic `ifdebug -d` $USER_nearlocal:$PASSWD_nearlocal $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+    fail "couldn't fetch with basic as $USER_nearlocal"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp $OUTPUTFILE $DOC_DIR/$TESTFILE ||
+    fail "corrupt transfer"

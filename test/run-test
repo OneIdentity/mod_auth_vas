@@ -40,6 +40,7 @@
 #  $USER_nonunix - a non-unix-enabled test user
 #  $USER_nomatch - a user whose sAMAccountName does not match its userPrincipalName
 #  $USER_diffcn - user in a container other than the one USER_nonunix is in
+#  ${USER,PASSWD,GROUP}_nearlocal - AD user in a local group
 
 if test $# -ne 1; then
   echo "usage: $0 scriptname"
@@ -70,6 +71,10 @@ CN_nonunix="CN=Users,DC=rcdev,DC=vintela,DC=com"
 USER_diffcn=computeruser
 PASSWD_diffcn=computeruser
 CN_diffcn="CN=Computers,DC=rcdev,DC=vintela,DC=com"
+USER_nearlocal=nearloca
+PASSWD_nearlocal=nearloca
+# Primary group, should not be a supplementary group
+GROUP_nearlocal=local
 
 TEST_DESC=' ** no description ** '
 

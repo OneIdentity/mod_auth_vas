@@ -801,6 +801,10 @@ match_unix_group(request_rec *r, const char *name)
 	RETURN(HTTP_FORBIDDEN);
     }
 
+    /* Check if user's primary GID matches */
+    if (pw->pw_gid == gr->gr_gid)
+	RETURN(OK);
+
     /* Search the group list */
     for (sp = gr->gr_mem; sp && *sp; sp++) {
         if (strcmp(pw->pw_name, *sp) == 0) {
