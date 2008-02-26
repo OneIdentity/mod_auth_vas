@@ -716,7 +716,6 @@ match_unix_group(request_rec *r, const char *name)
 {
     vas_err_t                 vaserr;
     int                       result;
-    int                       user_matches = 0;
     int                       err;
     auth_vas_server_config   *sc;
     auth_vas_rnote           *rnote;
@@ -808,21 +807,17 @@ match_unix_group(request_rec *r, const char *name)
     /* Search the group list */
     for (sp = gr->gr_mem; sp && *sp; sp++) {
         if (strcmp(pw->pw_name, *sp) == 0) {
-            user_matches = 1;
-            break;
+            RETURN(OK);
         }
     }
 
-    if (user_matches) {
-	RETURN(OK);
-    } else {
-	LOG_RERROR(APLOG_DEBUG, 0, r,
-		   "%s: %s not member of %s",
-		   __func__,
-		   auth_vas_user_get_principal_name(rnote->user),
-		   name);
-	RETURN(HTTP_FORBIDDEN);
-    }
+    LOG_RERROR(APLOG_DEBUG, 0, r,
+	       "%s: %s not member of %s",
+	       __func__,
+	       auth_vas_user_get_principal_name(rnote->user),
+	       name);
+
+    RETURN(HTTP_FORBIDDEN);
 
 finish:
     UNLOCK_VAS(r);
