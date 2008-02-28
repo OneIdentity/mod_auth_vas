@@ -281,10 +281,35 @@ case "$PLATFORM" in
 	DOC_DIR=$AP_DOCROOT$DOC_URI
     	DOC_URL=$AP_URL$DOC_URI
 
+	# Some hackery required to avoid having the default vhost take our
+	# test requests and do the wrong thing with them
+	DEFAULT_CONFIG_SYMLINK=/etc/apache2/sites-enabled/000-default
+	DEFAULT_CONFIG_SYMLINK_TARGET=`readlink $DEFAULT_CONFIG_SYMLINK`
+
 	ap_conf_save () { : ; }
-	ap_conf_append () { $SUDO sh -c "echo '#+$script'>>$CONF; cat>>$CONF"; }
+	ap_conf_append () {
+	    if [ -h $DEFAULT_CONFIG_SYMLINK ]; then
+		REPLACE_AP_DEFAULT_CONFIG=true
+		$SUDO rm $DEFAULT_CONFIG_SYMLINK
+	    else
+		REPLACE_AP_DEFAULT_CONFIG=false
+	    fi
+	    $SUDO sh -c "echo 'NameVirtualHost *' >> $CONF
+	    echo '<VirtualHost *>' >> $CONF
+	    echo ' DocumentRoot /var/www' >> $CONF
+	    echo '#+$script' >> $CONF
+	    cat >> $CONF
+	    echo '</VirtualHost>' >>$CONF"
+	}
 	ap_conf_check () { $SUDO $APACHECTL configtest > /dev/null 2>&1 ; }
-	ap_conf_restore () { $SUDO rm -f $CONF; }
+	ap_conf_restore () {
+	    if [ "$REPLACE_AP_DEFAULT_CONFIG" = true ]; then
+		$SUDO ln -s $DEFAULT_CONFIG_SYMLINK_TARGET $DEFAULT_CONFIG_SYMLINK
+		REPLACE_AP_DEFAULT_CONFIG=false
+	    fi
+
+	    $SUDO rm -f $CONF
+	}
 	ap_start () { ap_stop; errormark && ($SUDO $APACHECTL start > /dev/null) ; }
 	ap_stop () { ( $SUDO $APACHECTL stop > /dev/null) ; : ; }
 	ap_restart () { errormark && ( $SUDO $APACHECTL restart > /dev/null) ; }
