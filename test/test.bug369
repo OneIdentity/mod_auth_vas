@@ -1,0 +1,43 @@
+#!/bin/sh ./run-test
+# bug 369: The AuthVasKeytabFile option
+description "AuthVasKeytabFile"
+
+ORIGKEYTAB=/etc/opt/quest/vas/HTTP.keytab
+KEYTAB=/etc/opt/quest/vas/notHTTP.keytab
+
+cleanup () {
+   $SUDO mv $KEYTAB $ORIGKEYTAB
+   ap_stop
+   ap_conf_restore
+   rm -f /tmp/hello$$
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+$SUDO mv $ORIGKEYTAB $KEYTAB
+
+ap_conf_append <<-.
+	AuthVasKeytabFile $KEYTAB
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		Require valid-user
+	</Directory>
+.
+ap_conf_check
+
+echo "$$ hello" > $DOC_DIR/hello.txt
+
+$NDEBUG || ls -la $DOC_DIR
+
+ap_start
+
+fetch_basic `ifdebug -d` $USER_nonunix:$PASSWD_nonunix \
+    $DOC_URL/hello.txt > /tmp/hello$$ ||
+	fail "Failed to fetch file"
+
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp /tmp/hello$$ $DOC_DIR/hello.txt ||
+    fail "Received file did not match"
