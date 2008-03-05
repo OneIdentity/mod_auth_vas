@@ -1,0 +1,44 @@
+#!/bin/sh ./run-test
+# bug 482
+description "AuthVasAuthz: whether MAV should do authz checks"
+
+TESTFILE=test.$$.txt
+GROUPFILE=groupfile
+OUTFILE=/tmp/$TESTFILE
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $DOC_DIR/$GROUPFILE $OUTFILE
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+echo "mygroup: $USER_test" > $DOC_DIR/$GROUPFILE
+
+echo "Hello world $$" > $DOC_DIR/$TESTFILE
+
+vas_kinit $USER_test $PASSWD_test
+
+# Test that the authgroup stuff works and MAV doesn't get in the way
+ap_conf_append <<-.
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasAuthz off
+		# So I can use a sensible name in the groupfile
+		AuthVasRemoteUserMap local
+		AuthGroupFile $DOC_DIR/$GROUPFILE
+		Require group mygroup
+	</Directory>
+.
+ap_conf_check
+
+ap_start
+
+fetch_nego `ifdebug -d` \
+    $DOC_URL/$TESTFILE > $OUTFILE || fail "could not fetch"
+test 200 = "$FETCH_RES" || fail "expected 200 but got $FETCH_RES"
+cmp $OUTFILE $DOC_DIR/$TESTFILE ||
+	fail "different file"

@@ -105,6 +105,7 @@ typedef struct {
     int auth_authoritative;		/**< AuthVasAuthoritative (default on) */
     int export_delegated;		/**< AuthVasExportDelegated (default off) */
     int localize_remote_user;		/**< AuthVasLocalizeRemoteUser (default off) */
+    int authz;				/**< AuthVasAuthz (default on) */
     char *remote_user_map;		/**< AuthVasRemoteUserMap (NULL if unset) */
     char *remote_user_map_args;		/**< Argument to AuthVasRemoteUserMap (NULL if none) */
     int use_suexec;			/**< AuthVasSuexecAsRemoteUser (default off) */
@@ -118,6 +119,7 @@ typedef struct {
 #define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
 #define DEFAULT_USING_LOCALIZE_REMOTE_USER      FLAG_OFF
 #define DEFAULT_USING_SUEXEC                    FLAG_OFF
+#define DEFAULT_USING_AUTHZ                     FLAG_ON
 
 /* Returns the field flag, or def if dc is NULL or dc->field is FLAG_UNSET */
 #define USING_AUTH_DEFAULT(dc, field, def) \
@@ -140,6 +142,8 @@ typedef struct {
  * client. */
 #define USING_AUTH_NEGOTIATE(dc) \
     USING_AUTH_DEFAULT(dc, auth_negotiate,     DEFAULT_USING_AUTH_NEGOTIATE)
+#define USING_MAV_AUTHZ(dc) \
+    USING_AUTH_DEFAULT(dc, authz,              DEFAULT_USING_AUTHZ)
     
 /*
  * Miscellaneous constants.
@@ -303,6 +307,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_CACHESIZE		"AuthVasCacheSize"
 #define CMD_CACHEEXPIRE		"AuthVasCacheExpire"
 #define CMD_KEYTABFILE		"AuthVasKeytabFile"
+#define CMD_AUTHZ		"AuthVasAuthz"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -362,6 +367,10 @@ static const command_rec auth_vas_cmds[] =
 		APR_OFFSETOF(auth_vas_server_config, keytab_filename),
 		RSRC_CONF,
 		"Keytab file to use for authentication"),
+    AP_INIT_FLAG(CMD_AUTHZ, ap_set_flag_slot,
+		APR_OFFSETOF(auth_vas_dir_config, authz),
+		ACCESS_CONF | OR_AUTHCFG,
+		"Whether mod_auth_vas should provide authorization checks, or decline in favor of other authz modules"),
     { NULL }
 };
 
@@ -1016,8 +1025,9 @@ auth_vas_auth_checker(request_rec *r)
     TRACE_R(r, "%s: user=%s authtype=%s",
 	__func__, RUSER(r), RAUTHTYPE(r));
 
-    /* Ignore authz requests for non-VAS authentication */
-    if (!is_our_auth_type(r))
+    /* Ignore authz requests for non-VAS authentication or if is explicitly
+     * disabled. */
+    if (!is_our_auth_type(r) || !USING_MAV_AUTHZ(dc))
 	return DECLINED;
 
     if (!server_ctx_is_valid(r->server)) {
@@ -2901,6 +2911,7 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	dc->remote_user_map_args = NULL;
 	dc->use_suexec = FLAG_UNSET;
 	dc->ntlm_error_document = NULL;
+	dc->authz = FLAG_UNSET;
     }
     return (void *)dc;
 }
@@ -2934,6 +2945,7 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 		new_dc->export_delegated);
 	merged_dc->use_suexec = FLAG_MERGE(base_dc->use_suexec,
 		new_dc->use_suexec);
+	merged_dc->authz = FLAG_MERGE(base_dc->authz, new_dc->authz);
 
 	if (new_dc->auth_negotiate == FLAG_UNSET)
 	    merged_dc->negotiate_subnets = base_dc->negotiate_subnets;
