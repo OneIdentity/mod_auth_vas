@@ -1963,7 +1963,8 @@ add_basic_auth_headers(request_rec *r)
     ASSERT(sc != NULL);
 
     if (USING_AUTH_BASIC(dc)) {
-	s = apr_psprintf(r->pool, "Basic realm=\"%s\"", sc->default_realm);
+	s = apr_psprintf(r->pool, "Basic realm=\"%s\"",
+		ap_auth_name(r) ? ap_auth_name(r) : sc->default_realm);
 	ASSERT(s != NULL);
 	apr_table_addn(r->err_headers_out,
 		IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate"

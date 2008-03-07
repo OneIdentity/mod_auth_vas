@@ -1,0 +1,39 @@
+#!/bin/sh ./run-test
+# bug 495: AuthName not used in Basic auth prompts
+description "AuthName used in Basic auth prompts"
+
+TESTFILE=test.$$
+AUTHNAME="AuthName test for bug 495"
+OUTPUT=/tmp/output.$$
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $OUTPUT
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthName "$AUTHNAME"
+		AuthVasUseBasic on
+		Require valid-user
+	</Directory>
+.
+ap_conf_check
+
+echo "$$ hello" > $DOC_DIR/hello.txt
+
+$NDEBUG || ls -la $DOC_DIR
+
+ap_start
+
+_fetch `ifdebug -d` -H $OUTPUT -B -s $DOC_URL/$TESTFILE || true
+HEADER=`grep '^WWW-Authenticate: Basic' $OUTPUT`
+[ -z "$HEADER" ] && fail "No \"WWW-Authenticate: Basic\" header"
+echo $HEADER | grep -- "$AUTHNAME" >/dev/null || \
+    fail "AuthName string ($AUTHNAME) was not in WWW-Auth header ($HEADER)"
