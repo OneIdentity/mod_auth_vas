@@ -157,7 +157,7 @@ determine_keytab_access () {
 
 cflag=
 aflag=
-unset uflag
+uflag=
 opterr=false
 
 while test $# -gt 0; do
