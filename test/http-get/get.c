@@ -96,13 +96,13 @@ hstrerror(err)
 
     switch (err) {
     case HOST_NOT_FOUND:
-	return "No such host is known"
+	return "No such host is known";
     case NO_DATA:
-	return "No address available"
+	return "No address available";
     case NO_RECOVERY:
-	return "Unexpected name server failure"
+	return "Unexpected name server failure";
     case TRY_AGAIN:
-	return "Temporary name server failure: try again later"
+	return "Temporary name server failure: try again later";
     default:
 	snprintf(buf, sizeof buf, "Hostname lookup error %d", err);
 	return buf;
