@@ -1,0 +1,85 @@
+#!/bin/sh ./run-test
+# bug 210: Have mod_auth_vas return error text on NTLM attempts
+description "NTLM-specific error page"
+
+# We can't test
+#   AuthVasNTLMErrorDocument /page
+# because it is relative to the DocumentRoot but we don't know what the
+# relationship between $DOC_DIR and DocumentRoot are.
+
+TESTFILE=test.$$
+OUTPUT=/tmp/output.$$
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE $OUTPUT $DOC_DIR/subdir/$TESTFILE $DOC_DIR/errdoc
+   rmdir $DOC_DIR/subdir
+}
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		Require valid-user
+	</Directory>
+.
+ap_conf_check
+
+echo "$$ hello" > $DOC_DIR/$TESTFILE
+echo "This is the error document with keyword: babelshark" > $DOC_DIR/errdoc
+mkdir $DOC_DIR/subdir
+echo "$$ hello" > $DOC_DIR/subdir/$TESTFILE
+
+ap_start
+
+fetch_fake_ntlm `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUT &&
+	fail "NTLM was not meant to succeed (using default ntlm errordoc [default])"
+$NDEBUG || cat $OUTPUT
+grep NTLM $OUTPUT >/dev/null || fail "ErrorDocument did not mention NTLM"
+
+ap_stop
+ap_conf_restore
+
+ap_conf_append <<-.
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		Require valid-user
+		AuthVasNTLMErrorDocument "fizzle $$"
+	</Directory>
+.
+ap_conf_check
+ap_start
+
+fetch_fake_ntlm `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUT &&
+    fail "NTLM was not meant to succeed (using string ntlmerrordoc [fizzle])"
+$NDEBUG || cat $OUTPUT
+grep fizzle $OUTPUT > /dev/null || fail "ErrorDocument did not mention fizzle"
+
+ap_stop
+ap_conf_restore
+ap_conf_append <<-.
+	LogLevel debug
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		Require valid-user
+		AuthVasNTLMErrorDocument $DOC_URI/errdoc
+	</Directory>
+	<Files "$DOC_DIR/errdoc">
+		Satisfy any
+		Order allow,deny
+		Allow from all
+	</Files>
+.
+
+ap_conf_check
+ap_start
+
+fetch_fake_ntlm `ifdebug -d` $DOC_URL/$TESTFILE > $OUTPUT &&
+    fail "NTLM was not meant to succeed (using file ntlmerrordoc [babelshark])"
+$NDEBUG || cat $OUTPUT
+grep babelshark $OUTPUT > /dev/null || fail "ErrorDocument did not mention babelshark"

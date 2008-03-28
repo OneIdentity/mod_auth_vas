@@ -1572,7 +1572,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
 	TRACE_R(r, "waiting for more tokens from client");
 	result = HTTP_UNAUTHORIZED;
-    } else if (strcmp(auth_param, "TlRM") == 0) {
+    } else if (strncmp(auth_param, "TlRM", 4) == 0) {
 	const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
 	LOG_RERROR(APLOG_ERR, 0, r,
 		    "NTLM authentication attempted");
@@ -2993,6 +2993,10 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 	    else
 		merged_dc->ntlm_error_document = apr_pstrdup(p,
 			new_dc->ntlm_error_document);
+	} else if (base_dc->ntlm_error_document) {
+	    /* Inherit. strdup is probably unnecessary */
+	    merged_dc->ntlm_error_document = apr_pstrdup(p,
+		    base_dc->ntlm_error_document);
 	}
     }
     return (void *)merged_dc;
