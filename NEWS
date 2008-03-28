@@ -1,10 +1,39 @@
-3.6.0	(UNRELEASED)
+3.6.0	(2008-03-28)
 
-	- Added AuthVasKeytabFile option for explicitly specifying the location
-	  of the keytab file to use for server credentials (bug #369).
+	- New option: AuthVasAuthz for disabling mod_auth_vas authorization
+	  checks altogether. Useful for accepting Negotiate authentication but
+	  doing all authorization in other modules. Bug #482.
+
+	- New option: AuthVasKeytabFile for explicitly specifying the location
+	  of the keytab file to use for server credentials. Bug #369.
+
+	- Support mod_auth_vas as an authorization provider for
+	  mod_auth_basic by setting "AuthBasicProvider vas".
+	  This is not appreciably different from using mod_auth_vas with
+	  Negotiate disabled and Basic enabled. Bug #385.
+
+	- AuthName is used for the realm in Basic auth as it ought to be.
+	  Bug #495.
+
+	- Fixed mod_auth_vas not working in proxy mode (sending wrong headers).
+	  Bug #488.
+
+	- Renamed AuthVasServicePrincipal to AuthVasServerPrincipal to better
+	  reflect its purpose. The original name is still accepted. Bug #407.
+
+	- Added caching of in-memory objects to speed up Basic authentication.
+	  Can be tweaked using the AuthVasCacheSize and AuthVasCacheExpire
+	  options.
+
+	- Lower log levels for authorization-related messages, similar to those
+	  used in Apache's authorization modules. Bug #247.
+
+	- Check the user's primary gid in "Require unix-group". Bug #496.
 
 	- Only try to add the +DAportable compile flag on HP-UX.
-	  Thanks Scott Steverson. (Bug #477).
+	  Thanks Scott Steverson. Bug #477.
+
+	- Fixed problems compiling on HP-UX. Thanks Tom Hundt.
 
 3.5.3   (2007-12-19)
 
