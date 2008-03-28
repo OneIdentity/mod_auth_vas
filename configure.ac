@@ -376,7 +376,7 @@ AC_ARG_ENABLE([rcdev-tests],
 AM_CONDITIONAL(ENABLE_RCDEV_TESTS, test "x$ENABLE_RCDEV_TESTS" = "xyes")
 
 AC_CHECK_FUNCS([getgrnam_r memset strcasecmp strchr strtol])
-AC_CHECK_HEADERS([string.h mod_auth.h])
+AC_CHECK_HEADERS([string.h mod_auth.h ap_provider.h])
 AC_C_CONST
 AC_FUNC_MEMCMP
 AC_FUNC_STRERROR_R

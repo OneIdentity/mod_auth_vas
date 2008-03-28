@@ -72,6 +72,10 @@
 # include <mod_auth.h>
 #endif
 
+#if HAVE_AP_PROVIDER_H
+# include <ap_provider.h>
+#endif
+
 /** Macro for returning a value from the match functions via a cleanup label
  * (called finish) to make the code read more easily. */
 #define RETURN(r) do { \
@@ -3146,7 +3150,7 @@ auth_vas_register_hooks(apr_pool_t *p)
 {
     auth_vas_print_version(p);
 
-#if HAVE_MOD_AUTH_H
+#if HAVE_MOD_AUTH_H && HAVE_AP_PROVIDER_H
     /* The version argument is the interface version, not the module version */
     ap_register_provider(p, AUTHN_PROVIDER_GROUP, "vas", "0", &authn_vas_provider);
 #endif
