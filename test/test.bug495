@@ -26,7 +26,7 @@ ap_conf_append <<-.
 .
 ap_conf_check
 
-echo "$$ hello" > $DOC_DIR/hello.txt
+echo "$$ hello" > $DOC_DIR/$TESTFILE
 
 $NDEBUG || ls -la $DOC_DIR
 
