@@ -14,12 +14,13 @@
 #include "err.h"
 
 void err(int exitcode, const char *fmt, ...) {
+    int saverrno = errno;
     va_list ap;
     fprintf(stderr, "error: ");
     va_start(ap, fmt);
     vfprintf(stderr, fmt, ap);
     va_end(ap);
-    fprintf(stderr, ": %s\n", strerror(errno));
+    fprintf(stderr, ": %s\n", strerror(saverrno));
     exit(exitcode);
 }
 
@@ -34,12 +35,13 @@ void errx(int exitcode, const char *fmt, ...) {
 }
 
 void warn(const char *fmt, ...) {
+    int saverrno = errno;
     va_list ap;
     fprintf(stderr, "warning: ");
     va_start(ap, fmt);
     vfprintf(stderr, fmt, ap);
     va_end(ap);
-    fprintf(stderr, ": %s\n", strerror(errno));
+    fprintf(stderr, ": %s\n", strerror(saverrno));
 }
 
 void warnx(const char *fmt, ...) {
