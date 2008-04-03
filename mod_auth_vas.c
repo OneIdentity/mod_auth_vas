@@ -1532,8 +1532,11 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	/* Set RUSER to the configured attribute.
 	 * This has to be done after user object initialisation to ensure
-	 * the right user object is created. */
+	 * the right user object is created.
+	 * set_remote_user() does its own locking if necessary. */
+	UNLOCK_VAS(r);
 	set_remote_user(r);
+	LOCK_VAS(r);
 
 	/* Save the VAS auth context */
 	{

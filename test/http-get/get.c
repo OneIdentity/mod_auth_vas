@@ -47,6 +47,7 @@ int use_gssapi = 0;
 const char *spn = NULL;	/* service principal name override */
 int print_body = 1;
 const char *header_outfile_name = NULL;
+time_t timeout_secs = 0;
 
 /* A URL, split into its component parts, and maybe with a FILE* attachment */
 struct url {
@@ -207,6 +208,16 @@ connect_to(host, port)
     s = socket(he->h_addrtype, SOCK_STREAM, 0);
     if (s < 0) 
 	err(1, "socket");
+
+    if (timeout_secs) {
+	const struct timeval tv = { timeout_secs, 0 };
+
+	if (setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == -1)
+	    warn("Failed to set socket receive timeout");
+
+	if (setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) == -1)
+	    warn("Failed to set socket send timeout");
+    }
 
     memset(&sin, 0, sizeof sin);
     sin.sin_family = PF_INET;
@@ -972,6 +983,7 @@ usage(char *prog)
 		    "       -d            - enable debugging\n"
 		    "       -H outfile    - where to write the HTTP headers ('-' for stdout)\n"
 		    "       -B            - supress output of the response body\n"
+		    "       -t <secs>     - socket (connection) timeout\n"
 		    "  The negotiate-specific (-n) options are:\n"
 		    "       -u user       - use principal name override\n"
 		    "       -S spn        - service principal name override\n"
@@ -1033,6 +1045,10 @@ main(argc, argv)
 	    optind++;
 	    if (optind >= argc) usage(argv[0]);
 	    principal = argv[optind];
+	} else if (strcmp(argv[optind], "-t") == 0) {
+	    optind++;
+	    if (optind >= argc) usage(argv[0]);
+	    timeout_secs = atoi(argv[optind]);
 	} else if (strcmp(argv[optind], "--") == 0) {
 	    optind++;
 	    break;
