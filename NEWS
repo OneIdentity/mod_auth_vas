@@ -1,3 +1,8 @@
+3.6.1	(2008-04-07)
+
+	- Fixed "AuthVasRemoteUserMap ldap-attr" hanging the server when
+	  using Negotiate authentication. Bug #510.
+
 3.6.0	(2008-03-28)
 
 	- New option: AuthVasAuthz for disabling mod_auth_vas authorization
