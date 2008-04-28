@@ -234,8 +234,8 @@ auth_vas_cache_flush(auth_vas_cache *cache)
 /**
  * Inserts an item.
  *
- * The caller must increase the ref count on the object before passing it to
- * this function (if ref counting is used).
+ * This function will increase the ref count on the given item (if ref counting
+ * is used).
  *
  * The key should be a string stored in the object. Otherwise you might find the
  * API difficult to work with.
