@@ -253,7 +253,7 @@ auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
     new_item->item = value;
 
     /* Make sure there is room for this item */
-    if (apr_hash_count(cache->table) == cache->max_size) {
+    if (apr_hash_count(cache->table) >= cache->max_size) {
 
 	if (apr_time_now() < cache->oldest->expiry) {
 	    /* No expired items. Notify the user and remove the oldest one */
@@ -316,14 +316,15 @@ auth_vas_cache_remove_items_from(auth_vas_cache *cache, auth_vas_cache_item *ite
 
 	/* Free the container object */
 	free(item);
-    } while (next_item);
+	item = next_item;
+    } while (item);
 }
 
 static void
 auth_vas_cache_remove_expired_items(auth_vas_cache *cache)
 {
     apr_time_t now;
-    auth_vas_cache_item *item;
+    auth_vas_cache_item *item, *older = NULL;
 
     if (cache->oldest == NULL)
 	return; /* no items */
@@ -333,15 +334,12 @@ auth_vas_cache_remove_expired_items(auth_vas_cache *cache)
     /* Find the youngest expired item.
      * On loaded servers (where performance matters most) there will be less
      * expired than active objects, so start from the oldest. */
-    for (item = cache->oldest; item && item->expiry < now; item = item->younger)
-	;
+    for (item = cache->oldest; item && item->expiry <= now; item = item->younger)
+	older = item;
 
-    /* We went too far by one */
-    if (item)
-	item = item->older;
-
-    if (item)
-	auth_vas_cache_remove_items_from(cache, item);
+    /* older, if set, is the youngest expired item */
+    if (older)
+	auth_vas_cache_remove_items_from(cache, older);
 }
 
 void *

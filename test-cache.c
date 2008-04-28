@@ -91,7 +91,6 @@ cached_data_ref(void *vobj) {
     cached_data *d = (cached_data*)vobj;
 
     ++d->refcount;
-
 }
 
 static void
@@ -400,6 +399,42 @@ test_shrink_cache(apr_pool_t *pool) {
     return 0;
 }
 
+/** Bug #517: Cache leaks objects if it fills with expired items.
+ * This was also covering up a double-free bug, see comment #1 on bug #517. We
+ * can't actually test whether the object is leaking, but we can test the code
+ * path that would lead to a double-free error. It triggered the "unrefed an
+ * object with refcount < 1" error in this test suite.
+ */
+static int
+test_expired_full_cache(apr_pool_t *pool) {
+    auth_vas_cache *cache;
+    cached_data *obj;
+
+    cache = init_cache_or_die(pool, NULL, NULL);
+    auth_vas_cache_set_max_size(cache, 2);
+    auth_vas_cache_set_max_age(cache, 1);
+
+    obj = cached_data_new("one", 1);
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    obj = cached_data_new("two", 2);
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    sleep(1); /* Let objects expire */
+
+    obj = cached_data_new("three", 3);
+    /* This insert triggers the cleanup and exercises the previously-buggy code
+     * path */
+    auth_vas_cache_insert(cache, obj->key, obj);
+    cached_data_unref(obj);
+
+    auth_vas_cache_flush(cache);
+    return 0;
+
+}
+
 /* Pool allocator for APXS1. Should probably move this to ap_stub.c */
 #if defined(APXS1)
 # define INITIAL_SIZE 1024u
@@ -557,6 +592,7 @@ int main(int argc, char *argv[]) {
     failures += test_multiple_items(pool);
     failures += test_insert_with_expired(pool);
     failures += test_shrink_cache(pool);
+    failures += test_expired_full_cache(pool);
 
     apr_pool_destroy(pool);
 
