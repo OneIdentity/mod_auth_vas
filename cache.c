@@ -58,6 +58,8 @@
 #define DEFAULT_EXPIRE_SECONDS 60
 #define DEFAULT_MAX_CACHE_SIZE 200
 
+#define HAS_EXPIRED(x) ((x)->expiry <= apr_time_now())
+
 /**
  * Cache item, mainly for tracking when it was inserted to determine when it
  * should be expired from the cache.
@@ -255,16 +257,16 @@ auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
     /* Make sure there is room for this item */
     if (apr_hash_count(cache->table) >= cache->max_size) {
 
-	if (apr_time_now() < cache->oldest->expiry) {
+	if (HAS_EXPIRED(cache->oldest)) {
+	    /* At least one expired item. Clean up as many as possible. */
+	    auth_vas_cache_remove_expired_items(cache);
+	} else {
 	    /* No expired items. Notify the user and remove the oldest one */
 	    LOG_P_ERROR(APLOG_INFO, 0, cache->pool,
 		    "%s: Removing unexpired item to make room, "
 		    "consider increasing the cache size or decreasing the object lifetime",
 		    __func__);
 	    auth_vas_cache_remove_items_from(cache, cache->oldest);
-	} else {
-	    /* At least one expired item. Clean up as many as possible. */
-	    auth_vas_cache_remove_expired_items(cache);
 	}
     }
 
@@ -323,18 +325,15 @@ auth_vas_cache_remove_items_from(auth_vas_cache *cache, auth_vas_cache_item *ite
 static void
 auth_vas_cache_remove_expired_items(auth_vas_cache *cache)
 {
-    apr_time_t now;
     auth_vas_cache_item *item, *older = NULL;
 
     if (cache->oldest == NULL)
 	return; /* no items */
 
-    now = apr_time_now();
-
     /* Find the youngest expired item.
      * On loaded servers (where performance matters most) there will be less
      * expired than active objects, so start from the oldest. */
-    for (item = cache->oldest; item && item->expiry <= now; item = item->younger)
+    for (item = cache->oldest; item && HAS_EXPIRED(item); item = item->younger)
 	older = item;
 
     /* older, if set, is the youngest expired item */
@@ -351,8 +350,7 @@ auth_vas_cache_get(auth_vas_cache *cache, const char *key)
     if (!item)
 	return NULL;
 
-    if (item->expiry <= apr_time_now()) {
-	/* Expired */
+    if (HAS_EXPIRED(item)) {
 	auth_vas_cache_remove_expired_items(cache);
 	return NULL;
     }
