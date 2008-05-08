@@ -277,10 +277,21 @@ else
     done
 fi
 
-#-- scan the config file for a group name
 if test -f "$AP_CF"; then
     echo "$AP_CF"
-    #echo "found"
+
+    label "looking for Apache envvars file"
+    # As used by Debian apache2
+    if [ -f `dirname "$AP_CF"`/envvars ]; then
+	AP_ENVVARS=`dirname "$AP_CF"`/envvars
+	echo "$AP_ENVVARS"
+	. "$AP_ENVVARS"
+    else
+	AP_ENVVARS=
+	echo "(none)"
+    fi
+
+    #-- scan the config file for a group name
     label "looking for Apache daemon group"
     APACHE_GROUP=`(sed -ne 's/^Group //p' < "$AP_CF"|sed -e 1q) 2>/dev/null`
     if test ! -n "$APACHE_GROUP"; then
@@ -292,6 +303,9 @@ if test -f "$AP_CF"; then
     fi
 
     if test -n "$APACHE_GROUP"; then
+	if echo "$APACHE_GROUP" | grep '^\$' >/dev/null 2>&1; then
+	    APACHE_GROUP=`eval echo "$APACHE_GROUP"`
+	fi
 	echo "$APACHE_GROUP"
     else
 	echo "not found"
