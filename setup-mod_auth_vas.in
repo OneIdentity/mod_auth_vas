@@ -155,9 +155,6 @@ determine_keytab_access () {
 
 #-- parse args
 
-cflag=
-aflag=
-uflag=
 opterr=false
 
 while test $# -gt 0; do
