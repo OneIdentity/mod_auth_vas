@@ -340,7 +340,7 @@ if [ $keytab_exists = no ]; then
         recordcmd $VASTOOL \
 	    ${uflag+-u "$uflag"} \
 	    service create ${CONTAINER:+-c "$CONTAINER"} HTTP/ || \
-	    die "Cannot create HTTP/ service key: contact your IT support"
+	    die "Cannot create HTTP/ service account"
 
 	label "checking new service keytab"
 	if test -f "$KEYTAB"; then 
