@@ -1,0 +1,39 @@
+#!/bin/sh ./run-test
+description "RemoteUser ldap-attr deadlock (bug 510)"
+
+OUTPUTFILE=/tmp/bug510.$$.txt
+TESTFILE=$DOC_DIR/bug510.$$.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $OUTPUTFILE $TESTFILE
+   vas_kdestroy
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+echo "Hello $$" > $TESTFILE
+
+ap_conf_append <<-.
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		AuthVasRemoteUserMap ldap-attr sAMAccountName
+		Require valid-user
+	</Directory>
+.
+
+ap_conf_check
+
+ap_start
+vas_kinit $USER_test $PASSWD_test
+
+# Time out after 5 seconds
+fetch_nego `ifdebug -d` -t 5 $DOC_URL/bug510.$$.txt > $OUTPUTFILE \
+	|| fail "fetch failed"
+cmp $OUTPUTFILE $TESTFILE || fail "Files differ"
+
+# hey vim: syntax=sh
