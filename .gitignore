@@ -29,3 +29,9 @@ tags
 mod_auth_vas-*.tar.gz
 mod_auth_vas.so
 test-cache
+pkg/auth_vas.load
+pkg/pp
+pkg/mav.pp
+pkg/500mod_auth_vas.info
+*.rpm
+*.deb

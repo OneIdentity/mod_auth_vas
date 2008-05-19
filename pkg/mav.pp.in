@@ -1,0 +1,35 @@
+%set
+  name="mod-auth-vas"
+[solaris] name="QSFTmav"
+[deb] name="@DEBPKGNAME@"
+  summary="VAS authentication & authorization for Apache"
+  description="Authentication & authorization module for the Apache web server \
+  for use in conjunction with VAS (Vintela Authentication Services) from \
+  Quest Software"
+  copyright="(c) 2008 Quest Software, Inc."
+
+  # Special x.x.x.x versioning for AIX
+  pp_aix_version=`echo $version | sed -e 's,\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\)-\([0-9][0-9]*\).*,\1.\2.\3.\4,'`
+
+%files
+  @MODULEDIR@/*
+  $sbindir/setup-mod_auth_vas
+  /etc/**
+
+%if [deb]
+%post
+ set -e
+ @POSTINST_ENABLECMD@
+
+%preun
+ set -e
+ # Only disable the module when uninstalling, not upgrading
+ case "$1" in
+   remove)
+     @PRERM_DISABLECMD@
+   ;;
+ esac
+
+%endif
+
+# vim:ts=2:sw=2:et

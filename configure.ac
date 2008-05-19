@@ -13,7 +13,7 @@ AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE([foreign -Wall])
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile pkg/Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
@@ -79,8 +79,6 @@ if test x"$APXS" = x"no"; then
 fi
 AC_SUBST(APXS)
 
-# APXSVERSION is only used in this script.
-# Testing for APXS1 is done everywhere else
 if echo "$APXS" | grep 2 >/dev/null; then
     APXSVERSION=2
 else
@@ -197,7 +195,7 @@ if test `uname -s` = "HP-UX"; then
 fi
 
 dnl Try to figure out what extension apxs uses by compiling a simple
-dnl extension
+dnl extension. This will usually be .la.
 AC_CACHE_CHECK([apxs intermediate extension], [ac_cv_var_apxs_mod_ext], [
     rm -f conftest.*
     AC_LANG_CONFTEST([int module_conftest;])
@@ -217,6 +215,11 @@ else
    DSOEXT=$ac_cv_var_apxs_mod_ext
 fi
 AC_SUBST(DSOEXT)
+
+# The file extension that the module will be installed with.
+# Usually .so
+eval `libtool --config | grep ^shrext_cmds`
+AC_SUBST([FINAL_DSOEXT], [`echo $shrext_cmds`])
 
 dnl -- SuSE Linux with apache2
 case $ac_cv_var_platform in
@@ -343,6 +346,10 @@ AC_SUBST([APR_LINK_LD])
 #APR_CFLAGS=`$APR_CONFIG --cflags`
 #APR_CPPFLAGS=`$APR_CONFIG --cppflags`
 #APR_LDFLAGS=`$APR_CONFIG --ldflags`
+AP_MODULEDIR=`"$APXS" -q LIBEXECDIR`
+AP_SYSCONFDIR=`"$APXS" -q SYSCONFDIR`
+AC_SUBST(AP_MODULEDIR)
+AC_SUBST(AP_SYSCONFDIR)
 
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Note: can't have -rpath in linker flags when apxs is using libtool
@@ -401,5 +408,23 @@ AM_CONDITIONAL([HAVE_COVERAGE], [test "$have_coverage_flags" = "yes"])
 # Restore flags, we don't want coverage information in the regular binaries
 CFLAGS=$old_CFLAGS
 LDFLAGS=$old_LDFLAGS
+
+AC_MSG_CHECKING([which distribution to build for])
+AC_ARG_WITH(distro,
+	    [AS_HELP_STRING([--with-distro=NAME], [Distribution to generate auxillary config files for (debian, ubuntu, none)])],
+	    [distro="$with_distro"],
+	    [# Try to detect distro
+	     if `which lsb_release >/dev/null 2>&1`; then
+		 distro=`lsb_release -is`
+	     elif test -r /etc/debian_version; then
+		 distro=debian
+	     fi
+	     ])
+AC_MSG_RESULT([$distro])
+
+# Ensure distro is lowercase for matching
+distro=`echo "$distro" | tr '[[:upper:]]' '[[:lower:]]'`
+# DISTRO_DEBIAN is for systems with a Debian-like apache config system
+AM_CONDITIONAL([DISTRO_DEBIAN], [test "$distro" = 'debian' || test "$distro" = 'ubuntu'])
 
 AC_OUTPUT

@@ -52,8 +52,7 @@ check-local: mod_auth_vas$(DSOEXT)
 else # APXS2
 # DSOEXT is usually .la but we want the .so. Some hackery required.
 check-local: mod_auth_vas$(DSOEXT)
-	eval `libtool --config | grep ^shrext_cmds` && \
-	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$$shrext_cmds
+	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$(FINAL_DSOEXT)
 endif # APXS2
 
 # setup-mod_auth_vas is a setup wizard 
@@ -81,8 +80,7 @@ install-conf: auth_vas.conf
 #ChangeLog:
 #	svn2cl || echo No changelog > $@
 
-DIST_SUBDIRS=	$(TESTDIR)
-SUBDIRS=	. $(TESTDIR)
+SUBDIRS=	. $(TESTDIR) pkg
 DISTCHECK_CONFIGURE_FLAGS= --disable-tests
 
 #-- targets needed for automated test/build
@@ -148,3 +146,6 @@ else # !HAVE_COVERAGE
 coverage:
 
 endif # !HAVE_COVERAGE
+
+package:
+	$(MAKE) -C $(top_builddir)/pkg package
