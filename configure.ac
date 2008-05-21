@@ -210,11 +210,11 @@ AC_CACHE_CHECK([apxs intermediate extension], [ac_cv_var_apxs_mod_ext], [
  ])
 if test -z "$ac_cv_var_apxs_mod_ext"; then
    AC_MSG_WARN([assuming intermediate .so extension for modules])
-   DSOEXT=.so
+   LIBTOOL_DSOEXT=.so
 else
-   DSOEXT=$ac_cv_var_apxs_mod_ext
+   LIBTOOL_DSOEXT=$ac_cv_var_apxs_mod_ext
 fi
-AC_SUBST(DSOEXT)
+AC_SUBST(LIBTOOL_DSOEXT)
 
 # The file extension that the module will be installed with.
 # Usually .so

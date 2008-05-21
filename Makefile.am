@@ -4,7 +4,7 @@
 APXS_ACTIVATE=		# -a
 
 # We make the module noinst here, and install with apxs-install target
-noinst_DATA= 		mod_auth_vas$(DSOEXT)
+noinst_DATA= 		mod_auth_vas$(LIBTOOL_DSOEXT)
 mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c mav_apr_hash.c
 mod_auth_vas_HDRS=	compat.h cache.h user.h mav_apr_hash.h
 abs_builddir=		@abs_builddir@
@@ -14,7 +14,7 @@ Wc=-Wc,
 Wl=-Wl,
 
 # NB: copy the sources locally so that apxs doesn't get confused
-mod_auth_vas$(DSOEXT): $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
+mod_auth_vas$(LIBTOOL_DSOEXT): $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
 	for f in $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS); do \
 	  cmp $(srcdir)/$$f ./$$f 2>/dev/null || \
 	    cp $(srcdir)/$$f . ; \
@@ -43,15 +43,14 @@ install-exec-local:
 	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
 		   -S SYSCONFDIR=$(DESTDIR)`$(APXS) -q SYSCONFDIR` \
 		$(APXSFLAGS) $(APXS_ACTIVATE) -n auth_vas \
-		mod_auth_vas$(DSOEXT)
+		mod_auth_vas$(LIBTOOL_DSOEXT)
 
 # Ensure the module does not leak symbols
 if APXS1
-check-local: mod_auth_vas$(DSOEXT)
+check-local: mod_auth_vas$(LIBTOOL_DSOEXT)
 	$(top_srcdir)/check-symbols.sh auth_vas $^
 else # APXS2
-# DSOEXT is usually .la but we want the .so. Some hackery required.
-check-local: mod_auth_vas$(DSOEXT)
+check-local: mod_auth_vas$(LIBTOOL_DSOEXT)
 	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$(FINAL_DSOEXT)
 endif # APXS2
 
