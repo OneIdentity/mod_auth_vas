@@ -91,7 +91,7 @@ package: pp mav.pp
 	./pp \
 	    --destdir=`(cd "$(pkgdestdir)" && pwd)` \
 	    mav.pp \
-	    version=`$(top_srcdir)/configure --version | head -n1 | cut -d' ' -f3` \
+	    version=`$(top_srcdir)/configure --version | head -n1 | cut -d' ' -f3 | sed -e 's,-,+,' -e 's,-,,g' -e 's,g,git,'` \
 	    sbindir=$(sbindir) \
 	    #
 	rm -rf $(pkgdestdir)
