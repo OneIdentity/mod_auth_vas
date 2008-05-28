@@ -783,10 +783,10 @@ match_unix_group(request_rec *r, const char *name)
         
         gbuf = (struct group *)apr_palloc(r->pool, 
                 sizeof (struct group));
-        if (gbuf)
-            buf = apr_palloc(r->pool, buflen);
+	buf = apr_palloc(r->pool, buflen);
 	if (gbuf == NULL || buf == NULL) {
-	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
+	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "%s: apr_palloc (%u + %u)",
+		    __func__, sizeof(struct group), buflen);
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
 	}
         if ((err = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
@@ -2032,14 +2032,14 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 	apr_ipsubnet_t *ipsubnet;
 	char addr[sizeof("0000:0000:0000:0000:0000:0000:0000:0000")];
 	char *slash;
-	const char *mask;
 	apr_status_t subnet_create_err;
 
 	slash = strchr(value, '/');
 	if (slash) {
-	    int count = slash - value;
-	    mask = slash + 1;
-	    if (count > sizeof(addr) - 1) {
+	    const char const *mask = slash + 1; /* for convenience */
+	    int addrlen = slash - value;
+
+	    if (addrlen > sizeof(addr) - 1) {
 		/* Too long to be a valid IPv4 or IPv6 address */
 		LOG_RERROR(APLOG_ERR, 0, r,
 			"%s: Invalid address from config (%s): too long",
@@ -2047,12 +2047,11 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 		return ERROR;
 	    }
 
-	    memcpy(addr, value, count);
-	    addr[count] = '\0';
+	    memcpy(addr, value, addrlen);
+	    addr[addrlen] = '\0';
 
 	    subnet_create_err =
 		apr_ipsubnet_create(&ipsubnet, addr, mask, closure->request->pool);
-	    memset(addr, '\0', sizeof(addr));
 	} else {
 	    /* No subnet provided - checking exact host */
 	    subnet_create_err =
