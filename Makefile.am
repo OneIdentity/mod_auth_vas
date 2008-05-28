@@ -128,7 +128,7 @@ check_PROGRAMS = \
 TESTS = $(check_PROGRAMS)
 
 test_cache_SOURCES = test-cache.c cache.c cache.h compat.h mav_apr_hash.c mav_apr_hash.h
-test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS)
+test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS) $(APR_INCLUDES)
 test_cache_CFLAGS = $(VAS_CFLAGS) $(COVERAGE_CFLAGS)
 #test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)
 test_cache_LDFLAGS = $(APR_LDFLAGS) $(APR_LINK_LD) $(COVERAGE_LDFLAGS)

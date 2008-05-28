@@ -332,14 +332,23 @@ if test x"$VASCONFIG" = x"no"; then
     AC_MSG_FAILURE([vas-config not found; is vasdev installed?])
 fi
 
-if test $APXSVERSION = 2; then
+# The APR_CONFIG variable shows up in apache 2.2
+AC_MSG_CHECKING([whether $APXS defines APR_CONFIG])
+if $APXS -q APR_CONFIG >/dev/null 2>&1; then # APXS 2.2
+    AC_MSG_RESULT([yes])
     APR_CONFIG=`$APXS -q APR_CONFIG`
+elif $APXS -q APR_BINDIR >/dev/null 2>&1; then # APXS 2.0
+    AC_MSG_RESULT([no, but found APR_BINDIR])
+    APR_CONFIG=`$APXS -q APR_BINDIR`/apr-config
+else
+    AC_MSG_RESULT([no])
+fi
+
+if test -n "$APR_CONFIG"; then
     APR_INCLUDES=`$APR_CONFIG --includes`
     APR_LINK_LD=`$APR_CONFIG --link-ld`
-else # APXS1
-    # Required for checks
-    CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
 fi
+
 AC_SUBST([APR_CONFIG])
 AC_SUBST([APR_INCLUDES])
 AC_SUBST([APR_LINK_LD])
@@ -350,6 +359,9 @@ AP_MODULEDIR=`"$APXS" -q LIBEXECDIR`
 AP_SYSCONFDIR=`"$APXS" -q SYSCONFDIR`
 AC_SUBST(AP_MODULEDIR)
 AC_SUBST(AP_SYSCONFDIR)
+
+# Required for checks
+CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
 
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Note: can't have -rpath in linker flags when apxs is using libtool
