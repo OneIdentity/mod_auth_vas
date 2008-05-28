@@ -771,8 +771,9 @@ match_unix_group(request_rec *r, const char *name)
 
     /* 
      * Obtain the list of users in the unix group.
-     * Note that we deliberately cause a 500 error if the group
-     * is not found, because we assert 
+     * We deliberately cause a 500 error if the group is not found, because
+     * specifying a non-existent group in the config file is a configuration
+     * (internal) error, not a user error.
      */
 #if HAVE_GETGRNAM_R
     {
