@@ -2061,8 +2061,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 
 	if (subnet_create_err) {
 	    LOG_RERROR(APLOG_ERR, subnet_create_err, r,
-		    "Error turning %s/%s into an IP subnet",
-		    addr, mask);
+		    "Failed to convert %s into an IP subnet", value);
 	    return ERROR;
 	}
 
