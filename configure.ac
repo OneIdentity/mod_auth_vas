@@ -332,6 +332,15 @@ if test x"$VASCONFIG" = x"no"; then
     AC_MSG_FAILURE([vas-config not found; is vasdev installed?])
 fi
 
+if test "$APXSVERSION" = 2; then
+    AC_MSG_CHECKING([what the Apache minor version is])
+    apachebin=`$APXS -q SBINDIR`/`$APXS -q TARGET`
+    # This is only set for Apache 2 (as you can tell)
+    APACHE2_MINOR_VERSION=$(`$APXS -q SBINDIR`/`$APXS -q TARGET` -V | grep '^Server version' | cut -d/ -f2 | cut -d. -f2)
+    AC_MSG_RESULT([$APACHE2_MINOR_VERSION])
+fi
+AC_SUBST([APACHE2_MINOR_VERSION])
+
 # The APR_CONFIG variable shows up in apache 2.2
 AC_MSG_CHECKING([whether $APXS defines APR_CONFIG])
 if $APXS -q APR_CONFIG >/dev/null 2>&1; then # APXS 2.2

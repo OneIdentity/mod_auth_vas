@@ -67,8 +67,13 @@ pp:
 
 if APXS1
 DEB_APACHE_VERSION = apache
+RPM_APACHE_VERSION = ap1
 else
-DEB_APACHE_VERSION = apache2
+# Append the minor version because 2.0 modules are not binary-compatible
+# with 2.2 and vice-versa. This way the packages can be in the same directory
+# without clashes.
+DEB_APACHE_VERSION = apache2$(APACHE2_MINOR_VERSION)
+RPM_APACHE_VERSION = ap2$(APACHE2_MINOR_VERSION)
 endif
 
 CLEANFILES += mav.pp
@@ -76,6 +81,7 @@ CLEANFILES += mav.pp
 mav.pp: mav.pp.in
 	sed \
 	    -e 's,@DEBPKGNAME@,lib$(DEB_APACHE_VERSION)-mod-auth-vas,g' \
+	    -e 's,@RPMPKGNAME@,mod_auth_vas-$(RPM_APACHE_VERSION),g' \
 	    -e 's,@MODULEDIR@,$(AP_MODULEDIR),g' \
 	    -e 's,@POSTINST_ENABLECMD@,$(POSTINST_ENABLECMD),g' \
 	    -e 's,@PRERM_DISABLECMD@,$(PRERM_DISABLECMD),g' \

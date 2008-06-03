@@ -2,7 +2,7 @@
   name="mod-auth-vas"
 [solaris] name="QSFTmav"
 [deb] name="@DEBPKGNAME@"
-[rpm] name="mod_auth_vas"
+[rpm] name="@RPMPKGNAME@"
   summary="VAS authentication & authorization for Apache"
   description="Authentication & authorization module for the Apache web server \
   for use in conjunction with VAS (Vintela Authentication Services) from \
