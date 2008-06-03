@@ -226,10 +226,16 @@ else
 fi
 AC_SUBST(LIBTOOL_DSOEXT)
 
+AC_MSG_CHECKING([what the module's final file extension will be])
 # The file extension that the module will be installed with.
-# Usually .so
-eval `libtool --config | grep ^shrext_cmds`
-AC_SUBST([FINAL_DSOEXT], [`echo $shrext_cmds`])
+# Usually .so. Sometimes libtool is not installed, in which case we assume .so
+if which libtool >/dev/null 2>&1; then
+    eval `libtool --config | grep ^shrext_cmds`
+else
+    shrext_cmds=.so
+fi
+AC_MSG_RESULT([$shrext_cmds])
+AC_SUBST([FINAL_DSOEXT], [$shrext_cmds])
 
 dnl -- SuSE Linux with apache2
 case $ac_cv_var_platform in
