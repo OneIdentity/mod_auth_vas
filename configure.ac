@@ -79,15 +79,6 @@ if test x"$APXS" = x"no"; then
 fi
 AC_SUBST(APXS)
 
-if echo "$APXS" | grep 2 >/dev/null; then
-    APXSVERSION=2
-else
-    APXSVERSION=1
-fi
-AC_SUBST(APXSVERSION)
-
-AM_CONDITIONAL(APXS1, [test $APXSVERSION = 1])
-
 dnl -- use this as a sanity test that apxs is working
 AC_MSG_CHECKING([Apache extension target])
 apxs_target=`$APXS -q TARGET || echo error`
@@ -97,9 +88,28 @@ if test x"$apxs_target" = x"error"; then
     AC_MSG_FAILURE([$APXS does not appear to work])
 fi
 
+# The httpd binary is required to find out the Apache minor version number
+AC_MSG_CHECKING([whether the Apache server is installed])
+if test -x `$APXS -q SBINDIR`/`$APXS -q TARGET`; then
+    AC_MSG_RESULT(yes)
+else
+    AC_MSG_RESULT(no)
+    AC_MSG_ERROR([please install the Apache server (not just the devel package)])
+fi
+
+AC_MSG_CHECKING([what the Apache version is])
+apache_version=$(`$APXS -q SBINDIR`/`$APXS -q TARGET` -V | grep '^Server version' | cut -d/ -f2)
+AC_MSG_RESULT([$apache_version])
+APACHE_MAJOR_VERSION=`echo $apache_version | cut -d. -f1`
+APACHE_MINOR_VERSION=`echo $apache_version | cut -d. -f2`
+AC_SUBST(APACHE_MAJOR_VERSION)
+AC_SUBST(APACHE_MINOR_VERSION)
+
+AM_CONDITIONAL(APXS1, [test $APACHE_MAJOR_VERSION = 1])
+
 # Add APXS's CPPFLAGS to regular CPPFLAGS, for tests
 # APXS1 doesn't have a CPPFLAGS variable
-if test $APXSVERSION = 2; then
+if test $APACHE_MAJOR_VERSION = 2; then
     CPPFLAGS="`$APXS -q CPPFLAGS` $CPPFLAGS"
 fi
 
@@ -139,7 +149,7 @@ if test "x$GCC" = "xyes"; then
     # On APXS1 we use symbols provided by the apache binary and not by
     # some library, which makes -Wl,-z,defs fail. So only use -Wl,-z,defs
     # if it looks like we are building for APXS2.
-    if test $APXSVERSION = 2; then
+    if test $APACHE_MAJOR_VERSION = 2; then
 	DESIRED_LDFLAGS="-Wl,-z,defs"
     else
 	DESIRED_LDFLAGS=
@@ -331,15 +341,6 @@ fi
 if test x"$VASCONFIG" = x"no"; then
     AC_MSG_FAILURE([vas-config not found; is vasdev installed?])
 fi
-
-if test "$APXSVERSION" = 2; then
-    AC_MSG_CHECKING([what the Apache minor version is])
-    apachebin=`$APXS -q SBINDIR`/`$APXS -q TARGET`
-    # This is only set for Apache 2 (as you can tell)
-    APACHE2_MINOR_VERSION=$(`$APXS -q SBINDIR`/`$APXS -q TARGET` -V | grep '^Server version' | cut -d/ -f2 | cut -d. -f2)
-    AC_MSG_RESULT([$APACHE2_MINOR_VERSION])
-fi
-AC_SUBST([APACHE2_MINOR_VERSION])
 
 # The APR_CONFIG variable shows up in apache 2.2
 AC_MSG_CHECKING([whether $APXS defines APR_CONFIG])

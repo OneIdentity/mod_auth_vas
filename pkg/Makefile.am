@@ -72,8 +72,8 @@ else
 # Append the minor version because 2.0 modules are not binary-compatible
 # with 2.2 and vice-versa. This way the packages can be in the same directory
 # without clashes.
-DEB_APACHE_VERSION = apache2$(APACHE2_MINOR_VERSION)
-RPM_APACHE_VERSION = ap2$(APACHE2_MINOR_VERSION)
+DEB_APACHE_VERSION = apache2$(APACHE_MINOR_VERSION)
+RPM_APACHE_VERSION = ap2$(APACHE_MINOR_VERSION)
 endif
 
 CLEANFILES += mav.pp
