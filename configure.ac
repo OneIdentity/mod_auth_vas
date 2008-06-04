@@ -146,14 +146,8 @@ dnl Originally from Stallone <http://tedp.id.au/stallone/>, copied with permissi
 if test "x$GCC" = "xyes"; then
     DESIRED_CFLAGS="-Wall -g"
 
-    # On APXS1 we use symbols provided by the apache binary and not by
-    # some library, which makes -Wl,-z,defs fail. So only use -Wl,-z,defs
-    # if it looks like we are building for APXS2.
-    if test $APACHE_MAJOR_VERSION = 2; then
-	DESIRED_LDFLAGS="-Wl,-z,defs"
-    else
-	DESIRED_LDFLAGS=
-    fi
+    # Avoid requiring libraries unnecessarily
+    DESIRED_LDFLAGS="-Wl,--as-needed"
 
     # Add stricter flags in developer mode
     if test "$enable_developer_mode" = "yes"; then
