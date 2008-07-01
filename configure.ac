@@ -1,4 +1,4 @@
-# (c) 2006 Quest Software. All right reserved.
+# (c) 2008 Quest Software. All right reserved.
 
 dnl The --tags option can be removed once there is an annotated tag
 dnl on the branch. (Old svn tags were imported as lightweight tags.)
@@ -135,6 +135,7 @@ if test x"$ac_cv_var_apxs_cc" != x"" -a x"$CC" = x""; then
     done
 fi
 AC_PROG_CC
+AC_PROG_LIBTOOL
 
 #-- Override CC if we found a different C compiler
 if test x"$ac_cv_var_apxs_cc" != x"$CC"; then
@@ -180,7 +181,7 @@ fi
 #-- check for the -bexpall linker flag (needed on AIX for apache 1.3.31)
 LDFLAGS_save="$LDFLAGS"
 LDFLAGS="$LDFLAGS -Wl,-bexpall"
-AC_CACHE_CHECK([whether -bexpall works], [ac_cv_var_bexpall],
+AC_CACHE_CHECK([whether -Wl,-bexpall works], [ac_cv_var_bexpall],
 	[AC_TRY_LINK([],[],[ac_cv_var_bexpall=yes],[ac_cv_var_bexpall=no])])
 if test x"$ac_cv_var_bexpall" != x"yes"; then
 	LDFLAGS="$LDFLAGS_save"
@@ -257,14 +258,14 @@ AC_MSG_RESULT([$libgccfilename])
 
 if test x"$libgccfilename" != x"no" -a x"$libgccfilename" != x""; then
 	AC_MSG_CHECKING([whether linking libgcc works])
-	CFLAGS_save="$CFLAGS"
-	CFLAGS="$CFLAGS -Wl,$libgccfilename"
+	LIBS_save="$LIBS"
+	LIBS="$LIBS -l$libgccfilename"
 	AC_TRY_LINK([],[],
 		    [ac_cv_var_libgccfilename=yes],
 		    [ac_cv_var_libgccfilename=no])
 	AC_MSG_RESULT([$ac_cv_var_libgccfilename])
 	if test x"$ac_cv_var_libgccfilename" != x"yes"; then
-		CFLAGS="$CFLAGS_save"
+		LIBS="$LIBS_save"
 	fi
 fi
 
@@ -374,8 +375,7 @@ AC_SUBST(AP_SYSCONFDIR)
 CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
 
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
-# Note: can't have -rpath in linker flags when apxs is using libtool
-VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
+VAS_LIBS=`$VASCONFIG --libs vasapi`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
 

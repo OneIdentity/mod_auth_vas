@@ -1,4 +1,4 @@
-# (c) 2006, Quest Software, Inc. All rights reserved.
+# (c) 2008, Quest Software, Inc. All rights reserved.
 
 #-- set this to -a to cause 'make install' to activate the module (unreliable)
 APXS_ACTIVATE=		# -a
@@ -9,41 +9,22 @@ mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c mav_apr_hash.c
 mod_auth_vas_HDRS=	compat.h cache.h user.h mav_apr_hash.h
 abs_builddir=		@abs_builddir@
 
-# Use -Wc and -Wl to protect linker options that aren't already protected
-Wc=-Wc,
-Wl=-Wl,
+noinst_LTLIBRARIES = mod_auth_vas.la
 
-# NB: copy the sources locally so that apxs doesn't get confused
-mod_auth_vas$(LIBTOOL_DSOEXT): $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
-	for f in $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS); do \
-	  cmp $(srcdir)/$$f ./$$f 2>/dev/null || \
-	    cp $(srcdir)/$$f . ; \
-	done
-	$(APXS) -c $(APXSFLAGS) \
-		$(CPPFLAGS) \
-		$(DEFS) $(DEFAULT_INCLUDES) \
-		-DMODAUTHVAS_VERSION='\"$(PACKAGE_VERSION)\"' \
-		$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(CFLAGS:%=$(Wc)%)) \
-		$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(VAS_CFLAGS:%=$(Wc)%)) \
-		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(LDFLAGS:%=$(Wl)%)) \
-		$(patsubst $(Wl)$(Wl)%,$(Wl)%,$(VAS_LIBS:%=$(Wl)%)) \
-		-o $@ \
-		-n auth_vas \
-		$(mod_auth_vas_SRCS)
-
-clean-local:
-	rm -rf .libs mod_auth_vas.*o mod_auth_vas.l?
-	: Remove sources from builddir
-	test "$(top_srcdir)" = "$(top_builddir)" || rm -f $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
+mod_auth_vas_la_SOURCES = $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
+mod_auth_vas_la_CFLAGS = $(VAS_CFLAGS) $(CFLAGS)
+mod_auth_vas_la_CPPFLAGS = $(CPPFLAGS) $(DEFS) $(DEFAULT_INCLUDES) \
+			   -DMODAUTHVAS_VERSION=\"$(PACKAGE_VERSION)\"
+mod_auth_vas_la_LDFLAGS = $(VAS_LDFLAGS) $(LDFLAGS) -module
 
 # use apxs to install the module, inserting DESTDIR as best we can
-install-exec-local:
-	mkdir -p $(DESTDIR)`$(APXS) -q LIBEXECDIR`
-	mkdir -p $(DESTDIR)`$(APXS) -q SYSCONFDIR`
-	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
-		   -S SYSCONFDIR=$(DESTDIR)`$(APXS) -q SYSCONFDIR` \
-		$(APXSFLAGS) $(APXS_ACTIVATE) -n auth_vas \
-		mod_auth_vas$(LIBTOOL_DSOEXT)
+#install-exec-local:
+#	mkdir -p $(DESTDIR)`$(APXS) -q LIBEXECDIR`
+#	mkdir -p $(DESTDIR)`$(APXS) -q SYSCONFDIR`
+#	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
+#		   -S SYSCONFDIR=$(DESTDIR)`$(APXS) -q SYSCONFDIR` \
+#		$(APXSFLAGS) $(APXS_ACTIVATE) -n auth_vas \
+#		mod_auth_vas$(LIBTOOL_DSOEXT)
 
 # Ensure the module does not leak symbols
 if APXS1
