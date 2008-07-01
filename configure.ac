@@ -17,22 +17,6 @@ AC_CONFIG_FILES([Makefile pkg/Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
-AC_CACHE_CHECK([if ${MAKE-make} understands patsubst], [ac_cv_prog_gnu_make], 
-[
-   cat <<'__EOF' >conftest.mk
-Wc=-Wc,
-CFLAGS=-foo -bar -Wc,-baz
-all:
-    test x"$(patsubst $(Wc)$(Wc)%,$(Wc)%,$(CFLAGS:%=$(Wc)%))" = \
-	              x"-Wc,-foo -Wc,-bar -Wc,-baz"
-__EOF
-    AS_IF([(${MAKE-make} -f conftest.mk all) 2>&AS_MESSAGE_LOG_FD 1>&2],
-    [ac_cv_prog_gnu_make=yes], 
-    [ac_cv_prog_gnu_make=no])])
-if test $ac_cv_prog_gnu_make = no; then
-    AC_MSG_FAILURE([${MAKE-make} does not understand GNU make patsubst])
-fi
-
 dnl -- platform detection
 AC_CACHE_CHECK([platform type], [ac_cv_var_platform],
     [ac_cv_var_platform=unknown
