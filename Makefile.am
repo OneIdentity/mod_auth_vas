@@ -17,15 +17,6 @@ mod_auth_vas_la_CPPFLAGS = $(CPPFLAGS) $(DEFS) $(DEFAULT_INCLUDES) \
 mod_auth_vas_la_LDFLAGS = $(VAS_LDFLAGS) $(LDFLAGS) \
 			  -module -avoid-version -export-dynamic
 
-# use apxs to install the module, inserting DESTDIR as best we can
-#install-exec-local:
-#	mkdir -p $(DESTDIR)`$(APXS) -q LIBEXECDIR`
-#	mkdir -p $(DESTDIR)`$(APXS) -q SYSCONFDIR`
-#	$(APXS) -i -S LIBEXECDIR=$(DESTDIR)`$(APXS) -q LIBEXECDIR` \
-#		   -S SYSCONFDIR=$(DESTDIR)`$(APXS) -q SYSCONFDIR` \
-#		$(APXSFLAGS) $(APXS_ACTIVATE) -n auth_vas \
-#		mod_auth_vas$(LIBTOOL_DSOEXT)
-
 # Ensure the module does not leak symbols
 if APXS1
 check-local: mod_auth_vas$(LIBTOOL_DSOEXT)
