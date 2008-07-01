@@ -1,21 +1,17 @@
 # (c) 2008, Quest Software, Inc. All rights reserved.
 
-#-- set this to -a to cause 'make install' to activate the module (unreliable)
-APXS_ACTIVATE=		# -a
-
-# We make the module noinst here, and install with apxs-install target
-noinst_DATA= 		mod_auth_vas$(LIBTOOL_DSOEXT)
 mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c mav_apr_hash.c
 mod_auth_vas_HDRS=	compat.h cache.h user.h mav_apr_hash.h
 abs_builddir=		@abs_builddir@
 
-noinst_LTLIBRARIES = mod_auth_vas.la
+lib_LTLIBRARIES = mod_auth_vas.la
 
 mod_auth_vas_la_SOURCES = $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
 mod_auth_vas_la_CFLAGS = $(VAS_CFLAGS) $(CFLAGS)
 mod_auth_vas_la_CPPFLAGS = $(CPPFLAGS) $(DEFS) $(DEFAULT_INCLUDES) \
 			   -DMODAUTHVAS_VERSION=\"$(PACKAGE_VERSION)\"
-mod_auth_vas_la_LDFLAGS = $(VAS_LDFLAGS) $(LDFLAGS) -module
+mod_auth_vas_la_LDFLAGS = $(VAS_LDFLAGS) $(LDFLAGS) \
+			  -module -avoid-version -export-dynamic
 
 # use apxs to install the module, inserting DESTDIR as best we can
 #install-exec-local:

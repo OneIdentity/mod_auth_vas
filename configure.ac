@@ -355,6 +355,10 @@ AP_SYSCONFDIR=`"$APXS" -q SYSCONFDIR`
 AC_SUBST(AP_MODULEDIR)
 AC_SUBST(AP_SYSCONFDIR)
 
+# Trust apxs' notion of where the files should go
+libdir=$AP_MODULEDIR
+sysconfdir=$AP_SYSCONFDIR
+
 # Required for checks
 CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
 
