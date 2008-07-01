@@ -1,12 +1,16 @@
 # (c) 2008, Quest Software, Inc. All rights reserved.
 
-mod_auth_vas_SRCS=	mod_auth_vas.c cache.c user.c mav_apr_hash.c
-mod_auth_vas_HDRS=	compat.h cache.h user.h mav_apr_hash.h
 abs_builddir=		@abs_builddir@
 
 lib_LTLIBRARIES = mod_auth_vas.la
 
-mod_auth_vas_la_SOURCES = $(mod_auth_vas_SRCS) $(mod_auth_vas_HDRS)
+mod_auth_vas_la_SOURCES = \
+			  mod_auth_vas.c \
+			  cache.c cache.h \
+			  user.c user.h \
+			  mav_apr_hash.c mav_apr_hash.h \
+			  #
+
 mod_auth_vas_la_CFLAGS = $(VAS_CFLAGS) $(CFLAGS)
 mod_auth_vas_la_CPPFLAGS = $(CPPFLAGS) $(DEFS) $(DEFAULT_INCLUDES) \
 			   -DMODAUTHVAS_VERSION=\"$(PACKAGE_VERSION)\"
@@ -35,8 +39,7 @@ endif # APXS2
 sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	NEWS README LICENCE NOTICE examples
-EXTRA_DIST+=	$(mod_auth_vas_SRCS) $(sbin_SCRIPTS) auth_vas.conf \
-		$(mod_auth_vas_HDRS) check-symbols.sh
+EXTRA_DIST+=	$(sbin_SCRIPTS) auth_vas.conf check-symbols.sh
 CLEANFILES=	setup-mod_auth_vas *.gcno *.gcda *.gcov
 
 EXTRA_DIST+=	setup-mod_auth_vas.in
