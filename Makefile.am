@@ -57,41 +57,6 @@ DISTCHECK_CONFIGURE_FLAGS= --disable-tests
 print-dist-archives:; echo $(DIST_ARCHIVES)
 print-dist-name:;     echo $(distdir)
 
-#-- targets for RPM building
-EXTRA_DIST+= suse.spec.in redhat.spec.in
-CLEANFILES+= suse.spec redhat.spec .rpmmacros
-
-subst=  sed -e 's,[@]VERSION[@],$(VERSION),g' \
-	    -e 's,[@]abs_builddir[@],$(abs_builddir),g' \
-	    -e 's,[@]sbindir[@],$(sbindir),g' \
-	    -e 's,[@]APXS[@],$(APXS),g' 
-
-.rpmmacros: Makefile
-	echo '%_rpmdir $(abs_builddir)' > .rpmmacros
-	echo '%_builddir $(abs_builddir)' >> .rpmmacros
-
-suse-rpm: suse.spec .rpmmacros
-	HOME=$(abs_builddir) rpmbuild -bb suse.spec
-
-suse.spec: suse.spec.in
-	    $(subst) < $^ > $@
-
-redhat-ap1-rpm: redhat.spec .rpmmacros
-	HOME=$(abs_builddir) rpmbuild -bb \
-	     	--define='apxs1 1' \
-		--define="apache_libdir `$(APXS) -q LIBEXECDIR`" \
-		--define="apache_sysconfdir `$(APXS) -q SYSCONFDIR`" \
-		redhat.spec
-
-redhat-ap2-rpm: redhat.spec .rpmmacros
-	HOME=$(abs_builddir) rpmbuild -bb \
-		--define="apache_libdir `$(APXS) -q LIBEXECDIR`" \
-		--define="apache_sysconfdir `$(APXS) -q SYSCONFDIR`" \
-		redhat.spec
-
-redhat.spec: redhat.spec.in
-	    $(subst) < $^ > $@
-
 check_PROGRAMS = \
 		 test-cache \
 		 #
