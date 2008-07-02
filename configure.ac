@@ -363,7 +363,8 @@ sysconfdir=$AP_SYSCONFDIR
 CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
 
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
-VAS_LIBS=`$VASCONFIG --libs vasapi`
+# Convert a GNU ld search path (-rpath) into a libtool search path (-R)
+VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
 

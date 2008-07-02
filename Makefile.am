@@ -14,7 +14,7 @@ mod_auth_vas_la_SOURCES = \
 mod_auth_vas_la_CFLAGS = $(VAS_CFLAGS) $(CFLAGS)
 mod_auth_vas_la_CPPFLAGS = $(CPPFLAGS) $(DEFS) $(DEFAULT_INCLUDES) \
 			   -DMODAUTHVAS_VERSION=\"$(PACKAGE_VERSION)\"
-mod_auth_vas_la_LDFLAGS = $(VAS_LDFLAGS) $(LDFLAGS) \
+mod_auth_vas_la_LDFLAGS = $(VAS_LIBS) $(LDFLAGS) \
 			  -module -avoid-version -export-dynamic
 
 # Ensure the module does not leak symbols
