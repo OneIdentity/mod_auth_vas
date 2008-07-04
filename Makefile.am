@@ -84,3 +84,4 @@ endif # !HAVE_COVERAGE
 
 package:
 	$(MAKE) -C $(top_builddir)/pkg package
+	@echo Package built successfully in the "pkg" subdirectory.
