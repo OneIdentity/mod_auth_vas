@@ -1,3 +1,26 @@
+3.6.2	(UNRELEASED)
+	- Fixed corruption of the internal auth cache that would result in
+	  a double-free error, crash, or refcount assertion. This would affect
+	  any server with "AuthVasUseBasic On". Bug #517.
+
+	- Detects the apache group in setup-mod_auth_vas when it is set by
+	  environment variable, eg. in /etc/apache2/envvars on Debian &
+	  similar. Bug #524.
+
+	- Fixed setup-mod_auth_vas trying to use "-u service" when creating the
+	  service account. Bug #525.
+
+	- Fixed the error message when parsing an invalid IP subnet.
+
+	- Removed failure-inducing "-z defs" linker option. Fixes undefined
+	  symbol errors when building.
+
+	- Moved module compilation to libtool and automake instead of hacking
+	  around apxs. GNU make is no longer required.
+
+	- Added "make package" target to build a package for deb & RPM
+	  systems.
+
 3.6.1	(2008-04-07)
 
 	- Fixed "AuthVasRemoteUserMap ldap-attr" hanging the server when
