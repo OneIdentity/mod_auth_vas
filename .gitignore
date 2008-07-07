@@ -37,5 +37,5 @@ pkg/auth_vas.load
 pkg/pp
 pkg/mav.pp
 pkg/500mod_auth_vas.info
-*.rpm
-*.deb
+pkg/*.rpm
+pkg/*.deb
