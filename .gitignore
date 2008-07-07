@@ -13,13 +13,17 @@ autom4te.cache
 compile
 configure
 config.log
+config.guess
 config.h.in
 config.h
 config.status
 config.status.lineno
+config.sub
 depcomp
 test/http-get/get
 install-sh
+libtool
+ltmain.sh
 Makefile
 Makefile.in
 missing
