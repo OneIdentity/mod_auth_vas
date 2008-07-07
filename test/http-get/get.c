@@ -42,6 +42,13 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#if defined(__GNUC__) && \
+    __GNUC__ >= 3 || (__GNUC__ == 2 && __GNUC_MINOR__ >= 5)
+# define GCC_ATTR_CONST __attribute__((const))
+#else
+# define GCC_ATTR_CONST
+#endif
+
 int debug = 0;
 int use_gssapi = 0;
 const char *spn = NULL;	/* service principal name override */
@@ -601,6 +608,13 @@ readbody(response, out)
 	fflush(out);
 }
 
+static int to_int(size_t n) GCC_ATTR_CONST;
+static int to_int(size_t n) {
+    if (n > INT_MAX)
+	return INT_MAX;
+    return (int)n;
+}
+
 /* Prints a GSS error message and exits */
 void
 err_gss(ec, major, minor, msg)
@@ -618,7 +632,7 @@ err_gss(ec, major, minor, msg)
 		GSS_C_NO_OID, &ctx, &buf);
 	if (GSS_ERROR(emajor))
 	    errx(1, "gss_display_status");
-	fprintf(stderr, "; %.*s", buf.length, (const char *)buf.value);
+	fprintf(stderr, "; %.*s", to_int(buf.length), (const char *)buf.value);
 	gss_release_buffer(&eminor, &buf);
     } while (ctx);
     do {
@@ -626,7 +640,7 @@ err_gss(ec, major, minor, msg)
 		GSS_C_NO_OID, &ctx, &buf);
 	if (GSS_ERROR(emajor))
 	    errx(1, "gss_display_status");
-	fprintf(stderr, "; %.*s", buf.length, (const char *)buf.value);
+	fprintf(stderr, "; %.*s", to_int(buf.length), (const char *)buf.value);
 	gss_release_buffer(&eminor, &buf);
     } while (ctx);
     fprintf(stderr, "\n");

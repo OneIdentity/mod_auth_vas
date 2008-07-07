@@ -785,8 +785,10 @@ match_unix_group(request_rec *r, const char *name)
                 sizeof (struct group));
 	buf = apr_palloc(r->pool, buflen);
 	if (gbuf == NULL || buf == NULL) {
-	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "%s: apr_palloc (%u + %u)",
-		    __func__, sizeof(struct group), buflen);
+	    /* apr_vformatter has %pS for apr_size_t since APR 1.3.0, but that
+	     * is way too new so we cast size_t to unsigned long */
+	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "%s: apr_palloc (%lu + %lu)",
+		    __func__, (unsigned long)sizeof(struct group), (unsigned long)buflen);
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
 	}
         if ((err = getgrnam_r(name, gbuf, buf, buflen, &gr))) {
@@ -1831,7 +1833,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     TRACE_S(s, "%s(host=%s)", __func__, s->server_hostname);
 
     sc = GET_SERVER_CONFIG(s->module_config);
-    TRACE_S(s, "sc=%x", (int)sc);
+    TRACE_S(s, "sc=%pp", sc); /* %pp is apr_vformatter syntax for a (void*) */
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
