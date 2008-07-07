@@ -126,6 +126,8 @@ if test x"$ac_cv_var_apxs_cc" != x"$CC"; then
     APXSFLAGS="$APXSFLAGS -S CC='$CC'"
 fi
 
+AM_PROG_CC_C_O
+
 dnl -- Flags to make GCC complain about your bugs
 dnl Originally from Stallone <http://tedp.id.au/stallone/>, copied with permission.
 if test "x$GCC" = "xyes"; then
