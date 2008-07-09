@@ -360,6 +360,21 @@ AP_SYSCONFDIR=`"$APXS" -q SYSCONFDIR`
 AC_SUBST(AP_MODULEDIR)
 AC_SUBST(AP_SYSCONFDIR)
 
+# See whether the module info file should go in a directory like
+# /etc/httpd/conf.d . It really depends on whether the config file has an
+# Include directive but this should be reliable enough.
+# Deb platforms don't use this.
+AC_MSG_CHECKING([for a conf.d directory for the module info file])
+if test -d ${AP_SYSCONFDIR}.d; then
+    AP_CONF_D_DIR=${AP_SYSCONFDIR}.d
+    AC_MSG_RESULT([yes, "$AP_CONF_D_DIR"])
+else
+    # Somewhere sane
+    AP_CONF_D_DIR=$AP_SYSCONFDIR
+    AC_MSG_RESULT([no])
+fi
+AC_SUBST([AP_CONF_D_DIR])
+
 # Trust apxs' notion of where the files should go
 libdir=$AP_MODULEDIR
 sysconfdir=$AP_SYSCONFDIR
@@ -425,22 +440,38 @@ AM_CONDITIONAL([HAVE_COVERAGE], [test "$have_coverage_flags" = "yes"])
 CFLAGS=$old_CFLAGS
 LDFLAGS=$old_LDFLAGS
 
-AC_MSG_CHECKING([which distribution to build for])
+# This does not determine the package type, but how the module should be
+# enabled automatically when the package is installed.
+AC_MSG_CHECKING([which distribution type to build for])
 AC_ARG_WITH(distro,
-	    [AS_HELP_STRING([--with-distro=NAME], [Distribution to generate auxillary config files for (debian, ubuntu, none)])],
+	    [AS_HELP_STRING([--with-distro=NAME], [Distribution type to generate auxiliary config files for (deb, rpm, none)])],
 	    [distro="$with_distro"],
 	    [# Try to detect distro
 	     if `which lsb_release >/dev/null 2>&1`; then
 		 distro=`lsb_release -is`
 	     elif test -r /etc/debian_version; then
-		 distro=debian
+		 distro=deb
+	     elif test -r /etc/redhat-release; then
+		 distro=rpm
 	     fi
 	     ])
-AC_MSG_RESULT([$distro])
 
 # Ensure distro is lowercase for matching
 distro=`echo "$distro" | tr '[[:upper:]]' '[[:lower:]]'`
-# DISTRO_DEBIAN is for systems with a Debian-like apache config system
-AM_CONDITIONAL([DISTRO_DEBIAN], [test "$distro" = 'debian' || test "$distro" = 'ubuntu'])
+
+case "$distro" in
+    debian|ubuntu)
+	distro=deb;;
+    fedora*) # Matches Fedora and FedoraCore
+	distro=rpm;;
+    *)
+	distro=none;;
+esac
+AC_MSG_RESULT([$distro])
+
+# DISTRO_DEB is for a Debian-like config system (mods-available/mods-enabled)
+AM_CONDITIONAL([DISTRO_DEB], [test "$distro" = 'deb'])
+# DISTRO_RPM is for an Fedora-like config system (conf.d directory for module loading)
+AM_CONDITIONAL([DISTRO_RPM], [test "$distro" = 'rpm'])
 
 AC_OUTPUT

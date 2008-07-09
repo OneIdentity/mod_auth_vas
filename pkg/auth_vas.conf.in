@@ -1,10 +1,16 @@
+LoadModule auth_vas_module @AP_MODULEDIR@/mod_auth_vas@FINAL_DSOEXT@
+
+# By putting all mod_auth_vas options and protected directories in an
+# IfModule section you can easily enable or disable the module without
+# adjusting anything other than the LoadModule line above.
+
 <IfModule mod_auth_vas.c>
 
 #-- You may need to change server identity variables if your server is
 #   known by other names, and/or it is part of another realm:
 #
-#       AuthVasDefaultRealm       COMPANY.COM
-#       AuthVasServicePrincipal   http/www.company.com@COMPANY.COM
+#       AuthVasDefaultRealm       EXAMPLE.COM
+#       AuthVasServerPrincipal    HTTP/www.example.com@EXAMPLE.COM
 
 #-- Example of setting up an authenticated area:
 #
@@ -14,7 +20,10 @@
 #         Require valid-user
 #       </Directory>
 
-#-- Increase field size to cope with delegation and large group lists
+#-- Increase maximum request header length to cope with the long
+#   WWW-Authenticate headers produced by delegation and large group
+#   lists
+#
 #	LimitRequestFieldSize 16382
 
 #-- For a description of all available configuration items, see

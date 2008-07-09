@@ -12,7 +12,7 @@ EXTRA_DIST = pp mav.pp.in
 CLEANFILES = $(AUXINFO_FILES)
 DISTCLEANFILES = pp
 
-if DISTRO_DEBIAN
+if DISTRO_DEB
 
 # Module info file used by Apache 1 on Debian
 # Only the LoadModule line is actually used (by apache-modconf)
@@ -50,8 +50,21 @@ install-data-local: $(AP2_MODLOAD)
 	cp $(AP2_MODLOAD) $(DESTDIR)/$(AP_SYSCONFDIR)/mods-available
 
 endif  # APXS2
+else  # !DISTRO_DEB
+if  DISTRO_RPM
 
-endif # DISTRO_DEBIAN
+AUXINFO_FILES = auth_vas.conf
+auth_vas.conf: auth_vas.conf.in
+	sed -e 's,[@]AP_MODULEDIR[@],$(AP_MODULEDIR),g' \
+	    -e 's,[@]FINAL_DSOEXT[@],$(FINAL_DSOEXT),g' \
+	    < $^ > $@
+
+install-data-local: auth_vas.conf
+	$(mkdir_p) $(DESTDIR)/$(AP_CONF_D_DIR)
+	cp $^ $(DESTDIR)/$(AP_CONF_D_DIR)
+
+endif  # DISTRO_RPM
+endif # !DISTRO_DEB
 
 pp:
 	if [ -r "$(POLYPKGFILE)" ]; then \

@@ -34,7 +34,7 @@ endif # APXS2
 sbin_SCRIPTS=  setup-mod_auth_vas
 
 EXTRA_DIST=	NEWS README LICENCE NOTICE examples
-EXTRA_DIST+=	$(sbin_SCRIPTS) auth_vas.conf check-symbols.sh
+EXTRA_DIST+=	$(sbin_SCRIPTS) check-symbols.sh
 CLEANFILES=	setup-mod_auth_vas *.gcno *.gcda *.gcov
 
 EXTRA_DIST+=	setup-mod_auth_vas.in
@@ -44,10 +44,6 @@ setup-mod_auth_vas: setup-mod_auth_vas.in
 	    -e 's,[@]APXS[@],$(APXS),g' \
 	    < $^ > $@
 	chmod +x $@
-
-install-conf: auth_vas.conf
-	test -z "$(confdir)" || $(mkdir_p) "$(DESTDIR)$(confdir)"
-	$(INSTALL_DATA) $^ "$(DESTDIR)$(confdir)/auth_vas.conf"
 
 #EXTRA_DIST+=	ChangeLog
 #CLEANFILES+=	ChangeLog
