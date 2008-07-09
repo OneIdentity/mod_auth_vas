@@ -185,28 +185,6 @@ if test `uname -s` = "HP-UX"; then
     fi
 fi
 
-dnl Try to figure out what extension apxs uses by compiling a simple
-dnl extension. This will usually be .la.
-AC_CACHE_CHECK([apxs intermediate extension], [ac_cv_var_apxs_mod_ext], [
-    rm -f conftest.*
-    AC_LANG_CONFTEST([int module_conftest;])
-    ac_cv_var_apxs_mod_ext=
-    AS_IF([_AC_EVAL_STDERR("$APXS" -c $APXSFLAGS $LDFLAGS conftest.c >&AS_MESSAGE_LOG_FD 2>&1)], 
-	  [for ext in .la .sl .so; do
-	     if test -e conftest$ext; then
-	       ac_cv_var_apxs_mod_ext=$ext
-	       break
-	    fi
-           done])
- ])
-if test -z "$ac_cv_var_apxs_mod_ext"; then
-   AC_MSG_WARN([assuming intermediate .so extension for modules])
-   LIBTOOL_DSOEXT=.so
-else
-   LIBTOOL_DSOEXT=$ac_cv_var_apxs_mod_ext
-fi
-AC_SUBST(LIBTOOL_DSOEXT)
-
 AC_MSG_CHECKING([what the module's final file extension will be])
 # The file extension that the module will be installed with.
 # Usually .so. Sometimes libtool is not installed, in which case we assume .so

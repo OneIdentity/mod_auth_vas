@@ -22,13 +22,8 @@ mod_auth_vas_la_LDFLAGS = $(AM_LDFLAGS) \
 			  -module -avoid-version -export-dynamic
 
 # Ensure the module does not leak symbols
-if APXS1
-check-local: mod_auth_vas$(LIBTOOL_DSOEXT)
-	$(top_srcdir)/check-symbols.sh auth_vas $^
-else # APXS2
-check-local: mod_auth_vas$(LIBTOOL_DSOEXT)
+check-local: mod_auth_vas.la
 	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$(FINAL_DSOEXT)
-endif # APXS2
 
 # setup-mod_auth_vas is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas
