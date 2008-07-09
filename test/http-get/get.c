@@ -16,6 +16,10 @@
 #include <ctype.h>
 #endif
 
+#if HAVE_LIMITS_H
+# include <limits.h>
+#endif
+
 #include <errno.h>
 #include <netdb.h>
 

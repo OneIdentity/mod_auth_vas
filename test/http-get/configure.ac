@@ -18,7 +18,7 @@ fi
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([netdb.h stdlib.h string.h sys/socket.h unistd.h])
+AC_CHECK_HEADERS([netdb.h limits.h stdlib.h string.h sys/socket.h unistd.h])
 AC_CHECK_HEADERS([arpa/inet.h netinet/in.h])
 AC_CHECK_HEADERS([vas.h vas_gss.h gssapi.h gssapi_krb5.h])
 
