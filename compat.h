@@ -77,6 +77,7 @@ typedef enum {
 # define apr_base64_decode_len	ap_base64decode_len
 # define apr_base64_encode	ap_base64encode
 # define apr_base64_encode_len	ap_base64encode_len
+# define apr_cpystrn		ap_cpystrn
 # define apr_interval_time_t	uint64_t
 # define apr_status_t		int
 # define apr_pcalloc		ap_pcalloc
