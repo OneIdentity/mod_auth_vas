@@ -4,6 +4,10 @@ abs_builddir=		@abs_builddir@
 
 lib_LTLIBRARIES = mod_auth_vas.la
 
+AM_CFLAGS = $(VAS_CFLAGS) $(APR_CFLAGS) $(APR_INCLUDES)
+AM_CPPFLAGS = $(APR_CPPFLAGS)
+AM_LDFLAGS = $(VAS_LIBS) $(APR_LDFLAGS) $(APR_LIBS)
+
 mod_auth_vas_la_SOURCES = \
 			  mod_auth_vas.c \
 			  cache.c cache.h \
@@ -11,10 +15,10 @@ mod_auth_vas_la_SOURCES = \
 			  mav_apr_hash.c mav_apr_hash.h \
 			  #
 
-mod_auth_vas_la_CFLAGS = $(VAS_CFLAGS) $(CFLAGS)
-mod_auth_vas_la_CPPFLAGS = $(CPPFLAGS) $(DEFS) $(DEFAULT_INCLUDES) \
+mod_auth_vas_la_CPPFLAGS = $(AM_CPPFLAGS) \
 			   -DMODAUTHVAS_VERSION=\"$(PACKAGE_VERSION)\"
-mod_auth_vas_la_LDFLAGS = $(VAS_LIBS) $(LDFLAGS) \
+
+mod_auth_vas_la_LDFLAGS = $(AM_LDFLAGS) \
 			  -module -avoid-version -export-dynamic
 
 # Ensure the module does not leak symbols
@@ -64,10 +68,8 @@ check_PROGRAMS = \
 TESTS = $(check_PROGRAMS)
 
 test_cache_SOURCES = test-cache.c cache.c cache.h compat.h mav_apr_hash.c mav_apr_hash.h
-test_cache_CPPFLAGS = $(CPPFLAGS) $(APR_CPPFLAGS) $(APR_INCLUDES)
-test_cache_CFLAGS = $(VAS_CFLAGS) $(COVERAGE_CFLAGS)
-#test_cache_LIBS = $(VAS_LIBS) $(APR_LIBS) $(APR_LINK_LIBTOOL)
-test_cache_LDFLAGS = $(APR_LDFLAGS) $(APR_LINK_LD) $(COVERAGE_LDFLAGS)
+test_cache_CFLAGS = $(AM_CFLAGS) $(COVERAGE_CFLAGS)
+test_cache_LDFLAGS = $(AM_LDFLAGS) $(COVERAGE_LDFLAGS)
 
 if HAVE_COVERAGE
 
