@@ -91,12 +91,6 @@ AC_SUBST(APACHE_MINOR_VERSION)
 
 AM_CONDITIONAL(APXS1, [test $APACHE_MAJOR_VERSION = 1])
 
-# Add APXS's CPPFLAGS to regular CPPFLAGS, for tests
-# APXS1 doesn't have a CPPFLAGS variable
-if test $APACHE_MAJOR_VERSION = 2; then
-    CPPFLAGS="`$APXS -q CPPFLAGS` $CPPFLAGS"
-fi
-
 APXSFLAGS=
 
 #other apxs vars:
@@ -357,8 +351,16 @@ AC_SUBST([AP_CONF_D_DIR])
 libdir=$AP_MODULEDIR
 sysconfdir=$AP_SYSCONFDIR
 
-# Required for checks
-CPPFLAGS="-I`$APXS -q INCLUDEDIR` $CPPFLAGS"
+# APXS1 only has CFLAGS. APXS2 has the gamut of flags
+APXS_CFLAGS=`$APXS -q CFLAGS`
+if test $APACHE_MAJOR_VERSION = 2; then
+    APXS_CPPFLAGS=`$APXS -q CPPFLAGS`
+    APXS_LDFLAGS=`$APXS -q LDFLAGS`
+fi
+APXS_CPPFLAGS="-I`$APXS -q INCLUDEDIR` $APXS_CPPFLAGS"
+AC_SUBST([APXS_CFLAGS])
+AC_SUBST([APXS_CPPFLAGS])
+AC_SUBST([APXS_LDFLAGS])
 
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Convert a GNU ld search path (-rpath) into a libtool search path (-R)
