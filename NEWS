@@ -1,4 +1,4 @@
-3.6.2	(UNRELEASED)
+3.6.2	(2008-07-11)
 	- Fixed corruption of the internal auth cache that would result in
 	  a double-free error, crash, or refcount assertion. This would affect
 	  any server with "AuthVasUseBasic On". Bug #517.
