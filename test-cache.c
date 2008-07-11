@@ -435,40 +435,22 @@ test_expired_full_cache(apr_pool_t *pool) {
 
 }
 
-/* Pool allocator for APXS1. Should probably move this to ap_stub.c */
+/* Pool allocator for APXS1. Should probably move this to ap_stub.c
+ *
+ * Really Dumb Leaky implementation that does not actually do memory pooling,
+ * just allocates using malloc and forgets. For use only in test cases where
+ * the process is short-lived so tracking memory properly does not really
+ * matter.
+ */
 #if defined(APXS1)
-# define INITIAL_SIZE 1024u
 
 /* This is typedefed to `pool' by ap_alloc.h */
 struct pool {
-    size_t size, size_left;
-    void *root, *next_free_block;
-    struct pool *first_child, *sibling, *parent;
+    void *unused;
 };
 
 void *ap_palloc(apr_pool_t *mempool, int size) {
-    void *yourmem;
-
-    if (size <= mempool->size_left) {
-	yourmem = mempool->next_free_block;
-
-	mempool->size_left -= size;
-	mempool->next_free_block = ((char *)mempool->next_free_block) + size;
-
-	return yourmem;
-    }
-
-    /* size > mempool->size_left */
-    do {
-	mempool->size_left += mempool->size;
-	mempool->size *= 2;
-    } while (mempool->size_left < size);
-
-    mempool->root = realloc(mempool->root, size);
-    if (mempool->root == NULL)
-	ABORT("realloc memory for pool failed");
-
-    return ((char *)mempool->root) + size;
+    return malloc(size);
 }
 
 void *ap_pcalloc(apr_pool_t *mempool, int size) {
@@ -487,44 +469,11 @@ void ap_log_printf(const server_rec *s, const char *fmt, ...) {
 }
 
 static int apr_pool_create(apr_pool_t **outpool, apr_pool_t *parent) {
-    pool *newpool;
+    static apr_pool_t dummy;
 
-    if (parent) {
-	newpool = ap_pcalloc(parent, sizeof(*newpool));
+    /* Ensure the pool pointer is not NULL, to satisfy callers */
+    *outpool = &dummy;
 
-	if (!newpool)
-	    ABORT("Cannot allocate pool");
-
-	newpool->parent = parent;
-
-	if (!parent->first_child) {
-	    parent->first_child = newpool;
-	} else {
-	    pool *iter;
-
-	    iter = parent->first_child;
-
-	    while (iter->sibling)
-		iter = iter->sibling;
-
-	    iter->sibling = newpool;
-	}
-    } else {
-	newpool = calloc(1, sizeof(*newpool));
-
-	if (!newpool)
-	    ABORT("Cannot allocate pool");
-    }
-
-    newpool->size = INITIAL_SIZE;
-    newpool->size_left = INITIAL_SIZE;
-    newpool->root = malloc(INITIAL_SIZE);
-    newpool->next_free_block = newpool->root;
-
-    if (!newpool->root)
-	ABORT("Cannot allocate pool inital memory");
-
-    *outpool = newpool;
     return OK;
 }
 
@@ -537,36 +486,7 @@ apr_pool_t *ap_make_sub_pool(apr_pool_t *parent) {
 }
 
 static void apr_pool_destroy(apr_pool_t *dpool) {
-    apr_pool_t *child;
-
-    child = dpool->first_child;
-    while (child) {
-	pool *next_child;
-
-	next_child = child->sibling;
-
-	apr_pool_destroy(child);
-
-	child = next_child;
-    }
-
-    if (dpool->parent) {
-	/* Fix up the parent pointers. Grmbl. */
-	if (dpool->parent->first_child == dpool) {
-	    dpool->parent->first_child = dpool->sibling;
-	} else {
-	    pool *iter = dpool->parent->first_child;
-
-	    while (iter->sibling != dpool)
-		iter = iter->sibling;
-
-	    /* iter->sibling == pool */
-	    iter->sibling = dpool->sibling;
-	}
-    } else {
-	/* No parent -- root pool */
-	free(dpool);
-    }
+    /* Leak. */
 }
 #endif /* APXS1 */
 
