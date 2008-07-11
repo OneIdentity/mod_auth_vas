@@ -3,10 +3,6 @@
 	  a double-free error, crash, or refcount assertion. This would affect
 	  any server with "AuthVasUseBasic On". Bug #517.
 
-	- Detects the apache group in setup-mod_auth_vas when it is set by
-	  environment variable, eg. in /etc/apache2/envvars on Debian &
-	  similar. Bug #524.
-
 	- Fixed setup-mod_auth_vas trying to use "-u service" when creating the
 	  service account. Bug #525.
 
@@ -14,6 +10,10 @@
 
 	- Removed failure-inducing "-z defs" linker option. Fixes undefined
 	  symbol errors when building.
+
+	- Detects the apache group in setup-mod_auth_vas when it is set by
+	  environment variable, eg. in /etc/apache2/envvars on Debian &
+	  similar. Bug #524.
 
 	- Moved module compilation to libtool and automake instead of hacking
 	  around apxs. GNU make is no longer required.
