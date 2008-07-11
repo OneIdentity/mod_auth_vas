@@ -454,4 +454,14 @@ AM_CONDITIONAL([DISTRO_DEB], [test "$distro" = 'deb'])
 # DISTRO_RPM is for an Fedora-like config system (conf.d directory for module loading)
 AM_CONDITIONAL([DISTRO_RPM], [test "$distro" = 'rpm'])
 
+# The 32-bit hack should be done after everything else so that all the tests
+# are done natively, then we just make some adjustments
+AC_ARG_ENABLE([32bit-on-64bit],
+	      [AS_HELP_STRING([--enable-32bit-on-64bit],
+			      [Build a 32-bit module even if the machine is 64-bit (experimental)])])
+if test "$enable_32bit_on_64bit" = "yes"; then
+    VAS_LIBS=`echo $VAS_LIBS | sed -e 's,lib64,lib,g' | sed -e 's,-lgcc_s,,g'`
+    CFLAGS="$CFLAGS -m32"
+fi
+
 AC_OUTPUT

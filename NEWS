@@ -21,6 +21,9 @@
 	- Added "make package" target to build a package for deb & RPM
 	  systems.
 
+	- Add ./configure option --with-32bit-on-64bit to build a 32-bit module
+	  on 64-bit systems.
+
 3.6.1	(2008-04-07)
 
 	- Fixed "AuthVasRemoteUserMap ldap-attr" hanging the server when
