@@ -1,0 +1,43 @@
+#!/bin/sh ./run-test
+# Ensure that the server doesn't crash if it tries to authenticate a user
+# when the server was unable to establish credentials on startup
+description "Fail gracefully if the server has no creds"
+
+TESTFILE=testbug556.txt
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $DOC_DIR/$TESTFILE
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+ap_conf_append <<-.
+	AuthVasServerPrincipal HTTP/nonexistent.example.com@EXAMPLE.COM
+	<Directory "$DOC_DIR">
+		AuthType VAS
+		AuthVasUseBasic on
+		Require valid-user
+	</Directory>
+.
+
+ap_conf_check
+
+echo "test file for pid $$" > $DOC_DIR/$TESTFILE
+
+ap_start
+
+fetch_basic `ifdebug -d` $USER_test:$PASSWD_test $DOC_URL/$TESTFILE > /dev/null &&
+    fail "Unexpected success with Basic as $USER_test"
+test 500 = "$FETCH_RES" || fail "expected 500 (Internal Server Error) but got $FETCH_RES"
+
+vas_kinit $USER_test $PASSWD_test
+
+fetch_nego `ifdebug -d` $DOC_URL/$TESTFILE > /dev/null &&
+    fail "Unexpected success with Negotiate as $USER_test"
+test 500 = "$FETCH_RES" || fail "expected 500 (Internal Server Error) but got $FETCH_RES"
+
+vas_kdestroy

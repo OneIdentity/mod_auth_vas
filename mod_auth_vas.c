@@ -443,8 +443,9 @@ apr_pool_cleanup_null(void *data)
 #endif
 
 /**
- * Checks that the VAS server context is initialized and available.
- * Returns true if the context was initialised,
+ * Checks that the VAS server context and mod_auth_vas cache are initialized
+ * and available.
+ * Returns true if they are initialized and ready to be used
  * otherwise logs an error and returns false.
  * Callers should not attempt to LOCK or UNLOCK the VAS context if this
  * function returns false.
@@ -458,7 +459,7 @@ server_ctx_is_valid(server_rec *s)
     ASSERT(s != NULL);
     sc = GET_SERVER_CONFIG(s->module_config);
     ASSERT(sc != NULL);
-    return sc->vas_ctx != NULL;
+    return (sc->vas_ctx != NULL && sc->cache != NULL);
 }
 
 /**
@@ -2269,7 +2270,7 @@ auth_vas_check_user_id(request_rec *r)
 	if (!USING_AUTH_AUTHORITATIVE(dc))
 	    return DECLINED;
 	LOG_RERROR(APLOG_ERR, 0, r,
-	      "%s: no VAS context", __func__);
+	      "%s: no VAS context, check for errors logged at startup", __func__);
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
