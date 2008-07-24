@@ -2,11 +2,11 @@
 
 case "`uname -s`" in
 	AIX)	echo "aix"; exit 0;;
-	Linux)	if rpm -q suse-release >/dev/null; then
+	Linux)	if rpm -q suse-release >/dev/null 2>&1; then
 			echo "suse"; exit 0
-		elif rpm -q redhat-release >/dev/null; then
+		elif rpm -q redhat-release >/dev/null 2>&1; then
 			echo "redhat"; exit 0
-		elif rpm -q fedora-release >/dev/null; then
+		elif rpm -q fedora-release >/dev/null 2>&1; then
 			echo "redhat"; exit 0
 		elif test -f /etc/debian_version; then
 			echo "debian"; exit 0
