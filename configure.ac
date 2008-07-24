@@ -433,6 +433,8 @@ AC_ARG_WITH(distro,
 		 distro=deb
 	     elif test -r /etc/redhat-release; then
 		 distro=rpm
+	     elif test -r /etc/SuSE-release; then
+		 distro=rpm
 	     fi
 	     ])
 
@@ -440,9 +442,9 @@ AC_ARG_WITH(distro,
 distro=`echo "$distro" | tr '[[:upper:]]' '[[:lower:]]'`
 
 case "$distro" in
-    debian|ubuntu)
+    deb|debian|ubuntu)
 	distro=deb;;
-    fedora*) # Matches Fedora and FedoraCore
+    rpm|centos|fedora*|suse*|redhat*)
 	distro=rpm;;
     *)
 	distro=none;;

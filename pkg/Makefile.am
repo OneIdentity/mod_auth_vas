@@ -7,7 +7,7 @@ POLYPKGFILE=/data/rc/pub/rc/polypkg/pp
 POLYPKGURI=http://rc.quest.com/pub/rc/polypkg/pp
 
 EXTRA_DATA = $(AUXINFO_FILES)
-EXTRA_DIST = pp mav.pp.in
+EXTRA_DIST = pp mav.pp.in auth_vas.conf.in
 
 CLEANFILES = $(AUXINFO_FILES)
 DISTCLEANFILES = pp
@@ -53,7 +53,7 @@ endif  # APXS2
 else  # !DISTRO_DEB
 if  DISTRO_RPM
 
-AUXINFO_FILES = auth_vas.conf
+AUXINFO_FILES = auth_vas.conf.in
 auth_vas.conf: auth_vas.conf.in
 	sed -e 's,[@]AP_MODULEDIR[@],$(AP_MODULEDIR),g' \
 	    -e 's,[@]FINAL_DSOEXT[@],$(FINAL_DSOEXT),g' \
