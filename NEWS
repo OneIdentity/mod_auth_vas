@@ -1,6 +1,8 @@
-3.6.3   (UNRELEASED)
+3.6.3   (2008-07-25)
 	- Fixed a crash if the server could not establish Kerberos credentials
 	  and then tried to handle a Basic authentication request. Bug #556.
+
+	- Fixed platform detection for packaging. Bug #540.
 
 3.6.2	(2008-07-11)
 	- Fixed corruption of the internal auth cache that would result in
