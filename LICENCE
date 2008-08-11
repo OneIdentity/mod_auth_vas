@@ -30,7 +30,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------
-The Apache License covers apr_hash.c and apr_hash.h
+The Apache License covers apr_hash.c, apr_hash.h and test/ab.c
 
                                  Apache License
                            Version 2.0, January 2004
@@ -233,3 +233,20 @@ The Apache License covers apr_hash.c and apr_hash.h
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+------------------------------------------------------------------------
+The following applies to test/ab.c
+
+This program is based on ZeusBench V1.0 written by Adam Twiss
+which is Copyright (c) 1996 by Zeus Technology Ltd. http://www.zeustech.net/
+
+This software is provided "as is" and any express or implied waranties,
+including but not limited to, the implied warranties of merchantability and
+fitness for a particular purpose are disclaimed.  In no event shall
+Zeus Technology Ltd. be liable for any direct, indirect, incidental, special,
+exemplary, or consequential damaged (including, but not limited to,
+procurement of substitute good or services; loss of use, data, or profits;
+or business interruption) however caused and on theory of liability.  Whether
+in contract, strict liability or tort (including negligence or otherwise)
+arising in any way out of the use of this software, even if advised of the
+possibility of such damage.

@@ -33,4 +33,4 @@ RCDEV_TESTS = \
 	test.bug556 \
 	# end of RCDEV tests
 
-EXTRA_DIST= get-platform run-test $(RCDEV_TESTS)
+EXTRA_DIST= get-platform run-test $(RCDEV_TESTS) ab.c

@@ -1,6 +1,7 @@
 The notices in this file refer to the following files:
   apr_hash.c
   apr_hash.h
+  test/ab.c
 
 This product includes software developed by
 The Apache Software Foundation (http://www.apache.org/).
