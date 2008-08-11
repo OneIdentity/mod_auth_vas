@@ -197,6 +197,11 @@ typedef STACK_OF(X509) X509_STACK_TYPE;
 #include <limits.h>
 #endif
 
+#define USE_GSSAPI
+#ifdef USE_GSSAPI
+#include <gssapi.h>
+#endif
+
 /* ------------------- DEFINITIONS -------------------------- */
 
 #ifndef LLONG_MAX
@@ -305,6 +310,9 @@ int use_html = 0;       /* use html in the report */
 const char *tablestring;
 const char *trstring;
 const char *tdstring;
+#ifdef USE_GSSAPI
+int use_gssapi = 0;
+#endif
 
 apr_size_t doclen = 0;     /* the length the document should be */
 apr_int64_t totalread = 0;    /* total number of bytes read */
@@ -1839,6 +1847,7 @@ static void usage(const char *progname)
     fprintf(stderr, "                    Inserted after all normal header lines. (repeatable)\n");
     fprintf(stderr, "    -A attribute    Add Basic WWW Authentication, the attributes\n");
     fprintf(stderr, "                    are a colon separated username and password.\n");
+    fprintf(stderr, "    -G              Do Negotiate authentication using GSSAPI\n");
     fprintf(stderr, "    -P attribute    Add Basic Proxy Authentication, the attributes\n");
     fprintf(stderr, "                    are a colon separated username and password.\n");
     fprintf(stderr, "    -X proxy:port   Proxyserver and port number to use\n");
@@ -1971,6 +1980,92 @@ static int open_postfile(const char *pfile)
 
 /* ------------------------------------------------------- */
 
+#ifdef USE_GSSAPI
+/**
+ * Prints an error message as received from the GSSAPI library.
+ */
+static void print_gssapi_err(OM_uint32 major_errcode, OM_uint32 minor_errcode) {
+    OM_uint32 message_context = 0;
+    gss_buffer_desc status_string;
+
+    do {
+	OM_uint32 our_minor;
+
+	if (major_errcode == GSS_S_FAILURE) {
+	    /* Mech failure, interrogate the minor errcode */
+	    gss_display_status(&our_minor, minor_errcode, GSS_C_MECH_CODE,
+		    GSS_C_NO_OID, &message_context, &status_string);
+	} else {
+	    gss_display_status(&our_minor, major_errcode, GSS_C_GSS_CODE,
+		    GSS_C_NO_OID, &message_context, &status_string);
+	}
+
+	fprintf(stderr, "%.*s\n", (int)status_string.length, (char *)status_string.value);
+	gss_release_buffer(&minor_errcode, &status_string);
+    } while (message_context != 0);
+}
+
+/**
+ * Get the Authorization header to be used for Negotiate
+ * authentication.
+ * @param p Pool to allocate the header string from
+ * @param spn Service Principal Name to get credentials for
+ * @return Authorization header, including \r\n. If the header cannot be
+ * constructed, returns an empty string.
+ */
+char *negotiate_header(apr_pool_t *p, const char* spn) {
+    OM_uint32 major, minor;
+    gss_name_t service_name;
+    gss_cred_id_t cred;
+    gss_OID_set oidset;
+    OM_uint32 ticket_lifetime, ctx_lifetime;
+    gss_buffer_desc buffer;
+    gss_ctx_id_t ctx;
+    OM_uint32 flags;
+    char *auth = "";
+
+    if (GSS_S_COMPLETE == (major = gss_acquire_cred(&minor, GSS_C_NO_NAME, 0,
+	    GSS_C_NULL_OID_SET, GSS_C_INITIATE, &cred, &oidset,
+	    &ticket_lifetime))) {
+
+	buffer.length = strlen(spn);
+	buffer.value = spn;
+
+	if (GSS_S_COMPLETE == (major = gss_import_name(&minor, &buffer,
+		GSS_C_NO_OID, &service_name))) {
+
+	    /* XXX: Handle GSS_S_CONTINUE_NEEDED */
+	    if (GSS_S_COMPLETE == (major = gss_init_sec_context(&minor,
+		    GSS_C_NO_CREDENTIAL, &ctx, service_name, GSS_C_NO_OID,
+		    GSS_C_SEQUENCE_FLAG, 0, GSS_C_NO_CHANNEL_BINDINGS,
+		    GSS_C_NO_BUFFER, NULL, &buffer, &flags, &ctx_lifetime))) {
+
+		auth = apr_palloc(p, apr_base64_encode_len(buffer.length));
+		apr_base64_encode(auth, buffer.value, buffer.length);
+		auth = apr_pstrcat(p, "Authorization: Negotiate ", auth,
+			"\r\n", NULL);
+
+		gss_delete_sec_context(&minor, &ctx, &buffer);
+	    } else {
+		print_gssapi_err(major, minor);
+	    }
+
+	    gss_release_name(&minor, &service_name);
+	} else {
+	    print_gssapi_err(major, minor);
+	}
+
+	gss_release_cred(&minor, &cred);
+    } else {
+	print_gssapi_err(major, minor);
+    }
+
+    return auth;
+}
+#endif /* USE_GSSAPI */
+
+/* ------------------------------------------------------- */
+
 /* sort out command-line args and call test */
 int main(int argc, const char * const argv[])
 {
@@ -2016,7 +2111,7 @@ int main(int argc, const char * const argv[])
 #endif
 
     apr_getopt_init(&opt, cntxt, argc, argv);
-    while ((status = apr_getopt(opt, "n:c:t:b:T:p:v:rkVhwix:y:z:C:H:P:A:g:X:de:Sq"
+    while ((status = apr_getopt(opt, "n:c:t:b:T:p:v:rkVhwix:y:z:C:H:P:A:g:X:de:SqG"
 #ifdef USE_SSL
             "Z:f:"
 #endif
@@ -2115,6 +2210,11 @@ int main(int argc, const char * const argv[])
                 auth = apr_pstrcat(cntxt, auth, "Proxy-Authorization: Basic ",
                                        tmp, "\r\n", NULL);
                 break;
+#ifdef USE_GSSAPI
+	    case 'G':
+		use_gssapi = 1;
+		break;
+#endif
             case 'H':
                 hdrs = apr_pstrcat(cntxt, hdrs, optarg, "\r\n", NULL);
                 /*
@@ -2208,6 +2308,14 @@ int main(int argc, const char * const argv[])
                 "total number of requests\n", argv[0]);
         usage(argv[0]);
     }
+
+#ifdef USE_GSSAPI
+    if (use_gssapi) {
+	apr_cpystrn(tmp, "HTTP/", sizeof(tmp));
+	apr_cpystrn(tmp + 5, hostname, sizeof(tmp) - 5);
+	hdrs = apr_pstrcat(cntxt, hdrs, negotiate_header(cntxt, tmp), NULL);
+    }
+#endif
 
     if ((heartbeatres) && (requests > 150)) {
         heartbeatres = requests / 10;   /* Print line every 10% of requests */
