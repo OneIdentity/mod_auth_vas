@@ -1521,18 +1521,10 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    goto done;
 	}
 
-	/* FIXME: Call initialize_user instead? */
 	/* Create the remote user object now that we have their name */
-	ASSERT(rn->user == NULL);
-	vaserr = auth_vas_user_alloc(sc->cache, RUSER(r), &rn->user);
-	if (vaserr) {
-	    rn->user = NULL; /* ensure */
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		    "%s: Error allocating user object for %s",
-		    __func__, RUSER(r));
-	    result = HTTP_INTERNAL_SERVER_ERROR;
+	result = initialize_user(r, RUSER(r));
+	if (result)
 	    goto done;
-	}
 
 	/* Set RUSER to the configured attribute.
 	 * This has to be done after user object initialisation to ensure
