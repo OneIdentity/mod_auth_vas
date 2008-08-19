@@ -9,7 +9,14 @@ case "`uname -s`" in
 		elif rpm -q fedora-release >/dev/null 2>&1; then
 			echo "redhat"; exit 0
 		elif test -f /etc/debian_version; then
-			echo "debian"; exit 0
+			if test -f /usr/bin/apxs2; then
+				echo "debian-apache2"
+			elif test -f /usr/bin/apxs; then
+				echo "debian-apache1"
+			else
+				echo "debian"
+			fi
+			exit 0
 		fi;;
 	HP-UX)	echo "hpux"; exit 0;;
 esac

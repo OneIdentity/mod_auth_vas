@@ -270,7 +270,7 @@ case "$PLATFORM" in
 	VERSION=unknown
 	;;
 
-    debian)
+    debian-apache2|debian)
 	APACHE=/usr/sbin/apache2
 	APACHECTL=/usr/sbin/apache2ctl
 	CONF=/etc/apache2/sites-enabled/regress.conf
