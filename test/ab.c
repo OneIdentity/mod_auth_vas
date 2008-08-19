@@ -31,6 +31,13 @@
    **
  */
 
+/* To build this program with GSSAPI support provided by VAS, compile as follows:
+     `apxs2 -q CC` `vas-config --libs --cflags gssapi` \
+       `apr-config --libs --cflags --cppflags --includes --link-ld` \
+       -I`apxs2 -q INCLUDEDIR` `apu-config --link-ld --libs` \
+       -Wall -lssl -lm -o ab ab.c
+ */
+
 /*
    ** HISTORY:
    **    - Originally written by Adam Twiss <adam@zeus.co.uk>, March 1996
