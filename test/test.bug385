@@ -22,7 +22,7 @@ VERSION=`$APACHE -V | grep '^Server version' | cut -d/ -f2 | cut -d' ' -f1`
 MAJOR_VERSION=`echo "$VERSION" | cut -d. -f1`
 MINOR_VERSION=`echo "$VERSION" | cut -d. -f2`
 
-if [ "$MAJOR_VERSION" -lt 2 ] || [ "$MAJOR_VERSION" -eq 2 ] && [ "$MINOR_VERSION" -lt 2 ]; then
+if [ "$MAJOR_VERSION" -lt 2 ] || ([ "$MAJOR_VERSION" -eq 2 ] && [ "$MINOR_VERSION" -lt 2 ]); then
     echo "Server version $VERSION does not support authentication providers"
     exit 0
 fi
