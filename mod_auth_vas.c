@@ -1178,7 +1178,7 @@ check_password(request_rec *r, const char *username, const char *password)
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
 
-    TRACE_R(r, "%s: user='%s' password=...", __func__, username);
+    TRACE_R(r, "%s: user='%s'", __func__, username);
 
     if (LOCK_VAS(r)) {
 	LOG_RERROR(APLOG_ERR, 0, r,
