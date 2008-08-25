@@ -53,7 +53,6 @@ endif  # APXS2
 else  # !DISTRO_DEB
 if  DISTRO_RPM
 
-AUXINFO_FILES = auth_vas.conf.in
 auth_vas.conf: auth_vas.conf.in
 	sed -e 's,[@]AP_MODULEDIR[@],$(AP_MODULEDIR),g' \
 	    -e 's,[@]FINAL_DSOEXT[@],$(FINAL_DSOEXT),g' \
