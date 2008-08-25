@@ -1783,7 +1783,7 @@ set_cache_timeout(server_rec *server)
 
 	    /* Prevent wrapping */
 	    if (secs > (UINT_MAX / multiplier))
-		secs = UINT_MAX / multiplier;
+		secs = UINT_MAX;
 	    else
 		secs *= multiplier;
 
