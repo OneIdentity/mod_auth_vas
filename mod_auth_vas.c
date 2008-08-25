@@ -89,6 +89,8 @@
 typedef struct {
     vas_ctx_t   *vas_ctx;           /* The global VAS context - needs locking */
     vas_id_t    *vas_serverid;      /* The server identity */
+    apr_time_t   creds_established_at; /* The last time
+					  vas_id_establish_cred_keytab() was called. */
     auth_vas_cache      *cache;     /* See cache.h */
     const char  *server_principal;  /* AuthVasServerPrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
@@ -236,6 +238,7 @@ static void localize_remote_user(request_rec *r, const char *line);
 static void localize_remote_user_strcmp(request_rec *r);
 static int initialize_user(request_rec *request, const char *username);
 static authn_status check_password(request_rec *r, const char *username, const char *password);
+static int get_server_creds(server_rec *s);
 
 /*
  * The per-process VAS mutex.
@@ -1804,6 +1807,37 @@ set_cache_timeout(server_rec *server)
 }
 
 /**
+ * Establishes Kerberos credentials for the given server.
+ * Returns an HTTP error code or OK on success.
+ */
+static int
+get_server_creds(server_rec *s)
+{
+    vas_err_t vaserr;
+    auth_vas_server_config *sc = GET_SERVER_CONFIG(s->module_config);
+
+    /* Don't try getting a TGT yet.
+     * SPNs that are not also UPNs cannot get a TGT and would fail. */
+    vaserr = vas_id_establish_cred_keytab(sc->vas_ctx,
+					  sc->vas_serverid,
+					    VAS_ID_FLAG_USE_MEMORY_CCACHE
+					  | VAS_ID_FLAG_KEEP_COPY_OF_CRED
+					  | VAS_ID_FLAG_NO_INITIAL_TGT,
+					  sc->keytab_filename);
+    if (vaserr) {
+	LOG_ERROR(APLOG_ERR, 0, s,
+		"vas_id_establish_cred_keytab failed: %s",
+		vas_err_get_string(sc->vas_ctx, 1));
+	return HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    TRACE_S(s, "Successfully established credentials for %s", sc->server_principal);
+
+    sc->creds_established_at = apr_time_now();
+    return OK;
+}
+
+/**
  * Initialises the VAS context for a server.
  * Assumes that the server configuration files have been
  * parsed to fill in the server config records.
@@ -1886,22 +1920,8 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     }
 
     /* Establish our credentials using the service keytab */
-    /* Don't try getting a TGT yet. SPNs that are not also UPNs cannot
-     * get a TGT and would cause this to fail. */
-    vaserr = vas_id_establish_cred_keytab(sc->vas_ctx, 
-                                          sc->vas_serverid, 
-                                          VAS_ID_FLAG_USE_MEMORY_CCACHE |
-                                          VAS_ID_FLAG_KEEP_COPY_OF_CRED |
-                                          VAS_ID_FLAG_NO_INITIAL_TGT,
-                                          sc->keytab_filename);
-    if (vaserr != VAS_ERR_SUCCESS) {
-	LOG_ERROR(APLOG_ERR, 0, s,
-                  "vas_id_establish_cred_keytab failed, err = %s",
-                  vas_err_get_string(sc->vas_ctx, 1));
+    if (get_server_creds(s) != OK)
 	return;
-    } else {
-        TRACE_S(s, "successfully established creds for %s", sc->server_principal);
-    }
 
     /* If this SPN is also a UPN, it should be able to authenticate against
      * itself and prove that the keytab works (eg. not expired). If it is just
@@ -2567,6 +2587,21 @@ set_remote_user_attr(request_rec *r, const char *attr)
     }
 
     rn = GET_RNOTE(r);
+
+    /* Lookups sometimes fail if the server creds have expired. Ensure they're
+     * not too old. As of this writing I've been unable to reproduce the crash
+     * that occurs as a result of having expired credentials. See bug #569.
+     * Our workaround is to reinitialize credentials after half the default
+     * ticket_lifetime (ie. reinitialize every 5 hours). */
+#define MAV_REINIT_CREDS_AFTER_SECS 18000
+    if (apr_time_sec(apr_time_now()) >
+	    apr_time_sec(sc->creds_established_at) + MAV_REINIT_CREDS_AFTER_SECS)
+    {
+	LOG_RERROR(APLOG_DEBUG, 0, r,
+		"%s: reinitializing server credentials", __func__);
+	if (get_server_creds(r->server) != OK)
+	    return;
+    }
 
     if (set_user_obj(r))
 	return;
