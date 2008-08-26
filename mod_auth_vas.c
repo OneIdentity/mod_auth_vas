@@ -1274,7 +1274,6 @@ log_gss_error(const char *file, int line, int level, apr_status_t result,
 static void
 rnote_init(auth_vas_rnote *rn)
 {
-    memset(rn, 0, sizeof(*rn));
     rn->gss_ctx = GSS_C_NO_CONTEXT;
     rn->deleg_cred = GSS_C_NO_CREDENTIAL;
 }
@@ -1403,7 +1402,7 @@ rnote_get(auth_vas_server_config* sc, request_rec *r, auth_vas_rnote **rn_ptr)
     if (rn == NULL) {
 
         TRACE_R(r, "%s: creating rnote", __func__);
-        rn = (auth_vas_rnote *)apr_palloc(r->connection->pool, sizeof *rn);
+        rn = (auth_vas_rnote *)apr_pcalloc(r->connection->pool, sizeof *rn);
 
         /* initialize the rnote and set it on the record */
         rnote_init(rn);
