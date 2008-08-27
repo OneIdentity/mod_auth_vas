@@ -1,0 +1,68 @@
+#!/bin/sh ./run-test
+# Ensure `AuthVasRemoteUserMap ldap-attr <attr>` returns the right thing.
+# Based on bug 572, where `ldap-attr userPrincipalName` returned the
+# Kerberos principal (which is actually sAMAccountName@REALM) rather than the
+# userPrincipalName.
+
+description "AuthVasRemoteUserMap ldap-attr <attr> works"
+
+OUTPUTFILE=/tmp/bug572.$$.txt
+TESTFILE=script-$$.cgi
+EXPECTFILE=/tmp/bug572-expect.$$.txt
+ATTRS_TO_TEST="userPrincipalName sAMAccountName uidNumber name displayName objectCategory"
+
+cleanup () {
+   ap_stop
+   ap_conf_restore
+   rm -f $OUTPUTFILE $EXPECTFILE $DOC_DIR/$TESTFILE
+   vas_kdestroy
+}
+
+trap cleanup 0 1 2
+
+ap_conf_save
+
+# Need Kerberos creds to find the correct LDAP attribute values
+vas_kinit $USER_nomatch $PASSWD_nomatch
+
+# Test `AuthVasRemoteUserMap ldap-attr $1`
+test_attr () {
+    ATTR=$1
+
+    ap_conf_restore
+    ap_conf_append <<-.
+	    <Directory "$DOC_DIR">
+		    AuthType VAS
+		    Require user $USER_nomatch
+		    SetHandler cgi-script
+		    Options +ExecCGI
+		    AuthVasRemoteUserMap ldap-attr $ATTR
+	    </Directory>
+.
+
+    ap_conf_check
+    ap_start
+
+    cat > $DOC_DIR/$TESTFILE <<-EOT
+	#!/bin/sh
+	echo "Content-type: text/plain"
+	echo
+	echo "Hello \$REMOTE_USER"
+EOT
+    chmod +x $DOC_DIR/$TESTFILE
+
+    echo "Hello `vastool attrs -q samaccount userPrincipalName`" > $EXPECTFILE
+
+    fetch_basic `ifdebug -d` $USER_nomatch:$PASSWD_nomatch $DOC_URL/$TESTFILE > $OUTPUTFILE ||
+	fail "Failed to retrieve test file as $USER_nomatch (for $ATTR)"
+
+    diff -u $EXPECTFILE $OUTPUTFILE ||
+	fail "Output for $ATTR did not match expectations"
+}
+
+for attr in $ATTRS_TO_TEST; do
+    echo "Testing AuthVasRemoteUserMap ldap-attr $attr";
+    test_attr $attr
+done
+
+# hey vim: syntax=sh tw=80

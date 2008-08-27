@@ -31,6 +31,7 @@ RCDEV_TESTS = \
 	test.bug495 \
 	test.bug210 \
 	test.bug556 \
+	test.bug572 \
 	# end of RCDEV tests
 
 EXTRA_DIST= get-platform run-test $(RCDEV_TESTS) ab.c

@@ -2538,6 +2538,7 @@ static struct ldap_lookup_map {
     { "sAMAccountName",		vas_user_get_sam_account_name },
     { "distinguishedName",	vas_user_get_dn },
     { "objectSid",		vas_user_get_sid },
+    { "userPrincipalName",	vas_user_get_upn },
     { NULL, NULL }
 };
 
@@ -2559,13 +2560,6 @@ set_remote_user_attr(request_rec *r, const char *attr)
     /* Depends on the remote_user_map_methods having the right info */
     ASSERT(attr != NULL);
     ASSERT(attr[0]);
-
-    if (strcasecmp(attr, "userPrincipalName") == 0) {
-	LOG_RERROR(APLOG_DEBUG, 0, r,
-		"%s: Returning early because REMOTE_USER is already the UPN",
-		__func__);
-	return;
-    }
 
     /* RUSER might already be set - particularly on Apache 1 where it is
      * per-connection not per-request */
