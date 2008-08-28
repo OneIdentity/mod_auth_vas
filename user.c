@@ -163,10 +163,11 @@ auth_vas_user_alloc(
 
 	/* Cache refs the user object for itself */
 	auth_vas_cache_insert(cache, cached_user->username, cached_user);
+
+	auth_vas_user_ref(cached_user); /* For our caller */
     }
 
     /* Success */
-    auth_vas_user_ref(cached_user); /* For the caller */
     *outuser = cached_user;
 
     RETURN(VAS_ERR_SUCCESS);
