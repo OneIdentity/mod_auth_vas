@@ -89,6 +89,15 @@ APACHE_MINOR_VERSION=`echo $apache_version | cut -d. -f2`
 AC_SUBST(APACHE_MAJOR_VERSION)
 AC_SUBST(APACHE_MINOR_VERSION)
 
+if test $APACHE_MAJOR_VERSION = 1; then
+    case `$APXS -q CFLAGS` in
+	*-DEAPI*) ;;
+	*)
+	AC_MSG_ERROR([Your server does not support EAPI. $PACKAGE_NAME 3.6 and later require EAPI, please use $PACKAGE_NAME 3.5])
+	;;
+    esac
+fi
+
 AM_CONDITIONAL(APXS1, [test $APACHE_MAJOR_VERSION = 1])
 
 APXSFLAGS=
