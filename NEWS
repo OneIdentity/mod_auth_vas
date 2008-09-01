@@ -1,3 +1,24 @@
+3.6.4	(2008-09-01)
+	- Fix a crash on Apache 1.x when using Negotiate authentication.
+	  Bug #563.
+
+	- Avoid a possible crash after 10 hours (Kerberos credential expiry)
+	  by renewing credentials every 5 hours. Bug #569.
+
+	- Fix a memory leak due to incorrect reference counting on cached
+	  user objects. Bug #575.
+
+	- Fix `AuthVasRemoteUserMap ldap-attr userPrincipalName` returning
+	  the wrong name for users whose sAMAccountName is different from
+	  the first part of their userPrincipalName.
+
+	- Fix auth_vas.conf.in being deleted during `make clean`.
+
+	- Fix huge cache timeouts being clamped too small.
+
+	- Refuse to build for Apache 1 without EAPI as mod_auth_vas has been
+	  unable to run without EAPI (on Apache 1) since 3.6.0.
+
 3.6.3   (2008-07-25)
 	- Fixed a crash if the server could not establish Kerberos credentials
 	  and then tried to handle a Basic authentication request. Bug #556.
