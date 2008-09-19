@@ -1,10 +1,8 @@
 # (c) 2008 Quest Software. All right reserved.
 
-dnl The --tags option can be removed once there is an annotated tag
-dnl on the branch. (Old svn tags were imported as lightweight tags.)
 dnl For exported trees, the version is derived from the NEWS file.
 AC_INIT([mod_auth_vas], 
-	[esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git-describe --tags``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
+	[esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
 	     echo -n `head -n1 NEWS | cut -f1`.exp; fi)],
 	[support@quest.com])
 AC_PREREQ(2.55)
