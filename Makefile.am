@@ -78,4 +78,4 @@ endif # !HAVE_COVERAGE
 package:
 	$(MAKE) -C $(top_builddir)/pkg package
 	@echo Package built successfully:
-	@ls pkg/*.deb pkg/*.rpm 2>/dev/null || true
+	@ls pkg/*.deb pkg/*.rpm pkg/*.pkg 2>/dev/null || true
