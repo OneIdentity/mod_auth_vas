@@ -372,6 +372,22 @@ AC_SUBST([APXS_LDFLAGS])
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Convert a GNU ld search path (-rpath) into a libtool search path (-R)
 VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
+# Remove libgcc_s flags. libgcc_s is a complicated affair:
+# - on most GCC-based systems, libgcc_s is unnecessary and could cause errors
+#   if other libraries require more recent versioned symbols than those
+#   provided by VAS' libgcc_s (VAS bug #14342).
+# - Building 32-bit binaries on x86_64, libgcc_s *must not* be specified because
+#   VAS does not provide a 32-bit libgcc_s. (As seen on Solaris.) Otherwise
+#   ./configure bombs saying it can't find the VAS SDK.
+# - on AIX with Xlc, libgcc_s *must* be specified to avoid undefined symbols
+#   when linking with libvas (VAS bug #12950). This is handled below where
+#   if the link fails initially, we retry with -lgcc_s.
+# This would be solved if:
+# - libvas was compiled with -static-libgcc; or
+# - VAS' libgcc_s was only installed if it contained *newer* versioned symbols
+#   than the system's libgcc_s
+# VAS bug #14342 has most of the details.
+VAS_LIBS=`echo "$VAS_LIBS" | sed -e 's/-lgcc_s//g'`
 AC_SUBST(VAS_CFLAGS)
 AC_SUBST(VAS_LIBS)
 
