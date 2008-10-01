@@ -43,6 +43,7 @@ APXS_PATH="$PATH"
 APXS_PATH="$APXS_PATH:/opt/hpws/apache/bin"
 APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/usr/IBMIHS/bin:/opt/freeware/bin"
 APXS_PATH="$APXS_PATH:/usr/apache2/bin"
+APXS_PATH="$APXS_PATH:/usr/apache/bin"
 APXS_PATH="$APXS_PATH:/usr/local/bin:/usr/sbin:/usr/bin"
 APXS_PATH="$APXS_PATH:/usr/local/apache2:/usr/local/apache"
 
@@ -415,6 +416,10 @@ AC_ARG_ENABLE([rcdev-tests],
 	       esac],
 	      [ENABLE_RCDEV_TESTS=no])
 AM_CONDITIONAL(ENABLE_RCDEV_TESTS, test "x$ENABLE_RCDEV_TESTS" = "xyes")
+
+# Solaris 8 provides an incompatible getgrnam_r by default (bug #587)
+# Solution from http://article.gmane.org/gmane.comp.apache.logging.log4cxx.user/1664
+AC_DEFINE(_POSIX_PTHREAD_SEMANTICS, 1, [For a compatible getgrnam_r on Solaris])
 
 AC_CHECK_FUNCS([getgrnam_r memset strcasecmp strchr strtol])
 AC_CHECK_HEADERS([string.h mod_auth.h ap_provider.h])
