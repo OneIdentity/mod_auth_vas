@@ -2050,7 +2050,7 @@ mav_ip_subnet_cmp(void *rec, const char *key, const char *value)
 
 	slash = strchr(value, '/');
 	if (slash) {
-	    const char const *mask = slash + 1; /* for convenience */
+	    const char *const mask = slash + 1; /* for convenience */
 	    int addrlen = slash - value;
 
 	    if (addrlen > sizeof(addr) - 1) {
