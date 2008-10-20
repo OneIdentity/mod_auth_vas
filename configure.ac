@@ -45,6 +45,7 @@ APXS_PATH="$APXS_PATH:/opt/IBMIHS/bin:/usr/IBMIHS/bin:/opt/freeware/bin"
 APXS_PATH="$APXS_PATH:/usr/apache2/bin"
 APXS_PATH="$APXS_PATH:/usr/apache/bin"
 APXS_PATH="$APXS_PATH:/usr/local/bin:/usr/sbin:/usr/bin"
+APXS_PATH="$APXS_PATH:/usr/local/apache2/bin:/usr/local/apache/bin"
 APXS_PATH="$APXS_PATH:/usr/local/apache2:/usr/local/apache"
 
 if test x"$with_apxs" = x"default"; then
