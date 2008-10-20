@@ -150,6 +150,8 @@ determine_keytab_access () {
 		keytab_readwrite=yes
 	    fi
 	fi
+    else
+	echo "not found"
     fi
 }
 
