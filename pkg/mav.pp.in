@@ -20,6 +20,23 @@
   /etc/**
 
 %if [deb]
+ %if @APACHE_MAJOR_VERSION@ = 1
+  %depend
+   httpd (>= 1.3), httpd (<< 2.0)
+ %endif
+
+ %if @APACHE_MAJOR_VERSION@ = 2
+  %if @APACHE_MINOR_VERSION@ = 0
+  %depend
+   apache2 (>= 2.0), apache2 (<< 2.2)
+  %endif
+
+  %if @APACHE_MINOR_VERSION@ = 2
+   %depend
+    apache2 (>= 2.2), apache2 (<< 2.4)
+  %endif
+ %endif # Apache 2.x
+
 %post
  set -e
  @POSTINST_ENABLECMD@

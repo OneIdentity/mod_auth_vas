@@ -92,11 +92,14 @@ CLEANFILES += mav.pp
 
 mav.pp: mav.pp.in
 	sed \
+	    -e 's,[@]APACHE_MAJOR_VERSION[@],$(APACHE_MAJOR_VERSION),g' \
+	    -e 's,[@]APACHE_MINOR_VERSION[@],$(APACHE_MINOR_VERSION),g' \
 	    -e 's,@DEBPKGNAME@,lib$(DEB_APACHE_VERSION)-mod-auth-vas,g' \
 	    -e 's,@RPMPKGNAME@,mod_auth_vas-$(RPM_APACHE_VERSION),g' \
 	    -e 's,@MODULEDIR@,$(AP_MODULEDIR),g' \
 	    -e 's,@POSTINST_ENABLECMD@,$(POSTINST_ENABLECMD),g' \
 	    -e 's,@PRERM_DISABLECMD@,$(PRERM_DISABLECMD),g' \
+	    -e 's,^ *,,' \
 	    < $^ > $@
 
 pkgdestdir=$(top_builddir)/pkg/destdir
