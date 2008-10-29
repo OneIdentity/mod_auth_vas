@@ -1,5 +1,5 @@
 #! /bin/sh
-# (c) 2007 Quest Software, Inc. All rights reserved.
+# (c) 2008 Quest Software, Inc. All rights reserved.
 # 
 # This file's licence text is at the bottom of the file.
 #
@@ -15,6 +15,27 @@ VASTOOL=/opt/quest/bin/vastool
 KTUTIL=/opt/quest/bin/ktutil
 LOGFILE=/tmp/mod_auth_vas-setup.log.$$
 PACKAGE_VERSION='@PACKAGE_VERSION@'
+
+# Re-execute with a reasonable shell and sensible PATH on Solaris.
+if id -un >/dev/null 2>&1; then
+    echo ok >/dev/null
+else
+    if test -d /usr/xpg4/bin && test "$MAV_SANE_SHELL" != yes; then
+	MAV_SANE_SHELL=yes
+	export MAV_SANE_SHELL
+	if echo $PATH | grep xpg4 >/dev/null 2>&1; then
+	    echo ok > /dev/null
+	else
+	    PATH=/usr/xpg4/bin:$PATH
+	    export PATH
+	fi
+	echo "Re-executing with /usr/xpg4/bin in PATH..."
+	exec /usr/xpg4/bin/sh "$0" "$@"
+    fi
+    echo "WARNING: Could not find a sensible environment, consider re-running this" >&2
+    echo "         script with a POSIX-compatible shell such as bash or ksh." >&2
+    echo "         eg. /bin/bash $0 $@" >&2
+fi
 
 echo1 () { echo -n "$*"; }
 echo2 () { echo "$*\\c"; }
@@ -231,7 +252,8 @@ apxs=
 label "looking for Apache extension tool"
 for x in "$aflag" "@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs /usr/IBMIHS/bin/apxs; do
     test -z "$x" && continue
-    ap_target=`($x -q TARGET) 2>/dev/null` || continue
+    test -x "$x" || continue
+    ap_target=`$x -q TARGET 2>/dev/null`
     if test -n "$ap_target"; then
 	apxs="$x"
 	break;
