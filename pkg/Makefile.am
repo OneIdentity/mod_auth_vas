@@ -76,6 +76,7 @@ pp:
 	    echo "Cannot figure out how to get polypkg"; \
 	    exit 1; \
 	fi
+	chmod +x $@
 
 if APXS1
 DEB_APACHE_VERSION = apache
