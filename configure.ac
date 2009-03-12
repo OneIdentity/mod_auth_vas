@@ -137,7 +137,8 @@ if test "x$GCC" = "xyes"; then
     DESIRED_CFLAGS="-Wall -g"
 
     # Avoid requiring libraries unnecessarily
-    DESIRED_LDFLAGS="-Wl,--as-needed"
+    # and use the common sysv symbol hash rather than new GNU_HASH (bug #636)
+    DESIRED_LDFLAGS="-Wl,--as-needed -Wl,--hash-style=sysv"
 
     # Add stricter flags in developer mode
     if test "$enable_developer_mode" = "yes"; then
