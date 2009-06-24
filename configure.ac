@@ -15,6 +15,12 @@ AC_CONFIG_FILES([Makefile pkg/Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
+AH_BOTTOM([/* Bug 718: Compilation error with Oracle on RHEL if string.h
+ * comes after httpd.h. */
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif])
+
 dnl -- platform detection
 AC_CACHE_CHECK([platform type], [ac_cv_var_platform],
     [ac_cv_var_platform=unknown
