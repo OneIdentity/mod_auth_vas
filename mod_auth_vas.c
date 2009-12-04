@@ -2988,10 +2988,12 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 	 *  AuthVasLocalizeRemoteUser off -> AuthVasRemoteUserMap default
 	 */
 	if (strcasecmp(new_dc->remote_user_map, "default") != 0) {
-	    if (new_dc->localize_remote_user != FLAG_UNSET)
+	    if (new_dc->localize_remote_user != FLAG_UNSET &&
+		    strcasecmp(new_dc->remote_user_map, "local") != 0) {
 		LOG_P_ERROR(APLOG_NOTICE, 0, p,
 			"Ignoring " CMD_LOCALIZEREMOTEUSER " option "
 			"because " CMD_REMOTEUSERMAP " is set");
+	    }
 
 	    merged_dc->remote_user_map = apr_pstrdup(p,
 		    new_dc->remote_user_map);
