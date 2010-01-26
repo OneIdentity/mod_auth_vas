@@ -1575,7 +1575,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	result = HTTP_UNAUTHORIZED;
     } else if (strncmp(auth_param, "TlRM", 4) == 0) {
 	const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
-	LOG_RERROR(APLOG_ERR, 0, r,
+	LOG_RERROR(APLOG_INFO, 0, r,
 		    "NTLM authentication attempted");
 	/* Already logged the failure cause */
 	gsserr = 0;
