@@ -1856,10 +1856,15 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     auth_vas_server_config *sc;
     char *tmp_realm;
 
-    TRACE_S(s, "%s(host=%s)", __func__, s->server_hostname);
+    if(s->is_virtual)
+        TRACE_S(s, "%s Initializing VirtualHost", __func__);
+    else
+        TRACE_S(s, "%s Initializing Server", __func__);
+
+    TRACE_S(s, "%s: (host=%s)", __func__, s->server_hostname);
 
     sc = GET_SERVER_CONFIG(s->module_config);
-    TRACE_S(s, "sc=%pp", sc); /* %pp is apr_vformatter syntax for a (void*) */
+    TRACE_S(s, "%s: Server config=%pp", __func__, sc); /* %pp is apr_vformatter syntax for a (void*) */
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
@@ -3029,6 +3034,65 @@ auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
     return (void *)merged_dc;
 }
 
+/**
+ * Merges a parent server configuration with a base server configuration.
+ * Each field of a freshly allocated merged config is computed from
+ * the base_conf and new_conf structures.
+ *   @param p memory pool from which to allocate new merged config structure
+ *   @param base_conf the parent server's config structure
+ *   @param new_conf the server config being processed
+ *   @return the resulting, merged config structure
+ */
+static void *auth_vas_merge_server_config(apr_pool_t *p, void *base_conf,
+        void *new_conf)
+{
+    TRACE_P(p, "%s Merging server configs", __func__);
+
+    auth_vas_server_config *base_sc = (auth_vas_server_config *) base_conf;
+    auth_vas_server_config *new_sc = (auth_vas_server_config *) new_conf;
+    auth_vas_server_config *merged_sc;
+
+    merged_sc = (auth_vas_server_config *) apr_pcalloc(p, sizeof *merged_sc);
+
+    TRACE_P(p, __func__);
+
+    if (merged_sc != NULL) {
+        if (new_sc->server_principal) {
+            if (strcasecmp(new_sc->server_principal, "default") == 0)
+                merged_sc->server_principal = DEFAULT_SERVER_PRINCIPAL;
+            else
+                merged_sc->server_principal = apr_pstrdup(p,
+                        new_sc->server_principal);
+        } else if (base_sc->server_principal) {
+            merged_sc->server_principal = apr_pstrdup(p,
+                    base_sc->server_principal);
+        }
+
+        if (new_sc->default_realm) {
+            if (strcasecmp(new_sc->default_realm, "default") == 0)
+                merged_sc->default_realm = NULL;
+            else
+                merged_sc->default_realm
+                        = apr_pstrdup(p, new_sc->default_realm);
+        } else if (base_sc->default_realm) {
+            merged_sc->default_realm = apr_pstrdup(p, base_sc->default_realm);
+        }
+
+        if (new_sc->keytab_filename) {
+            if (strcasecmp(new_sc->keytab_filename, "default") == 0)
+                merged_sc->keytab_filename = NULL;
+            else
+                merged_sc->keytab_filename = apr_pstrdup(p,
+                        new_sc->keytab_filename);
+        } else if (base_sc->keytab_filename) {
+            merged_sc->keytab_filename = apr_pstrdup(p,
+                    base_sc->keytab_filename);
+        }
+    }
+
+    return (void *) merged_sc;
+}
+
 /** Passed an auth_vas_server_config pointer */
 static CLEANUP_RET_TYPE
 auth_vas_server_config_destroy(void *data)
@@ -3209,7 +3273,7 @@ module AP_MODULE_DECLARE_DATA auth_vas_module =
     auth_vas_create_dir_config,		/* create_dir_config */
     auth_vas_merge_dir_config,		/* merge_dir_config */
     auth_vas_create_server_config,	/* create_server_config */
-    NULL,				/* merge_server_config */
+    auth_vas_merge_server_config,	/* merge_server_config */
     auth_vas_cmds,			/* cmds */
     auth_vas_register_hooks		/* register_hooks */
 };
@@ -3237,7 +3301,7 @@ module MODULE_VAR_EXPORT auth_vas_module =
     auth_vas_create_dir_config,		/* create_dir_config */
     auth_vas_merge_dir_config,		/* merge_dir_config */
     auth_vas_create_server_config,	/* create_server_config */
-    NULL,				/* merge_server_config */
+    auth_vas_merge_server_config,	/* merge_server_config */
 
     auth_vas_cmds,			/* cmds */
     NULL,				/* handlers */
