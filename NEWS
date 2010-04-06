@@ -1,3 +1,9 @@
+3.6.6   (2010-04-01)
+        - VirtualHosts now inherit MAV server context settings Bug #747.
+
+        - Lowered "NTLM authentication attempted" messages from error to
+          info Bug #748.
+
 3.6.5	(2009-12-03)
 	- Don't link to libgcc_s unless necessary.
 
