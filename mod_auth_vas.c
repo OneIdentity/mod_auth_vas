@@ -1143,6 +1143,8 @@ auth_vas_auth_checker(request_rec *r)
 static int
 do_basic_accept(request_rec *r, const char *username, const char *password)
 {
+    TRACE_R(r, "%s", __func__);
+
     switch(check_password(r, username, password)) {
 	case AUTH_GRANTED:
 	    RAUTHTYPE(r) = "Basic";
@@ -1194,7 +1196,7 @@ check_password(request_rec *r, const char *username, const char *password)
 	RETURN(AUTH_GENERAL_ERROR);
 
     if (initialize_user(r, username))
-	RETURN(AUTH_GENERAL_ERROR);
+	RETURN(AUTH_USER_NOT_FOUND);
 
     /* Authenticate */
     /* XXX: Clearing the error is a hack to avoid misleading error messages if

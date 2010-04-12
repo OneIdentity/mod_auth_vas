@@ -3,7 +3,10 @@
 
         - Lowered "NTLM authentication attempted" messages from error to
           info Bug #748.
-
+        
+        - Return 401 Unauthorized instead of 500 Internal Server Error for
+          unknown users Bug #764.
+     
 3.6.5	(2009-12-03)
 	- Don't link to libgcc_s unless necessary.
 
