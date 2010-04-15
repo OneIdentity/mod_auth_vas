@@ -6,7 +6,10 @@
         
         - Return 401 Unauthorized instead of 500 Internal Server Error for
           unknown users Bug #764.
-     
+
+        - Updated the usage message for the setup-mod_auth_vas script to
+          include the -u user option.
+
 3.6.5	(2009-12-03)
 	- Don't link to libgcc_s unless necessary.
 

@@ -141,7 +141,7 @@ kinit () {
 #-- show usage (does not exit)
 usage () {
     cat <<-.
-	Usage: $0 [-a apxs] [-c conf] [-h]
+	Usage: $0 [-a apxs] [-c conf] [-h] [-u user]
 	    -a apxs
 	          Use program 'apxs' to find the web server extension tool.
 	          If not specified, a built-in search path is used.
@@ -151,7 +151,7 @@ usage () {
 	    -h
 	          Display this help text.
 	    -u user
-		  Specify a user to create the service keytab
+	          Specify a user to create the service keytab
 .
 }
 
