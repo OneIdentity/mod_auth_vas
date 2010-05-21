@@ -388,9 +388,100 @@ if [ $keytab_exists = no ]; then
 
 	# Update keytab availability
 	determine_keytab_access
-    else
-	echo "(Not creating HTTP/ service account)"
-    fi
+    elif yesorno "Use existing service account?"; then
+
+                checkroot
+
+       		echo "Please specify the samAccountName of the existing service:"
+      		query "samAccountName" SAMACCOUNTNAME
+      		test SAMACCOUNTNAME=
+
+# Prompt for existing service account password
+
+validate=0
+tries=0
+
+        while [ "$tries" -lt 3 ] && [ "$validate" -eq 0 ]; do
+
+oldmodes=`stty -g`
+stty -echo
+		query "Password for $SAMACCOUNTNAME" PASSWORD1
+echo 
+		query "Validate Password for $SAMACCOUNTNAME" PASSWORD2
+
+stty $oldmodes
+
+		if [ "$PASSWORD1" != "$PASSWORD2" ]; then 
+			echo "Passwords for $SAMACCOUNTNAME do not match"
+			tries=`expr $tries + 1`
+		else
+			validate=1
+		fi
+	done
+	if [ $validate != 1 ]; then
+
+		echo "Could not validate password"
+		exit
+	fi
+	
+# Create service account keytab
+ETYPES="aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 arcfour-hmac-md5 des-cbc-crc"
+
+# Get SPN's from the existing service account
+echo ""
+echo "Adding entries to $KEYTAB for:"
+echo ""
+
+http_spn_exist=0
+for spn in `$VASTOOL -u host/ attrs $SAMACCOUNTNAME servicePrincipalName samaccountname |
+            awk '{print $2}'`; do
+	echo "    $spn"
+	if echo "$spn" | grep -i "HTTP/" >/dev/null; then
+		http_spn_exist=1;
+        fi
+	for ETYPE in $ETYPES; do
+        	$KTUTIL -k "$KEYTAB" \
+		add -p $spn -V 0 -e $ETYPE -w $PASSWORD1 || \
+                die "Cannot add $spn to $SAMACCOUNTNAME service account keytab"
+	done
+done
+
+if [ "$http_spn_exist" -ne "1" ]; then
+
+        dnsname=`$VASTOOL -u host/ attrs -q host/ dNSHostName`
+        default_http="HTTP/$dnsname"
+
+	echo "Adding explicit spn for $default_http to keytab"
+	echo ""
+        echo "  WARNING: Explicit service names such as HTTP"
+        echo "  may not work in all environments."
+        echo ""
+
+	for ETYPE in $ETYPES; do
+		$KTUTIL -k "$KEYTAB" \
+		add -p "$default_http" -V 0 -e $ETYPE -w $PASSWORD1 || \
+		die "Cannot add HTTP/ to $SAMACCOUNTNAME service account keytab"
+	done
+fi
+
+PASSWORD1=
+PASSWORD2=
+
+	echo ""
+        label "checking new service keytab"
+        if test -f "$KEYTAB"; then
+            echo "found"
+        else
+            echo "still not found"
+            die "Cannot find $KEYTAB"
+        fi
+        echo ""
+
+        # Update keytab availability
+        determine_keytab_access
+    	else
+		echo "(Not creating HTTP/ service account)"
+    	fi
 fi
 
 # Keytab only has to exist for permission checks
@@ -440,7 +531,7 @@ else # Keytab is readable
   label "checking keytab can authenticate"
   tmpcc=/tmp/.mod_auth_vascc$$
   old_KRB5CCNAME="${KRB5CCNAME}"
-  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "HTTP/" kinit 2>/dev/null;
+  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "$SAMACCOUNTNAME" -k "$KEYTAB" auth -S "HTTP/" 2>/dev/null;
   then
     echo "yes"
   else
@@ -448,11 +539,12 @@ else # Keytab is readable
     echo ""
     echo "The HTTP/ service keytab could not be used to authenticate"
     echo "to Active Directory. This may mean that the service account"
-    echo "has expired, that the keytab has become corrupt, or that"
+    echo "has expired, that the keytab has become corrupt, that the "
+    echo "HTTP/ service is explicitly defined in the keytab, or that"
     echo "the password has been changed without updating the keytab."
     echo ""
     echo "The error message was:"
-    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "HTTP/" kinit 2>&1 | sed -e 's/^/  /'
+    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "$SAMACCOUNTNAME" -k "$KEYTAB" auth -S "HTTP/" 2>&1 | sed -e 's/^/  /'
     echo ""
     die "Keytab is not usable. Try deleting $KEYTAB and re-running $0"
   fi
@@ -484,7 +576,7 @@ else
     default_spn=none
     if test 1 -eq "$spns"; then
 	nbname=`$VASTOOL ${uflag+-u "$uflag"} attrs -s host/ sAMAccountName | sed -e 's/^.*: //;s/\$$//'`
-	if test x"HTTP/$nbname" != x"`$VASTOOL -u HTTP/ attrs -s HTTP/ servicePrincipalName | sed -e 's/.*: //'`"; then
+	if test x"HTTP/$nbname" != x"`$VASTOOL -u host/ attrs -s HTTP/ servicePrincipalName | sed -e 's/.*: //'`"; then
 	    default_spn="HTTP/$nbname"
 	fi
     fi
