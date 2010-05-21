@@ -1356,6 +1356,9 @@ initialize_user(request_rec *request, const char *username) {
     auth_vas_server_config *sc;
     auth_vas_rnote *rnote;
 
+
+    TRACE_R(request, "%s", __func__);
+
     /* Empty username is an automatic authentication failure
      * (and it used to trigger a bug in VAS, bug #9473). */
     if (username[0] == '\0')
@@ -1363,6 +1366,8 @@ initialize_user(request_rec *request, const char *username) {
 
     sc = GET_SERVER_CONFIG(request->server->module_config);
     rnote = GET_RNOTE(request);
+
+    TRACE_R(request, "%s: using server keytab %s", __func__, sc->keytab_filename);
 
     /* This is a soft assertion */
     if (rnote->user != NULL) {
@@ -1456,6 +1461,10 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
+
+    TRACE_R(r, "%s: server keytab: %s", __func__, sc->keytab_filename);
+    TRACE_R(r, "%s: server principal: %s", __func__, sc->server_principal);
+
     /* setup the input token */
     in_token.length = strlen(auth_param);
     in_token.value = (void *)auth_param;
@@ -1496,6 +1505,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	auth_vas_server_config	*sc;
 
 	sc = GET_SERVER_CONFIG(r->server->module_config);
+
+        TRACE_R(r, "%s: server keytab %s", __func__, sc->keytab_filename);
 
 	/* Get the client's name */
 	err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
@@ -1542,7 +1553,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	{
 	    gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
 	    vas_gss_acquire_cred(sc->vas_ctx, sc->vas_serverid, &minor_status, GSS_C_ACCEPT, &servercred);
-
+	    
 	vaserr = auth_vas_user_use_gss_result(rn->user, servercred, rn->gss_ctx);
 	if (vaserr) {
 	    result = HTTP_UNAUTHORIZED;
@@ -1816,6 +1827,10 @@ get_server_creds(server_rec *s)
 {
     vas_err_t vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(s->module_config);
+  
+    TRACE_S(s, "%s", __func__);
+
+    TRACE_S(s, "%s: server keytab %s", __func__, sc->keytab_filename);
 
     /* Don't try getting a TGT yet.
      * SPNs that are not also UPNs cannot get a TGT and would fail. */
@@ -1858,10 +1873,11 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     auth_vas_server_config *sc;
     char *tmp_realm;
 
-    if(s->is_virtual)
+    if(s->is_virtual) {
         TRACE_S(s, "%s Initializing VirtualHost", __func__);
-    else
+    } else {
         TRACE_S(s, "%s Initializing Server", __func__);
+    }
 
     TRACE_S(s, "%s: (host=%s)", __func__, s->server_hostname);
 
@@ -3055,6 +3071,14 @@ static void *auth_vas_merge_server_config(apr_pool_t *p, void *base_conf,
     auth_vas_server_config *merged_sc;
 
     merged_sc = (auth_vas_server_config *) apr_pcalloc(p, sizeof *merged_sc);
+
+    /*
+     * Overwrite the server default of HTTP/, if it is NULL then we will ether
+     * pick up the parents server setting, or reset it back to HTTP/. This will 
+     * allow us to pick up the parents server setting if it was set and is not
+     * using the default value.
+    */
+    new_sc->server_principal = NULL;
 
     TRACE_P(p, __func__);
 
