@@ -64,6 +64,8 @@ typedef enum {
 } authn_status;
 #endif /* !HAVE_MOD_AUTH_H */
 
+#define __APPNAME__ "mod_auth_vas"
+
 /*
  * Apache2 compatibility wrappers around the Apache1 API.
  * This is pretty awful, but it allows this module to
@@ -117,22 +119,28 @@ typedef enum {
 # define RAUTHTYPE(r) 		(r)->connection->ap_auth_type
 # if __GNUC__
 #  define LOG_RERROR(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,fmt ,##args)
-#  define LOG_ERROR(l,x,s,fmt,args...) \
-	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,fmt ,##args)
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r, "[%s] %s", __APPNAME__, apr_psprintf(RUSER_POOL(r), fmt ,##args))
+#  define LOG_ERROR(l,x,s,fmt,args...) {\
+        char _BUFFER[HUGE_STRING_LEN];\
+        apr_snprintf(_BUFFER, sizeof(_BUFFER), fmt, ##args);\
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s, "[%s] %s", __APPNAME__, _BUFFER);\
+}
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l,r,fmt ,##args)
+	ap_log_rerror(APLOG_MARK,l,r, "[%s] %s", apr_psprintf(RUSER_POOL(r), fmt ,##args))
 #  define LOG_P_ERROR(l,x,p,fmt,args...) \
-	ap_log_printf(0, fmt, ##args)
+	ap_log_printf(0, "[%s] %s", apr_psprintf(p, fmt, ##args))
 # else /* C99 */
 #  define LOG_RERROR(l,x,r, ...) \
-	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r,__VA_ARGS__)
-#  define LOG_ERROR(l,x,s, ...) \
-	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s,__VA_ARGS__)
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r, "[%s] %s", apr_psprintf(RUSER_POOL(r),__VA_ARGS__))
+#  define LOG_ERROR(l,x,s, ...) {\
+	char _BUFFER[HUGE_STRING_LEN];\
+        apr_snprintf(_BUFFER, sizeof(_BUFFER), __VA_ARGS__);\
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s, "[%s] %s", _BUFFER);\
+}
 #  define LOG_RERROR_ERRNO(l,x,r, ...) \
-	ap_log_rerror(APLOG_MARK,l,r,__VA_ARGS__)
+	ap_log_rerror(APLOG_MARK,l,r, "[%s] %s", apr_psprintf(RUSER_POOL(r), __VA_ARGS__))
 #  define LOG_P_ERROR(l,x,p, ...) \
-	ap_log_printf(0, __VA_ARGS__)
+	ap_log_printf(0, "[%s] %s", apr_psprintf(p, __VA_ARGS__))
 # endif
 
 # define APR_DECLARE(x) x
@@ -157,25 +165,26 @@ typedef enum {
 # define RUSER(r) (r)->user
 # define RUSER_POOL(r) (r)->pool
 # define RAUTHTYPE(r) (r)->ap_auth_type
+# define SERVPOOL(s) (s)->process->pool
 
 # if __GNUC__
 #  define LOG_RERROR(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,fmt ,##args)
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r, "[%s] %s", __APPNAME__, apr_psprintf(RUSER_POOL(r), fmt ,##args))
 #  define LOG_ERROR(l,x,s,fmt,args...) \
-	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,fmt ,##args)
+ 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s, "[%s] %s", __APPNAME__, apr_psprintf(SERVPOOL(s), fmt, ##args))
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
-	ap_log_rerror(APLOG_MARK,l,x,r,fmt ,##args)
+	ap_log_rerror(APLOG_MARK,l,x,r, "[%s] %s", __APPNAME__, apr_psprintf(RUSER_POOL(r), fmt ,##args))
 #  define LOG_P_ERROR(l,x,p,fmt,args...) \
-	ap_log_perror(APLOG_MARK,l,x,p,fmt ,##args)
+	ap_log_perror(APLOG_MARK,l,x,p, "[%s] %s", __APPNAME__, apr_psprintf(p, fmt ,##args))
 # else /* C99 */
 #  define LOG_RERROR(l,x,r,...) \
-	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r,__VA_ARGS__)
+	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,x,r, "[%s] %s", __APPNAME__, apr_psprintf(RUSER_POOL(r), __VA_ARGS__))
 #  define LOG_ERROR(l,x,s,...) \
-	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s,__VA_ARGS__)
+	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,x,s, "[%s] %s", __APPNAME__, apr_psprintf(SERVPOOL(s), __VA_ARGS__))
 #  define LOG_RERROR_ERRNO(l,x,r,...) \
-	ap_log_rerror(APLOG_MARK,l,x,r,__VA_ARGS__)
+	ap_log_rerror(APLOG_MARK,l,x,r, "[%s] %s", __APPNAME__, apr_psprintf(RUSER_POOL(r), __VA_ARGS__))
 #  define LOG_P_ERROR(l,x,p,...) \
-	ap_log_perror(APLOG_MARK,l,x,p,__VA_ARGS__)
+	ap_log_perror(APLOG_MARK,l,x,p, "[%s] %s", __APPNAME__, apr_psprintf(p, __VA_ARGS__))
 # endif
 
 #define CLEANUP_RET_TYPE 	apr_status_t
@@ -194,8 +203,8 @@ typedef enum {
  */
 #if defined(MODAUTHVAS_VERBOSE)
 # if __GNUC__
-#  define TRACE_S(s,f,a...)	LOG_ERROR(APLOG_DEBUG,OK,s,f ,##a)
-#  define TRACE_R(r,f,a...)	LOG_RERROR(APLOG_DEBUG,OK,r,f ,##a)
+#  define TRACE_S(s,f,a...)     LOG_ERROR(APLOG_DEBUG,OK,s,f,##a)
+#  define TRACE_R(r,f,a...)	LOG_RERROR(APLOG_DEBUG,OK,r,f,##a)
 # else /* C99 */
 #  define TRACE_S(s,...)	LOG_ERROR(APLOG_DEBUG,OK,s,__VA_ARGS__)
 #  define TRACE_R(r,...)	LOG_RERROR(APLOG_DEBUG,OK,r,__VA_ARGS__)
