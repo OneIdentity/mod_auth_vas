@@ -1,4 +1,4 @@
-3.6.6   (2010-04-01)
+3.6.6   (2010-05-20)
         - VirtualHosts now inherit MAV server context settings Bug #747.
 
         - Lowered "NTLM authentication attempted" messages from error to
@@ -9,6 +9,11 @@
 
         - Updated the usage message for the setup-mod_auth_vas script to
           include the -u user option.
+       
+        - Added module name to log messages Bug #749.
+
+        - Updated the setup-mod_auth_vas script to allow for an existing
+          Active Directory object to be used as the HTTP service account.
 
 3.6.5	(2009-12-03)
 	- Don't link to libgcc_s unless necessary.
