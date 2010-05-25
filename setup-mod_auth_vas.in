@@ -490,7 +490,7 @@ if test -f "$KEYTAB"; then
     echo ""
     echo "The Apache server process must be able to access the keytab."
     echo "I didn't find a httpd.conf file so I don't know what creds it uses."
-    echo "Tell me what unix group it will run as, and I'll check the"
+    echo "Tell me what Unix group it will run as, and I'll check the"
     echo "keytab file permissions so that it is readable by Apache."
     echo ""
     query "Group for Apache httpd process" APACHE_GROUP $APACHE_GROUP_GUESS
@@ -558,7 +558,7 @@ cat <<.
 If you have clients using Internet Explorer, a known issue (KB899417)
 can see them suddenly being unable to authenticate after only 30 minutes.
 A workaround is to create SPN aliases with all the possible 'short-names' 
-that the client could use to access this server (i.e http://short-name/).
+that the client could use to access this server (i.e. http://short-name/).
 SPN aliases can also be useful for servers with multiple DNS identities.
 .
 
