@@ -67,7 +67,7 @@ fi
 if test x"$APXS" = x"no"; then
     AC_MSG_FAILURE([no apxs found. Is the Apache developer kit installed?])
 fi
-AC_SUBST(APXS)
+AC_SUBST([APXS])
 
 dnl -- use this as a sanity test that apxs is working
 AC_MSG_CHECKING([Apache extension target])
@@ -92,8 +92,8 @@ apache_version=$(`$APXS -q SBINDIR`/`$APXS -q TARGET` -V | grep '^Server version
 AC_MSG_RESULT([$apache_version])
 APACHE_MAJOR_VERSION=`echo $apache_version | cut -d. -f1`
 APACHE_MINOR_VERSION=`echo $apache_version | cut -d. -f2`
-AC_SUBST(APACHE_MAJOR_VERSION)
-AC_SUBST(APACHE_MINOR_VERSION)
+AC_SUBST([APACHE_MAJOR_VERSION])
+AC_SUBST([APACHE_MINOR_VERSION])
 
 if test $APACHE_MAJOR_VERSION = 1; then
     case `$APXS -q CFLAGS` in
@@ -219,7 +219,7 @@ case $ac_cv_var_platform in
     ;;
 esac
 
-AC_SUBST(APXSFLAGS)
+AC_SUBST([APXSFLAGS])
 
 #-- check to see whether libgcc is required
 AC_MSG_CHECKING([for libgcc])
@@ -301,7 +301,7 @@ case $enable_tests in
 	TESTDIR=
 	;;
 esac
-AC_SUBST(TESTDIR)
+AC_SUBST([TESTDIR])
 
 #-- --with-vas
 AC_ARG_WITH(vas,
@@ -345,8 +345,8 @@ AC_SUBST([APR_LDFLAGS])
 
 AP_MODULEDIR=`"$APXS" -q LIBEXECDIR`
 AP_SYSCONFDIR=`"$APXS" -q SYSCONFDIR`
-AC_SUBST(AP_MODULEDIR)
-AC_SUBST(AP_SYSCONFDIR)
+AC_SUBST([AP_MODULEDIR])
+AC_SUBST([AP_SYSCONFDIR])
 
 # See whether the module info file should go in a directory like
 # /etc/httpd/conf.d . It really depends on whether the config file has an
@@ -397,8 +397,8 @@ VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
 #   than the system's libgcc_s
 # VAS bug #14342 has most of the details.
 VAS_LIBS=`echo "$VAS_LIBS" | sed -e 's/-lgcc_s//g'`
-AC_SUBST(VAS_CFLAGS)
-AC_SUBST(VAS_LIBS)
+AC_SUBST([VAS_CFLAGS])
+AC_SUBST([VAS_LIBS])
 
 # Try vasapi functions
 CFLAGS_save="$CFLAGS" LIBS_save="$LIBS"
