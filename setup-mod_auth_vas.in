@@ -522,7 +522,6 @@ if test -f "$KEYTAB"; then
        ;;
   esac
 fi
-
 if test "$keytab_readable" = "no"; then
   echo >&2
   echo "Skipping keytab validity check (keytab is unreadable)." >&2
@@ -531,7 +530,7 @@ else # Keytab is readable
   label "checking keytab can authenticate"
   tmpcc=/tmp/.mod_auth_vascc$$
   old_KRB5CCNAME="${KRB5CCNAME}"
-  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "$SAMACCOUNTNAME" -k "$KEYTAB" auth -S "HTTP/" 2>/dev/null;
+  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "HTTP/" -k "$KEYTAB" auth -S "HTTP/" >/dev/null;
   then
     echo "yes"
   else
@@ -544,14 +543,13 @@ else # Keytab is readable
     echo "the password has been changed without updating the keytab."
     echo ""
     echo "The error message was:"
-    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "$SAMACCOUNTNAME" -k "$KEYTAB" auth -S "HTTP/" 2>&1 | sed -e 's/^/  /'
+    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "HTTP/" -k "$KEYTAB" auth -S "HTTP/" 2>&1 | sed -e 's/^/  /'
     echo ""
     die "Keytab is not usable. Try deleting $KEYTAB and re-running $0"
   fi
   KRB5CCNAME="${old_KRB5CCNAME}"
   rm -f $tmpcc
 fi
-
 # KB899417
 cat <<.
 
