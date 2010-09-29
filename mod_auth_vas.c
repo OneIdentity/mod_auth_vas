@@ -3244,7 +3244,7 @@ auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
     if (auth_vas_libvas_mutex == NULL)
 	LOG_ERROR(APLOG_ERR, 0, s, "ap_create_mutex: failed");
     else
-	LOG_ERROR(APLOG_DEBUG, r, s, "created mutex");
+	LOG_ERROR(APLOG_DEBUG, 0, s, "created mutex");
   }
 #endif /* APXS1 */
 
