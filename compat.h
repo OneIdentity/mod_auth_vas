@@ -120,11 +120,11 @@ typedef enum {
 # if __GNUC__
 #  define LOG_RERROR(l,x,r,fmt,args...) \
 	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r, "[%s] %s", __APPNAME__, apr_psprintf(RUSER_POOL(r), fmt ,##args))
-#  define LOG_ERROR(l,x,s,fmt,args...) {\
+#  define LOG_ERROR(l,x,s,fmt,args...) do {\
         char _BUFFER[HUGE_STRING_LEN];\
-        apr_snprintf(_BUFFER, sizeof(_BUFFER), fmt, ##args);\
+        apr_snprintf(_BUFFER, sizeof _BUFFER, fmt, ##args);\
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s, "[%s] %s", __APPNAME__, _BUFFER);\
-}
+} while (0)
 #  define LOG_RERROR_ERRNO(l,x,r,fmt,args...) \
 	ap_log_rerror(APLOG_MARK,l,r, "[%s] %s", apr_psprintf(RUSER_POOL(r), fmt ,##args))
 #  define LOG_P_ERROR(l,x,p,fmt,args...) \
@@ -132,11 +132,11 @@ typedef enum {
 # else /* C99 */
 #  define LOG_RERROR(l,x,r, ...) \
 	ap_log_rerror(APLOG_MARK,l|APLOG_NOERRNO,r, "[%s] %s", apr_psprintf(RUSER_POOL(r),__VA_ARGS__))
-#  define LOG_ERROR(l,x,s, ...) {\
+#  define LOG_ERROR(l,x,s, ...) do {\
 	char _BUFFER[HUGE_STRING_LEN];\
-        apr_snprintf(_BUFFER, sizeof(_BUFFER), __VA_ARGS__);\
+        apr_snprintf(_BUFFER, sizeof _BUFFER, __VA_ARGS__);\
 	ap_log_error(APLOG_MARK,l|APLOG_NOERRNO,s, "[%s] %s", _BUFFER);\
-}
+} while (0)
 #  define LOG_RERROR_ERRNO(l,x,r, ...) \
 	ap_log_rerror(APLOG_MARK,l,r, "[%s] %s", apr_psprintf(RUSER_POOL(r), __VA_ARGS__))
 #  define LOG_P_ERROR(l,x,p, ...) \
