@@ -1356,7 +1356,6 @@ initialize_user(request_rec *request, const char *username) {
     auth_vas_server_config *sc;
     auth_vas_rnote *rnote;
 
-
     TRACE_R(request, "%s", __func__);
 
     /* Empty username is an automatic authentication failure
@@ -1367,7 +1366,7 @@ initialize_user(request_rec *request, const char *username) {
     sc = GET_SERVER_CONFIG(request->server->module_config);
     rnote = GET_RNOTE(request);
 
-    TRACE_R(request, "%s: using server keytab %s", __func__, sc->keytab_filename);
+    TRACE_R(request, "%s: using server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
 
     /* This is a soft assertion */
     if (rnote->user != NULL) {
@@ -1462,8 +1461,8 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
 
-    TRACE_R(r, "%s: server keytab: %s", __func__, sc->keytab_filename);
-    TRACE_R(r, "%s: server principal: %s", __func__, sc->server_principal);
+    TRACE_R(r, "%s: server keytab: %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
+    TRACE_R(r, "%s: server principal: %s", __func__, sc->server_principal ? sc->server_principal : "Not Set");
 
     /* setup the input token */
     in_token.length = strlen(auth_param);
@@ -1506,7 +1505,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	sc = GET_SERVER_CONFIG(r->server->module_config);
 
-        TRACE_R(r, "%s: server keytab %s", __func__, sc->keytab_filename);
+        TRACE_R(r, "%s: server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
 
 	/* Get the client's name */
 	err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
@@ -1830,7 +1829,7 @@ get_server_creds(server_rec *s)
   
     TRACE_S(s, "%s", __func__);
 
-    TRACE_S(s, "%s: server keytab %s", __func__, sc->keytab_filename);
+    TRACE_S(s, "%s: server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
 
     /* Don't try getting a TGT yet.
      * SPNs that are not also UPNs cannot get a TGT and would fail. */
@@ -2616,11 +2615,11 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	LOG_RERROR(APLOG_DEBUG, 0, r,
 		"%s: reinitializing server credentials", __func__);
 	if (get_server_creds(r->server) != OK)
-	    return;
+	    goto finish;
     }
 
     if (set_user_obj(r))
-	return;
+	goto finish;
 
     /* Look for attributes that are likely to be in the vas cache */
     {
