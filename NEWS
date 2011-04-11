@@ -1,3 +1,16 @@
+3.6.8   (2011-04-04)
+        - Defined apr_snprintf for Apache 1.x builds Bug #802.
+
+        - updated to compile on linux PPC.
+
+        - Added do {...} while loops to protect blocsk in APXS1.
+
+        - setup-mod_auth_vas now works in cross-forest or cross-domain
+          scenarios Bug #790.
+       
+        - mod_auth_vas could get into a deadlock state if set_usr_obj
+          failed when trying to set the remote users attr Bug #794
+
 3.6.6   (2010-05-20)
         - VirtualHosts now inherit MAV server context settings Bug #747.
 

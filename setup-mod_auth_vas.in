@@ -369,13 +369,28 @@ if [ $keytab_exists = no ]; then
         query "Service container DN" CONTAINER default
         test x"$CONTAINER" = x"default" && CONTAINER=
 
+        query "Service account name:" HTTP_SPN default
+        test x"$HTTP_SPN" = x"default" && HTTP_SPN="HTTP/"
+
         checkroot
 	kinit "create the service account"
 
         recordcmd $VASTOOL \
 	    ${uflag+-u "$uflag"} \
-	    service create ${CONTAINER:+-c "$CONTAINER"} HTTP/ || \
-	    die "Cannot create HTTP/ service account"
+	    service create ${CONTAINER:+-c "$CONTAINER"} "$HTTP_SPN" || \
+	    die "Cannot create $HTTP_SPN service account"
+
+        SAMACCOUNTNAME=`$VASTOOL ${uflag+-u "$uflag"} attrs -q -s "$HTTP_SPN" samaccountname || die "Cannot get samAccountName from $HTTP_SPN service account"`
+        REALM=`echo $HTTP_SPN | cut -d@ -f2 -s`
+        if [ "x$REALM" != "x" ]; then
+          SAMACCOUNTNAME="$SAMACCOUNTNAME@$REALM"
+        else
+          unset REALM
+        fi
+
+	# The keytab maynot be HTTP.keytab, parse the HTTP_SPN and take the first service class up to the /
+        # and use it for the keytab name, this is currently how vastool service create does it.
+        KEYTAB=/etc/opt/quest/vas/`echo $HTTP_SPN | cut -d/ -f1`.keytab
 
 	label "checking new service keytab"
 	if test -f "$KEYTAB"; then 
@@ -432,12 +447,21 @@ echo ""
 echo "Adding entries to $KEYTAB for:"
 echo ""
 
+REALM=`echo $SAMACCOUNTNAME | cut -d@ -f2 -s`
+if [ "x$REALM" = "x" ]; then
+ unset REALM
+fi
+
+HTTP_SPN="HTTP/${REALM+@"$REALM"}"
+
 http_spn_exist=0
-for spn in `$VASTOOL -u host/ attrs $SAMACCOUNTNAME servicePrincipalName samaccountname |
+for spn in `$VASTOOL -u host/ attrs $SAMACCOUNTNAME servicePrincipalName |
             awk '{print $2}'`; do
+        spn="$spn${REALM+@"$REALM"}"
 	echo "    $spn"
 	if echo "$spn" | grep -i "HTTP/" >/dev/null; then
-		http_spn_exist=1;
+        HTTP_SPN="$spn"
+		http_spn_exist=1
         fi
 	for ETYPE in $ETYPES; do
         	$KTUTIL -k "$KEYTAB" \
@@ -449,7 +473,8 @@ done
 if [ "$http_spn_exist" -ne "1" ]; then
 
         dnsname=`$VASTOOL -u host/ attrs -q host/ dNSHostName`
-        default_http="HTTP/$dnsname"
+        default_http="HTTP/$dnsname${REALM+@"$REALM"}"
+        HTTP_SPN="$default_http"
 
 	echo "Adding explicit spn for $default_http to keytab"
 	echo ""
@@ -463,6 +488,9 @@ if [ "$http_spn_exist" -ne "1" ]; then
 		die "Cannot add HTTP/ to $SAMACCOUNTNAME service account keytab"
 	done
 fi
+
+primary_spn=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
+$VASTOOL ktutil -k "$KEYTAB" alias $primary_spn $SAMACCOUNTNAME || die "Cannot alias $SAMACCOUNTNAME from $primary_spn in the $KEYTAB"
 
 PASSWORD1=
 PASSWORD2=
@@ -480,7 +508,7 @@ PASSWORD2=
         # Update keytab availability
         determine_keytab_access
     	else
-		echo "(Not creating HTTP/ service account)"
+		echo "(Not creating $HTTP_SPN service account)"
     	fi
 fi
 
@@ -530,20 +558,20 @@ else # Keytab is readable
   label "checking keytab can authenticate"
   tmpcc=/tmp/.mod_auth_vascc$$
   old_KRB5CCNAME="${KRB5CCNAME}"
-  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "HTTP/" -k "$KEYTAB" auth -S "HTTP/" >/dev/null;
+  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "$HTTP_SPN" -k "$KEYTAB" auth -S "$HTTP_SPN" >/dev/null;
   then
     echo "yes"
   else
     echo "no"
     echo ""
-    echo "The HTTP/ service keytab could not be used to authenticate"
-    echo "to Active Directory. This may mean that the service account"
-    echo "has expired, that the keytab has become corrupt, that the "
-    echo "HTTP/ service is explicitly defined in the keytab, or that"
-    echo "the password has been changed without updating the keytab."
+    echo "The $HTTP_SPN service keytab: $KEYTAB  could not be used to"
+    echo "authenticate to Active Directory. This may mean that the"
+    echo "service account has expired, that the keytab has become corrupt,"
+    echo "that the HTTP/ service is explicitly defined in the keytab,"
+    echo "or that the password has been changed without updating the keytab."
     echo ""
     echo "The error message was:"
-    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "HTTP/" -k "$KEYTAB" auth -S "HTTP/" 2>&1 | sed -e 's/^/  /'
+    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "$HTTP_SPN" -k "$KEYTAB" auth -S "$HTTP_SPN" 2>&1 | sed -e 's/^/  /'
     echo ""
     die "Keytab is not usable. Try deleting $KEYTAB and re-running $0"
   fi
@@ -566,15 +594,17 @@ if test "$keytab_readable" = "no"; then
     echo "Re-run $0 as root to set up SPN aliasing." >&2
     echo >&2
 else
-    kinit "run tests on the service account"
-    spns=`$VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | wc -l`
+    kinit "run tests on the service account $HTTP_SPN"
+    echo "SamAccountName: $SAMACCOUNTNAME"
+    spns=`$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | wc -l`
+
     primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
 
     #-- change the default to a suggested short spn
     default_spn=none
     if test 1 -eq "$spns"; then
-	nbname=`$VASTOOL ${uflag+-u "$uflag"} attrs -s host/ sAMAccountName | sed -e 's/^.*: //;s/\$$//'`
-	if test x"HTTP/$nbname" != x"`$VASTOOL -u host/ attrs -s HTTP/ servicePrincipalName | sed -e 's/.*: //'`"; then
+	nbname=`$VASTOOL -u host/ attrs -s host/ sAMAccountName | sed -e 's/^.*: //;s/\$$//'`
+	if test x"HTTP/$nbname" != x"`$VASTOOL -u host/ attrs -u "$SAMACCOUNTNAME" servicePrincipalName | sed -e 's/.*: //'`"; then
 	    default_spn="HTTP/$nbname"
 	fi
     fi
@@ -585,7 +615,7 @@ else
 The HTTP/ service is currently known by these SPNs (service principal names):
 
 .
-	    $VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | 
+	    $VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | 
 		awk '{print "\t" $2 }'
 	    echo
 	    query "Enter a new SPN alias, or 'none' to finish" SPN "$default_spn"
@@ -595,29 +625,29 @@ The HTTP/ service is currently known by these SPNs (service principal names):
 		-*)
 		    newspns=
 		    found=false
-		    for spn in `$VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | 
+		    for spn in `$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | 
 			awk '{print $2}'`; do
 			if [ x"-$spn" = x"$SPN" ]; then found=true
 			else newspns="$newspns $spn"; fi
 		    done
 		    if $found; then
 			recordcmd $VASTOOL ${uflag+-u "$uflag"} \
-			    setattrs -m -s HTTP/ servicePrincipalName \
+			    setattrs -m -u "$SAMACCOUNTNAME" servicePrincipalName \
 			    $newspns 
-			recordcmd $VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
+			recordcmd $VASTOOL ktutil -k "$KEYTAB" \
 			    remove -p ${SPN#-}
 		    else
 			echo "'${SPN#-}' not found" >&2
 		    fi
 		    ;;
 		*)
-		    oldspns=`$VASTOOL ${uflag+-u "$uflag"} attrs -s HTTP/ servicePrincipalName | 
+		    oldspns=`$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | 
 			awk '{print $2}'`
 		    recordcmd $VASTOOL ${uflag+-u "$uflag"} \
-			    setattrs -m -s HTTP/ servicePrincipalName \
+			    setattrs -m -u "$SAMACCOUNTNAME" servicePrincipalName \
 			    $oldspns $SPN &&\
-		    recordcmd $VASTOOL ktutil -k /etc/opt/quest/vas/HTTP.keytab \
-			    alias $primary $SPN
+		    recordcmd $VASTOOL ktutil -k "$KEYTAB" \
+			    alias $primary $SPN${REALM+@"$REALM"}
 		    ;;
 	    esac
 	    default_spn=none
@@ -633,7 +663,7 @@ if test -f "$KEYTAB"; then
     kinit "check that the service account is usable"
     label Testing whether service password expires
     # vastool attrs '-q' flag was only added in 3.2, so use sed magic.
-    uac=`$VASTOOL ${uflag+-u "$uflag"} attrs HTTP/ userAccountControl | sed -e 's,userAccountControl: \([0-9]*\),\1,'`
+    uac=`$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" userAccountControl | sed -e 's,userAccountControl: \([0-9]*\),\1,'`
     if [ "z$uac" = "z" ]; then
 	die "Unable to retrieve service account attributes, does the service exist?\
  Delete $KEYTAB and re-run $0 to re-create the service account."
@@ -649,7 +679,7 @@ if test -f "$KEYTAB"; then
 .
 	if yesorno "Disable password expiry for the service account? (recommended)"; then
 	    recordcmd $VASTOOL ${uflag+-u "$uflag"} \
-		setattrs -s HTTP/ userAccountControl \
+		setattrs -u "$SAMACCOUNTNAME" userAccountControl \
 				  `binary_or $uac $noexpire_flag`
 	    echo
 	fi
