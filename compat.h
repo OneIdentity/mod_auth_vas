@@ -90,6 +90,7 @@ typedef enum {
 # define apr_pstrdup		ap_pstrdup
 # define apr_pool_t		pool
 # define apr_ssize_t		ssize_t
+# define apr_snprintf		ap_snprintf
 # define apr_table_t		table
 # define apr_table_clear	ap_clear_table
 # define apr_table_do		ap_table_do
