@@ -3,14 +3,11 @@
 [solaris] name="QSFTmav"
 [deb] name="@DEBPKGNAME@"
 [rpm] name="@RPMPKGNAME@"
-  summary="VAS authentication & authorization for Apache"
+  summary="VAS authn & authz for Apache"
   description="Authentication & authorization module for the Apache web server \
   for use in conjunction with VAS (Vintela Authentication Services) from \
   Quest Software"
   copyright="(c) 2008 Quest Software, Inc."
-
-  # Special x.x.x.x versioning for AIX
-  pp_aix_version=`echo $version | sed -e 's,\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\)-\([0-9][0-9]*\).*,\1.\2.\3.\4,'`
 
 %files
   @MODULEDIR@/mod_auth_vas.%so
@@ -35,7 +32,13 @@
    %depend
     apache2 (>= 2.2), apache2 (<< 2.4)
   %endif
- %endif # Apache 2.x
+
+  %if @APACHE_MINOR_VERSION@ = 4
+   %depend
+    apache2 (>= 2.4), apache2 (<< 2.6)
+  %endif
+# Apache 2.x
+ %endif
 
 %post
  set -e
