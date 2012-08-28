@@ -3,7 +3,7 @@
 
         - updated to compile on linux PPC.
 
-        - Added do {...} while loops to protect blocsk in APXS1.
+        - Added do {...} while loops to protect blocks in APXS1.
 
         - setup-mod_auth_vas now works in cross-forest or cross-domain
           scenarios Bug #790.

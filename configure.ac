@@ -401,8 +401,9 @@ AC_SUBST([VAS_CFLAGS])
 AC_SUBST([VAS_LIBS])
 
 # Try vasapi functions
-CFLAGS_save="$CFLAGS" LIBS_save="$LIBS"
-CFLAGS="$CFLAGS $VAS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
+LIBS_save="$LIBS"
+CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
+CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS" LIBS="$LIBS $VAS_LIBS"
 AC_CHECK_FUNC([vas_ctx_alloc],,[
 	       # Prevent the cached "no" being reused
 	       $as_unset ac_cv_func_vas_ctx_alloc
@@ -412,7 +413,7 @@ AC_CHECK_FUNC([vas_ctx_alloc],,[
 			     [VAS_LIBS="$VAS_LIBS -L/opt/quest/lib/support -lgcc_s"],
 			     [AC_MSG_FAILURE([VAS 3 SDK required])])
 	       ])
-CFLAGS="$CFLAGS_save" LIBS="$LIBS_save"
+LIBS="$LIBS_save"
 
 AC_ARG_ENABLE([rcdev-tests],
 	      [AS_HELP_STRING([--enable-rcdev-tests],

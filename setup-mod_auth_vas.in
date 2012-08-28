@@ -15,6 +15,7 @@ VASTOOL=/opt/quest/bin/vastool
 KTUTIL=/opt/quest/bin/ktutil
 LOGFILE=/tmp/mod_auth_vas-setup.log.$$
 PACKAGE_VERSION='@PACKAGE_VERSION@'
+TRAP_SIGNAL_LIST="TERM INT HUP PIPE ALRM ABRT QUIT"
 
 # Re-execute with a reasonable shell and sensible PATH on Solaris.
 if id -un >/dev/null 2>&1; then
@@ -133,7 +134,7 @@ kinit () {
         echo "Please login with a sufficiently privileged domain account."
         query "Username" USER ${USER}
 	KRB5CCNAME=FILE:$ccname; export KRB5CCNAME
-	trap "rm -f $ccname" 0
+	trap "rm -f $ccname" ${TRAP_SIGNAL_LIST}
 	$VASTOOL kinit "$USER" || die "Unable to acquire credentials"
     fi
 }
@@ -250,7 +251,7 @@ fi
 #-- look for apxs
 apxs=
 label "looking for Apache extension tool"
-for x in "$aflag" "@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs /usr/IBMIHS/bin/apxs; do
+for x in "$aflag" "@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs /usr/IBMIHS/bin/apxs /usr/HTTPServer/bin/apxs; do
     test -z "$x" && continue
     test -x "$x" || continue
     ap_target=`$x -q TARGET 2>/dev/null`
@@ -737,7 +738,7 @@ if test -n "$apxs"; then
 	die "Module not loaded."
     fi
 else
-    echo 'unknown (need -a flag)'
+    echo 'unknown (re-run setup script with the -a flag, apxs was not found)'
 fi
 
 echo ""
