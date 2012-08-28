@@ -319,63 +319,63 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 static const command_rec auth_vas_cmds[] =
 {
     AP_INIT_RAW_ARGS(CMD_USENEGOTIATE, set_negotiate_conf,
-		APR_OFFSETOF(auth_vas_dir_config, negotiate_subnets),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, negotiate_subnets),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Kerberos SPNEGO authentication using Active Directory (On, Off or list of subnets)"),
     AP_INIT_FLAG(CMD_USEBASIC, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, auth_basic),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, auth_basic),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Basic Authentication using Active Directory"),
     AP_INIT_FLAG(CMD_AUTHORITATIVE, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, auth_authoritative),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, auth_authoritative),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Authenticate authoritatively ('Off' allows fall-through to other authentication modules)"),
     AP_INIT_FLAG(CMD_EXPORTDELEG, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, export_delegated),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, export_delegated),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Write delegated credentials to a file, setting KRB5CCNAME"),
     AP_INIT_FLAG(CMD_LOCALIZEREMOTEUSER, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Set REMOTE_USER to a local username instead of a UPN (deprecated in favor of "CMD_REMOTEUSERMAP")"),
     AP_INIT_FLAG(CMD_USESUEXEC, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, use_suexec),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, use_suexec),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Execute CGI scripts as the authenticated remote user (if suEXEC is active)"),
     AP_INIT_RAW_ARGS(CMD_REMOTEUSERMAP, set_remote_user_map_conf,
-		APR_OFFSETOF(auth_vas_dir_config, remote_user_map),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, remote_user_map),
 		ACCESS_CONF | OR_AUTHCFG,
 		"How to map the remote user identity to the REMOTE_USER environment variable"),
     AP_INIT_TAKE1(CMD_NTLMERRORDOCUMENT, ap_set_string_slot,
-		APR_OFFSETOF(auth_vas_dir_config, ntlm_error_document),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, ntlm_error_document),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Error page or string to provide when a client attempts unsupported NTLM authentication"),
     AP_INIT_TAKE1(CMD_SPN, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, server_principal),
+		(void*)APR_OFFSETOF(auth_vas_server_config, server_principal),
 		RSRC_CONF,
 		"User Principal Name (LDAP userPrincipalName) for the server"),
     AP_INIT_TAKE1(CMD_OLDSPN, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, server_principal),
+		(void*)APR_OFFSETOF(auth_vas_server_config, server_principal),
 		RSRC_CONF,
 		"User Principal Name (LDAP userPrincipalName) for the server (deprecated in favor of "CMD_SPN")"),
     AP_INIT_TAKE1(CMD_REALM, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, default_realm),
+		(void*)APR_OFFSETOF(auth_vas_server_config, default_realm),
 		RSRC_CONF,
 		"Default realm for authorization"),
     AP_INIT_TAKE1(CMD_CACHESIZE, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, cache_size),
+		(void*)APR_OFFSETOF(auth_vas_server_config, cache_size),
 		RSRC_CONF,
 		"Cache size (number of objects)"),
     AP_INIT_TAKE1(CMD_CACHEEXPIRE, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, cache_time),
+		(void*)APR_OFFSETOF(auth_vas_server_config, cache_time),
 		RSRC_CONF,
 		"Cache object lifetime (expiry)"),
     AP_INIT_TAKE1(CMD_KEYTABFILE, server_set_string_slot,
-		APR_OFFSETOF(auth_vas_server_config, keytab_filename),
+		(void*)APR_OFFSETOF(auth_vas_server_config, keytab_filename),
 		RSRC_CONF,
 		"Keytab file to use for authentication"),
     AP_INIT_FLAG(CMD_AUTHZ, ap_set_flag_slot,
-		APR_OFFSETOF(auth_vas_dir_config, authz),
+		(void*)APR_OFFSETOF(auth_vas_dir_config, authz),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Whether mod_auth_vas should provide authorization checks, or decline in favor of other authz modules"),
     { NULL }
@@ -655,19 +655,25 @@ match_group(request_rec *r, const char *name)
     	        VAS_API_VERSION_MICRO)
 #if VASVER < 40100
 #define vas_auth_check_client_membership(c,i,a,n) \
+        LOG_RERROR(APLOG_DEBUG, 0, r, "%s: i is %s", __func__, i ? "set" : "not set"); \
     	vas_auth_is_client_member(c,a,n)
 #endif
 
     vaserr = auth_vas_is_user_in_group(rnote->user, name);
     switch (vaserr) {
         case VAS_ERR_SUCCESS: /* user is member of group */
+            LOG_RERROR(APLOG_DEBUG, 0, r,
+                       "%s: %s is a member of %s",
+                       __func__, 
+                       auth_vas_user_get_principal_name(rnote->user),
+                       name);
 	    RETURN(OK);
             break;
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
             LOG_RERROR(APLOG_DEBUG, 0, r,
                        "%s: %s not member of %s",
-		       __func__,
+                       __func__,
                        auth_vas_user_get_principal_name(rnote->user),
                        name);
 	    RETURN(HTTP_FORBIDDEN);
@@ -676,7 +682,7 @@ match_group(request_rec *r, const char *name)
         case VAS_ERR_EXISTS: /* configured group not found */
             LOG_RERROR(APLOG_WARNING, 0, r,
                        "%s: group %s does not exist",
-		       __func__,
+                       __func__,
                        name);
             RETURN(HTTP_FORBIDDEN);
             break;
@@ -684,7 +690,7 @@ match_group(request_rec *r, const char *name)
         default: /* other type of error */
             LOG_RERROR(APLOG_ERR, 0, r,
                        "%s: fatal vas error: %s",
-		       __func__,
+                       __func__,
                        vas_err_get_string(sc->vas_ctx, 1));
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
             break;
@@ -1460,7 +1466,6 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
-
     TRACE_R(r, "%s: server keytab: %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
     TRACE_R(r, "%s: server principal: %s", __func__, sc->server_principal ? sc->server_principal : "Not Set");
 
@@ -1872,13 +1877,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     auth_vas_server_config *sc;
     char *tmp_realm;
 
-    if(s->is_virtual) {
-        TRACE_S(s, "%s Initializing VirtualHost", __func__);
-    } else {
-        TRACE_S(s, "%s Initializing Server", __func__);
-    }
-
-    TRACE_S(s, "%s: (host=%s)", __func__, s->server_hostname);
+    TRACE_S(s, "%s: Initializing %s for host: %s: Defined on line %i in conf file: %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->server_hostname, s->defn_line_number, s->defn_name);
 
     sc = GET_SERVER_CONFIG(s->module_config);
     TRACE_S(s, "%s: Server config=%pp", __func__, sc); /* %pp is apr_vformatter syntax for a (void*) */
@@ -1890,11 +1889,11 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     }
 
     if (sc->vas_ctx != NULL) {
-	TRACE_S(s, "%s: already initialised", __func__);
+	TRACE_S(s, "%s: context has already initialised", __func__);
 	return;
     }
 
-    TRACE_S(s, "%s: spn='%s'", __func__, sc->server_principal);
+    TRACE_S(s, "%s: Using servicePrincipalName '%s'", __func__, sc->server_principal);
 
     /* Obtain a new VAS context for the web server */
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
@@ -1973,8 +1972,9 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	if (errinfo)
 	    vas_err_info_free(errinfo);
     } else {
-        TRACE_S(s, "Successfully authenticated to %s with keytab",
-		sc->server_principal);
+        TRACE_S(s, "Successfully authenticated as %s using the %s",
+		sc->server_principal,
+        (sc->keytab_filename ? sc->keytab_filename : "default HTTP.ketyab"));
         vas_auth_free(sc->vas_ctx, vasauth);
     }
 
@@ -2897,6 +2897,11 @@ set_remote_user(request_rec *r)
     const char *method_name, *args;
     int i;
 
+	LOG_RERROR(APLOG_DEBUG, 0, r,
+		"%s: setting REMOTE_USER for %s",
+		__func__, RUSER(r));
+  
+
     dc = GET_DIR_CONFIG(r->per_dir_config);
     ASSERT(dc != NULL);
 
@@ -2906,10 +2911,17 @@ set_remote_user(request_rec *r)
     method_name = dc->remote_user_map;
     args = dc->remote_user_map_args;
 
+    LOG_RERROR(APLOG_DEBUG, 0, r,
+               "%s: setting REMOTE_USER variable using %s %s name mapping",
+               __func__, method_name, (args ? args : ""));
+
     for (i = 0; i < num_remote_user_map_methods; ++i) {
 	if (strcasecmp(method_name, remote_user_map_methods[i].name) == 0) {
 	    if (remote_user_map_methods[i].method)
 		(*remote_user_map_methods[i].method)(r, args);
+        LOG_RERROR(APLOG_DEBUG, 0, r,
+                "%s: Mapped user to %s using %s %s name mapping",
+                __func__, RUSER(r), method_name, (args ? args: ""));
 	    return;
 	}
     }
