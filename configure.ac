@@ -1,7 +1,7 @@
 # (c) 2008 Quest Software. All right reserved.
 
 dnl For exported trees, the version is derived from the NEWS file.
-AC_INIT([mod_auth_vas], 
+AC_INIT([mod_auth_vas4], 
 	esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
 	     echo -n `head -n1 NEWS | cut -f1`.exp; fi),
 	[support@quest.com])
@@ -11,7 +11,7 @@ AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign -Wall])
 
-AC_CONFIG_SRCDIR([mod_auth_vas.c])
+AC_CONFIG_SRCDIR([mod_auth_vas4.c])
 AC_CONFIG_FILES([Makefile pkg/Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])

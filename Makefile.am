@@ -2,39 +2,39 @@
 
 abs_builddir=		@abs_builddir@
 
-lib_LTLIBRARIES = mod_auth_vas.la
+lib_LTLIBRARIES = mod_auth_vas4.la
 
 AM_CFLAGS = $(VAS_CFLAGS) $(APR_CFLAGS) $(APR_INCLUDES) $(APXS_CFLAGS)
 AM_CPPFLAGS = $(APXS_CPPFLAGS) $(APR_CPPFLAGS)
 AM_LDFLAGS = $(VAS_LIBS) $(APR_LDFLAGS) $(APR_LIBS) $(APXS_LDFLAGS)
 ACLOCAL_AMFLAGS=-I m4
 
-mod_auth_vas_la_SOURCES = \
-			  mod_auth_vas.c \
+mod_auth_vas4_la_SOURCES = \
+			  mod_auth_vas4.c \
 			  cache.c cache.h \
 			  user.c user.h \
 			  #
 
-mod_auth_vas_la_CPPFLAGS = $(AM_CPPFLAGS) \
+mod_auth_vas4_la_CPPFLAGS = $(AM_CPPFLAGS) \
 			   -DMODAUTHVAS_VERSION=\"$(PACKAGE_VERSION)\"
 
-mod_auth_vas_la_LDFLAGS = $(AM_LDFLAGS) \
+mod_auth_vas4_la_LDFLAGS = $(AM_LDFLAGS) \
 			  -module -avoid-version -export-dynamic
 
 # Ensure the module does not leak symbols
-check-local: mod_auth_vas.la
-	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas$(FINAL_DSOEXT)
+check-local: mod_auth_vas4.la
+	$(top_srcdir)/check-symbols.sh auth_vas .libs/mod_auth_vas4$(FINAL_DSOEXT)
 
-# setup-mod_auth_vas is a setup wizard 
-sbin_SCRIPTS=  setup-mod_auth_vas
+# setup-mod_auth_vas4 is a setup wizard 
+sbin_SCRIPTS=  setup-mod_auth_vas4
 
 EXTRA_DIST=	NEWS README LICENCE NOTICE examples
 EXTRA_DIST+=	$(sbin_SCRIPTS) check-symbols.sh
-CLEANFILES=	setup-mod_auth_vas *.gcno *.gcda *.gcov
+CLEANFILES=	setup-mod_auth_vas4 *.gcno *.gcda *.gcov
 
-EXTRA_DIST+=	setup-mod_auth_vas.in
-CLEANFILES+=	setup-mod_auth_vas
-setup-mod_auth_vas: setup-mod_auth_vas.in
+EXTRA_DIST+=	setup-mod_auth_vas4.in
+CLEANFILES+=	setup-mod_auth_vas4
+setup-mod_auth_vas4: setup-mod_auth_vas4.in
 	sed -e 's,[@]PACKAGE_VERSION[@],$(PACKAGE_VERSION),g' \
 	    -e 's,[@]APXS[@],$(APXS),g' \
 	    < $^ > $@

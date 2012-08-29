@@ -1,7 +1,7 @@
 #ifndef MAV_COMPAT_H
 #define MAV_COMPAT_H
 /*
- * mod_auth_vas: VAS authentication module for Apache.
+ * mod_auth_vas4: VAS4 authentication module for Apache.
  * 
  *   Copyright 2007 Quest Software, Inc.
  *   All rights reserved.
@@ -50,7 +50,7 @@
 #include <httpd.h>
 #include <http_config.h>
 
-#define __APPNAME__ "mod_auth_vas"
+#define __APPNAME__ "mod_auth_vas4"
 
 # include <apr_strings.h>
 # include <apr_tables.h>
@@ -81,15 +81,15 @@
  * Convenience macros for obtaining per-server and per-dir config info
  * from various configuration vectors.
  */
-#define GET_SERVER_CONFIG(cv) (auth_vas_server_config *)ap_get_module_config(cv, &auth_vas_module)
-#define GET_DIR_CONFIG(cv) (auth_vas_dir_config *)ap_get_module_config(cv, &auth_vas_module)
+#define GET_SERVER_CONFIG(cv) (auth_vas_server_config *)ap_get_module_config(cv, &auth_vas4_module)
+#define GET_DIR_CONFIG(cv) (auth_vas_dir_config *)ap_get_module_config(cv, &auth_vas4_module)
 
 /*
  * Macros for keeping the VAS context in the request record notes.
  * NB Request notes may not always be available.
  */
-# define GET_RNOTE(r) (auth_vas_rnote *)ap_get_module_config((r)->request_config,  &auth_vas_module)
-# define SET_RNOTE(r, note) ap_set_module_config((r)->request_config, &auth_vas_module, note)
+# define GET_RNOTE(r) (auth_vas_rnote *)ap_get_module_config((r)->request_config,  &auth_vas4_module)
+# define SET_RNOTE(r, note) ap_set_module_config((r)->request_config, &auth_vas4_module, note)
 
 #ifdef __GNUC__
 # define MAV_UNUSED __attribute__((__unused__))
