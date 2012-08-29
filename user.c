@@ -61,6 +61,7 @@
 #include "compat.h"
 #include "user.h"
 #include "cache.h"
+#include "log.h"
 
 /**
  * A cacheable user object.
@@ -75,7 +76,7 @@ struct auth_vas_user {
     unsigned int	refcount;
     auth_vas_cache	*cache;
     vas_id_t	*vas_id;
-    vas_user_t	*vas_user;
+    vas_user_t	*vas_user_obj;
     vas_auth_t	*vas_authctx; /**< To be set by vas_gss_auth() or vas_auth() */
     char	*username; /**< As provided by the client */
     char	*principal_name; /**< Krb5 userPrincipalName */
@@ -121,8 +122,7 @@ auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
 /**
  * Get (and cache) the auth_vas_user for the given username.
  */
-vas_err_t
-auth_vas_user_alloc(
+vas_err_t auth_vas_user_alloc(
 	auth_vas_cache *cache,
 	const char *username,
 	auth_vas_user **outuser)
@@ -142,29 +142,78 @@ auth_vas_user_alloc(
     cached_user = (auth_vas_user*)auth_vas_cache_get(cache, username);
 
     if (!cached_user) {
-	char *upn;
+//	    char *upn;
 
-	vaserr = vas_id_alloc(vasctx, username, &local_id);
-	if (vaserr)
-	    RETURN(vaserr);
+        tfprintf("User enterened name %s\n", username);
 
-	vaserr = vas_id_get_name(vasctx, local_id, &upn, NULL);
-	if (vaserr) {
-	    /* We'd better fail the whole function. */
-	    vas_id_free(vasctx, local_id);
-	    RETURN(vaserr);
-	}
+	    vaserr = vas_id_alloc(vasctx, username, &local_id);
+    	if (vaserr)
+	        RETURN(vaserr);
 
-	cached_user = calloc(1, sizeof(*cached_user));
-	cached_user->cache = cache;
-	cached_user->username = strdup(username);
-	cached_user->vas_id = local_id;
-	cached_user->principal_name = upn;
+//    	vaserr = vas_id_get_name(vasctx, local_id, &upn, NULL);
+//	    if (vaserr) {
+//	        /* We'd better fail the whole function. */
+  //  	    vas_id_free(vasctx, local_id);
+	//        RETURN(vaserr);
+    //	}
 
-	/* Cache refs the user object for itself */
-	auth_vas_cache_insert(cache, cached_user->username, cached_user);
+      //  tfprintf("vas_id_get_name lookup returned %s\n", upn);
+/*
+        char* pname;
+        vaserr = vas_name_to_principal(vasctx, username, VAS_NAME_TYPE_USER, 0, &pname);
+        if(vaserr) {
+            tfprintf("Failed to get principal name for username %s.100s: %s", username, vas_err_get_string(vasctx,1));
+        }else {
+            tfprintf("Principal name for username %s: is %s", username, pname);
+        //    if(pname) free(pname);
 
-	auth_vas_user_ref(cached_user); /* For our caller */
+        }
+*/
+/*
+        vaserr = vas_id_get_user( vasctx, auth_vas_cache_get_serverid(cache), &cached_user->vas_user_obj );
+        if(vaserr) {
+            tfprintf("Failed to get vas_user_obj from vas_id %s\n", vas_err_get_string(vasctx, 1));
+        } else {
+            tfprintf("Got vald vas_user_obj for vas_id %s\n", username);
+            char * samaccountname;
+            vaserr = vas_user_get_sam_account_name(vasctx, auth_vas_cache_get_serverid(cache), cached_user->vas_user_obj, &samaccountname);
+            if(vaserr) {
+                tfprintf("Failed to get samaccountname for user %.100s: %s", username, vas_err_get_string(vasctx,1));
+            }else{
+                tfprintf("SamaccountName %s\n", samaccountname);
+                if(samaccountname) free(samaccountname);
+            }
+        }            
+*/
+    	cached_user = calloc(1, sizeof(*cached_user));
+	    cached_user->cache = cache;
+    	cached_user->username = strdup(username);
+	    cached_user->vas_id = local_id;
+        //cached_user->principal_name = upn;
+ //       cached_user->principal_name = pname;
+
+        vaserr = auth_vas_user_set_vas_user_obj(cached_user);
+        if (vaserr) {
+    	    tfprintf("failed to get user object for %.100s: %s\n", username, vas_err_get_string(vasctx,1));
+            RETURN(vaserr);
+        }else {
+            char* krb5princname;
+
+            vaserr = vas_user_get_krb5_client_name( vasctx, local_id, cached_user->vas_user_obj, &krb5princname);
+            if (vaserr) {
+                tfprintf("Failed to get Kerberos Client Name for user %.100s: %s", username, vas_err_get_string(vasctx,1));
+         //       RETURN(vaserr);
+            }else{
+                tfprintf("krb5PrincipalName %s\n", krb5princname);
+                cached_user->principal_name = krb5princname;
+//                if(krb5princname) free(krb5princname);
+            }
+        }
+
+	    /* Cache refs the user object for itself */
+    	auth_vas_cache_insert(cache, cached_user->username, cached_user);
+
+	    auth_vas_user_ref(cached_user); /* For our caller */
     }
 
     /* Success */
@@ -194,14 +243,29 @@ auth_vas_user_use_gss_result(
     vas_err_t vaserr;
     vas_ctx_t *vasctx;
 
+    if (!cred)
+    {
+	    tfprintf("%s: Cred is null",__FUNCTION__);
+    }else if (cred == GSS_C_NO_CREDENTIAL)
+    {
+	    tfprintf("%s: Cred is == to GSS_C_NO_CREDENTIAL", __FUNCTION__);
+    }else
+	    tfprintf("%s: Cred is valid", __FUNCTION__);
+
     if (user->vas_authctx) /* cached */
+    {
+        tfprintf("%s: User is already cached\n", __FUNCTION__);
 	return VAS_ERR_SUCCESS;
+    }
 
     vasctx = auth_vas_cache_get_vasctx(user->cache);
 
     vaserr = vas_gss_auth(vasctx, cred, context, &user->vas_authctx);
     if (vaserr)
-	user->vas_authctx = NULL; /* ensure */
+    {
+        tfprintf("vas_gss_auth failed with %d", vaserr);
+    	user->vas_authctx = NULL; /* ensure */
+    }
 
     return vaserr;
 }
@@ -228,13 +292,32 @@ auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
      */
     return vas_user_init(vasctx, serverid, avuser->username, 0, vasuserp);
 }
+/**
+ *  Set the vas_user_t object for the give auth_vas_user.
+ *
+ *  The result should be freed by the auth_vas_user_unref method
+ */
+vas_err_t auth_vas_user_set_vas_user_obj(auth_vas_user *vasuser)
+{
+    vas_ctx_t *vasctx;
+    vas_id_t *serverid;
+    vas_err_t vaserr;
+
+    vasctx = auth_vas_cache_get_vasctx(vasuser->cache);
+    serverid = auth_vas_cache_get_serverid(vasuser->cache);
+
+    if(!vasctx) tfprintf("vasctx was null\n");
+    if(!serverid) tfprintf("serverid was null\n");
+
+    vaserr = vas_user_init(vasctx, serverid, vasuser->username, 0, &vasuser->vas_user_obj);
+    if (vaserr) {
+        tfprintf("Failed to init user object: %s\n", vas_err_get_string(vasctx,1));
+    }
+    return vaserr;
+}
 
 /**
  * Get the user's username, as they provided it.
- * Generally you should use this for any libvas object initialisations instead
- * of the userPrincipalName (auth_vas_user_get_principal_name), because
- * usernames are resolved according to username-attr-name which is not
- * necessarily the userPrincipalName.
  */
 const char *
 auth_vas_user_get_name(const auth_vas_user *user)
@@ -243,11 +326,7 @@ auth_vas_user_get_name(const auth_vas_user *user)
 }
 
 /**
- * Get the user's userPrincipalName.
- * Generally you should use auth_vas_user_get_name for any libvas object
- * initialisations instead of this, because
- * usernames are resolved according to username-attr-name which is not
- * necessarily the userPrincipalName.
+ * Get the user's Krb5PrincipalName.
  */
 const char *
 auth_vas_user_get_principal_name(const auth_vas_user *user)
@@ -293,8 +372,8 @@ auth_vas_user_unref(auth_vas_user *user) {
 	if (user->vas_authctx)
 	    vas_auth_free(vasctx, user->vas_authctx);
 
-	if (user->vas_user)
-	    vas_user_free(vasctx, user->vas_user);
+	if (user->vas_user_obj)
+	    vas_user_free(vasctx, user->vas_user_obj);
 
 	if (user->vas_id)
 	    vas_id_free(vasctx, user->vas_id);

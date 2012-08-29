@@ -7,12 +7,12 @@ lib_LTLIBRARIES = mod_auth_vas.la
 AM_CFLAGS = $(VAS_CFLAGS) $(APR_CFLAGS) $(APR_INCLUDES) $(APXS_CFLAGS)
 AM_CPPFLAGS = $(APXS_CPPFLAGS) $(APR_CPPFLAGS)
 AM_LDFLAGS = $(VAS_LIBS) $(APR_LDFLAGS) $(APR_LIBS) $(APXS_LDFLAGS)
+ACLOCAL_AMFLAGS=-I m4
 
 mod_auth_vas_la_SOURCES = \
 			  mod_auth_vas.c \
 			  cache.c cache.h \
 			  user.c user.h \
-			  mav_apr_hash.c mav_apr_hash.h \
 			  #
 
 mod_auth_vas_la_CPPFLAGS = $(AM_CPPFLAGS) \
@@ -58,7 +58,7 @@ check_PROGRAMS = \
 
 TESTS = $(check_PROGRAMS)
 
-test_cache_SOURCES = test-cache.c cache.c cache.h compat.h mav_apr_hash.c mav_apr_hash.h
+test_cache_SOURCES = test-cache.c cache.c cache.h compat.h
 test_cache_CFLAGS = $(AM_CFLAGS) $(COVERAGE_CFLAGS)
 test_cache_LDFLAGS = $(AM_LDFLAGS) $(COVERAGE_LDFLAGS)
 
