@@ -1,19 +1,19 @@
 %set
-  name="mod-auth-vas"
-[solaris] name="QSFTmav"
+  name="mod-auth-vas4"
+[solaris] name="QSFTmav4"
 [deb] name="@DEBPKGNAME@"
 [rpm] name="@RPMPKGNAME@"
-  summary="VAS authn & authz for Apache"
+  summary="VAS4 authn & authz for Apache 2.4"
   description="Authentication & authorization module for the Apache web server \
   for use in conjunction with VAS (Vintela Authentication Services) from \
   Quest Software"
   copyright="(c) 2008 Quest Software, Inc."
 
 %files
-  @MODULEDIR@/mod_auth_vas.%so
+  @MODULEDIR@/mod_auth_vas4.%so
   # Apache 1.3 module info
-  @MODULEDIR@/*mod_auth_vas.info  optional
-  $sbindir/setup-mod_auth_vas
+  @MODULEDIR@/*mod_auth_vas4.info  optional
+  $sbindir/setup-mod_auth_vas4
   /etc/**
 
 %if [deb]

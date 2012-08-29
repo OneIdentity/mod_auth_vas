@@ -1,13 +1,13 @@
 # (c) 2008 Quest Software, Inc.
 # License at end of file.
 
-AP1_MODINFO=500mod_auth_vas.info
-AP2_MODLOAD=auth_vas.load
+AP1_MODINFO=500mod_auth_vas4.info
+AP2_MODLOAD=auth_vas4.load
 POLYPKGFILE=/data/rc/pub/rc/polypkg/pp
 POLYPKGURI=http://rc.quest.com/pub/rc/polypkg/pp
 
 EXTRA_DATA = $(AUXINFO_FILES)
-EXTRA_DIST = pp mav.pp.in auth_vas.conf.in
+EXTRA_DIST = pp mav.pp.in auth_vas4.conf.in
 
 CLEANFILES = $(AUXINFO_FILES)
 DISTCLEANFILES = pp
@@ -16,8 +16,8 @@ if DISTRO_DEB
 
 # Module info file used by Apache 1 on Debian
 # Only the LoadModule line is actually used (by apache-modconf)
-$(AP1_MODINFO): ../mod_auth_vas.c
-	echo "LoadModule: auth_vas_module $(AP_MODULEDIR)/mod_auth_vas$(FINAL_DSOEXT)" > $@
+$(AP1_MODINFO): ../mod_auth_vas4.c
+	echo "LoadModule: auth_vas4_module $(AP_MODULEDIR)/mod_auth_vas4$(FINAL_DSOEXT)" > $@
 	echo "Directives:" >> $@
 	@: 'Grab the list of directives from the source file'
 	grep '^#define CMD_' $^ | sed -e 's,[^"]*"\([^"]*\).*, \1,' >> $@
@@ -25,13 +25,13 @@ $(AP1_MODINFO): ../mod_auth_vas.c
 
 # Module load file used by Apache 2 on Debian
 $(AP2_MODLOAD):
-	echo "LoadModule auth_vas_module $(AP_MODULEDIR)/mod_auth_vas$(FINAL_DSOEXT)" > $@
+	echo "LoadModule auth_vas4_module $(AP_MODULEDIR)/mod_auth_vas4$(FINAL_DSOEXT)" > $@
 
 if  APXS1
 
 AUXINFO_FILES = $(AP1_MODINFO)
-POSTINST_ENABLECMD = apache-modconf apache enable mod_auth_vas
-PRERM_DISABLECMD = apache-modconf apache disable mod_auth_vas
+POSTINST_ENABLECMD = apache-modconf apache enable mod_auth_vas4
+PRERM_DISABLECMD = apache-modconf apache disable mod_auth_vas4
 
 install-data-local: $(AP1_MODINFO)
 	@: 'Module info file goes with module (/usr/lib/...)'
@@ -41,8 +41,8 @@ install-data-local: $(AP1_MODINFO)
 else  # APXS2
 
 AUXINFO_FILES = $(AP2_MODLOAD)
-POSTINST_ENABLECMD = a2enmod auth_vas
-PRERM_DISABLECMD = a2dismod auth_vas
+POSTINST_ENABLECMD = a2enmod auth_vas4
+PRERM_DISABLECMD = a2dismod auth_vas4
 
 install-data-local: $(AP2_MODLOAD)
 	@: 'Module load file goes under sysconfdir (/etc/apache2/...)'
@@ -53,12 +53,12 @@ endif  # APXS2
 else  # !DISTRO_DEB
 if  DISTRO_RPM
 
-auth_vas.conf: auth_vas.conf.in
+auth_vas4.conf: auth_vas4.conf.in
 	sed -e 's,[@]AP_MODULEDIR[@],$(AP_MODULEDIR),g' \
 	    -e 's,[@]FINAL_DSOEXT[@],$(FINAL_DSOEXT),g' \
 	    < $^ > $@
 
-install-data-local: auth_vas.conf
+install-data-local: auth_vas4.conf
 	$(mkdir_p) $(DESTDIR)/$(AP_CONF_D_DIR)
 	cp $^ $(DESTDIR)/$(AP_CONF_D_DIR)
 
@@ -96,7 +96,7 @@ mav.pp: mav.pp.in
 	    -e 's,[@]APACHE_MAJOR_VERSION[@],$(APACHE_MAJOR_VERSION),g' \
 	    -e 's,[@]APACHE_MINOR_VERSION[@],$(APACHE_MINOR_VERSION),g' \
 	    -e 's,@DEBPKGNAME@,lib$(DEB_APACHE_VERSION)-mod-auth-vas,g' \
-	    -e 's,@RPMPKGNAME@,mod_auth_vas-$(RPM_APACHE_VERSION),g' \
+	    -e 's,@RPMPKGNAME@,mod_auth_vas4-$(RPM_APACHE_VERSION),g' \
 	    -e 's,@MODULEDIR@,$(AP_MODULEDIR),g' \
 	    -e 's,@POSTINST_ENABLECMD@,$(POSTINST_ENABLECMD),g' \
 	    -e 's,@PRERM_DISABLECMD@,$(PRERM_DISABLECMD),g' \

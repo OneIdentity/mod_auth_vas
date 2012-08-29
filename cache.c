@@ -1,5 +1,5 @@
 /*
- * mod_auth_vas: VAS authentication module for Apache.
+ * mod_auth_vas4: VAS4 authentication module for Apache.
  *
  *   Copyright 2008 Quest Software, Inc.
  *   All rights reserved.
