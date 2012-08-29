@@ -1,0 +1,776 @@
+#! /bin/sh
+# (c) 2008 Quest Software, Inc. All rights reserved.
+# 
+# This file's licence text is at the bottom of the file.
+#
+# This helper script is provided to simplify setting up mod_auth_vas4
+# on a basic web server. It creates the HTTP service for the computer
+# (if not done), and changes ownerships on the resulting keytab.
+#
+
+set -e
+
+KEYTAB=/etc/opt/quest/vas/HTTP.keytab
+VASTOOL=/opt/quest/bin/vastool
+KTUTIL=/opt/quest/bin/ktutil
+LOGFILE=/tmp/mod_auth_vas-setup4.log.$$
+PACKAGE_VERSION='@PACKAGE_VERSION@'
+TRAP_SIGNAL_LIST="TERM INT HUP PIPE ALRM ABRT QUIT"
+
+# Re-execute with a reasonable shell and sensible PATH on Solaris.
+if id -un >/dev/null 2>&1; then
+    echo ok >/dev/null
+else
+    if test -d /usr/xpg4/bin && test "$MAV_SANE_SHELL" != yes; then
+	MAV_SANE_SHELL=yes
+	export MAV_SANE_SHELL
+	if echo $PATH | grep xpg4 >/dev/null 2>&1; then
+	    echo ok > /dev/null
+	else
+	    PATH=/usr/xpg4/bin:$PATH
+	    export PATH
+	fi
+	echo "Re-executing with /usr/xpg4/bin in PATH..."
+	exec /usr/xpg4/bin/sh "$0" "$@"
+    fi
+    echo "WARNING: Could not find a sensible environment, consider re-running this" >&2
+    echo "         script with a POSIX-compatible shell such as bash or ksh." >&2
+    echo "         eg. /bin/bash $0 $@" >&2
+fi
+
+echo1 () { echo -n "$*"; }
+echo2 () { echo "$*\\c"; }
+echo3 () { echo "$* +"; }
+
+if test "x`echo1 y`z" = "xyz"; then
+    echon() { echo1 "$*"; }
+elif test "x`echo2 y`z" = "xyz"; then
+    echon () { echo2 "$*"; }
+else
+    echon () { echo3 "$*"; }
+fi
+
+umask 077
+
+#-- prints a label with dots after it, and no newline
+label () {
+    echon "  `echo $* ............................................... | cut -c -40`  "
+}
+
+#-- prints an error message and dies
+die () {
+    echo "  -> Failed: $1" >&2
+    $logfile_written && echo "(Log written to $LOGFILE)"
+    exit 1
+}
+
+#-- prompt user for information
+#   usage: query prompt varname [default]
+query () {
+    eval $2=
+    while eval "test ! -n \"\$$2\""; do
+	if read xx?yy <$0 2>/dev/null; then
+	    eval "read \"$2?$1${3+ [$3]}: \"" || die "(end of file)"
+	else
+	    eval "read -p \"$1${3+ [$3]}: \" $2" || die "(end of file)"
+	fi
+	eval : "\${$2:=\$3}"
+    done
+}
+
+#-- prompt for a yes/no question
+yesorno () {
+    echo "";
+    while :; do
+	query "$1" YESORNO y
+	case "$YESORNO" in
+	    Y*|y*) echo; return 0;;
+	    N*|n*) echo; return 1;;
+	    *) echo "Please enter 'y' or 'n'" >&2;;
+	esac
+    done
+}
+
+#-- record and execute a shell command
+logfile_written=false
+recordcmd () {
+    if ! $logfile_written; then
+	rm -f $LOGFILE
+	set -o noclobber
+	exec 5>$LOGFILE 
+	set +o noclobber
+    	logfile_written=true
+    fi
+    (echo "# `date`";
+    echo "$*";
+    echo ) >&5
+    "$@"
+}
+
+#-- get a TGT for some operations
+kinit () {
+    if [ -n "$KRB5CCNAME" -o -n "$uflag" ]; then
+	# If KRB5CCNAME is exported, then assume kinit is done
+	# If -u is supplied then a password will be prompted
+	return
+    fi
+    if test -r /tmp/krb5cc_`id -u`; then
+	KRB5CCNAME=/tmp/krb5cc_`id -u`; export KRB5CCNAME
+	return
+    fi
+    if [ "z$SUDO_UID" != "z" ] && [ -r /tmp/krb5cc_${SUDO_UID} ]; then
+	KRB5CCNAME=/tmp/krb5cc_${SUDO_UID}; export KRB5CCNAME
+	return
+    fi
+    local USER="$USER"
+    ccname=/tmp/.mav_setup_$$
+    if test ! -s $ccname; then
+	if [ $# -eq 1 ]; then
+	    echo "Credentials required to $1"
+	fi
+	USER="${SUDO_USER:-${USER}}"
+	if [ z"$USER" = z"root" ]; then USER=Administrator; fi
+	echo
+        echo "Please login with a sufficiently privileged domain account."
+        query "Username" USER ${USER}
+	KRB5CCNAME=FILE:$ccname; export KRB5CCNAME
+	trap "rm -f $ccname" ${TRAP_SIGNAL_LIST}
+	$VASTOOL kinit "$USER" || die "Unable to acquire credentials"
+    fi
+}
+
+#-- show usage (does not exit)
+usage () {
+    cat <<-.
+	Usage: $0 [-a apxs] [-c conf] [-h] [-u user]
+	    -a apxs
+	          Use program 'apxs' to find the web server extension tool.
+	          If not specified, a built-in search path is used.
+	    -c conf
+	          Use file 'conf' as the main Apache configuration file. If
+	          not specified, the apxs extension tool is queried.
+	    -h
+	          Display this help text.
+	    -u user
+	          Specify a user to create the service keytab
+.
+}
+
+determine_keytab_access () {
+    # These flags indicate access control for the current user, not for apache
+    keytab_exists=no
+    keytab_readable=no
+    keytab_readwrite=no
+
+    label "looking for HTTP/ keytab"
+    if test -f "$KEYTAB"; then
+	keytab_exists=yes
+	echo "$KEYTAB"
+	if test -r "$KEYTAB"; then
+	    keytab_readable=yes
+	    if test -w "$KEYTAB"; then
+		keytab_readwrite=yes
+	    fi
+	fi
+    else
+	echo "not found"
+    fi
+}
+
+#-- parse args
+
+opterr=false
+
+while test $# -gt 0; do
+    case "$1" in
+	-c)  if test $# -lt 2; then 
+		echo "Missing argument to $1"; opterr=true; shift
+	     else
+		cflag="$2"; shift; shift
+	     fi;;
+	-c*) cflag=`echo " $1" | sed -e 's/^ -c//'`; shift;;
+	-a)  if test $# -lt 2; then 
+		echo "Missing argument to $1"; opterr=true; shift
+	     else
+		aflag="$2"; shift; shift
+	     fi;;
+	-a*) aflag=`echo " $1" | sed -e 's/^ -a//'`; shift;;
+	-h)  usage; exit 0;;
+	-u)  if test $# -lt 2; then 
+		echo "Missing argument to $1"; opterr=true; shift
+	     else
+		uflag="$2"; shift; shift
+	     fi;;
+	--)  shift; break;;
+	-?*) echo "Unknown option: $1"; opterr=true; shift;;
+	*)   break;;
+    esac
+done
+if test $# -gt 0; then
+    # don't expect any further arguments
+    opterr=true
+fi
+if $opterr; then
+    usage
+    exit 1
+fi
+
+#-- intro
+cat <<-.
+
+	This script checks your local configuration for properly using mod_auth_vas4.
+	It will prompt you to create a web service object in Active Directory
+	if one is needed, and it will correct permissions on certain files.
+	Commands executed will be recorded in $LOGFILE
+
+.
+
+#-- tests
+label "checking privileges"
+id -un
+if test `id -u` -ne 0; then
+    checkroot () { 
+	echo ""
+	echo "WARNING: This script may need superuser privileges to proceed"
+	echo ""
+    }
+else
+    checkroot () { : ; }
+fi
+
+# 
+# We must handle the following cases:
+# 1) apxs is found (regardless of -a flag)
+#  1a) no -c flag given: ask apxs where the cf file is
+#  1b) -c flag given: trust -c flag
+# 2) apxs is not found
+#  2a) no -c flag given: search for config file in likely spots
+#  2b) -c flag given: trust -c flag
+#
+
+#-- look for apxs
+apxs=
+label "looking for Apache extension tool"
+for x in "$aflag" "@APXS@" apxs2 apxs /usr/sbin/apxs2 /usr/sbin/apxs /usr/IBMIHS/bin/apxs /usr/HTTPServer/bin/apxs; do
+    test -z "$x" && continue
+    test -x "$x" || continue
+    ap_target=`$x -q TARGET 2>/dev/null`
+    if test -n "$ap_target"; then
+	apxs="$x"
+	break;
+    fi
+    test -n "$aflag" && break
+done
+if test -n "$apxs"; then
+    echo "$apxs"
+else
+    echo "not found"
+    if test -n "$aflag"; then
+	echo "$aflag: not found or didn't work"
+	exit 1
+    fi
+fi
+
+label "looking for Apache configuration file"
+if test -n "$cflag"; then
+    AP_CF="$cflag"
+else
+    if test -n "$apxs"; then
+	sysconfdir=`$apxs -q SYSCONFDIR`
+	target=`$apxs -q TARGET`
+    else
+	sysconfdir=
+	target=
+    fi
+
+    #-- look for a likely configuration file
+    AP_CF=
+    for dir in $sysconfdir \
+	/etc/apache2 /etc/apache /etc/httpd/conf /etc/apache2/conf \
+	/etc/apache/conf /etc/www/conf /var/www/conf /opt/IBMIHS/conf
+    do
+	for t in $target apache2 httpd; do
+	    if test -f $dir/$t.conf; then
+		AP_CF="$dir/$t.conf"
+		break
+	    fi
+	    test -n "$AP_CF" && break
+	done
+    done
+fi
+
+if test -f "$AP_CF"; then
+    echo "$AP_CF"
+
+    label "looking for Apache envvars file"
+    # As used by Debian apache2
+    if [ -f `dirname "$AP_CF"`/envvars ]; then
+	AP_ENVVARS=`dirname "$AP_CF"`/envvars
+	echo "$AP_ENVVARS"
+	. "$AP_ENVVARS"
+    else
+	AP_ENVVARS=
+	echo "(none)"
+    fi
+
+    #-- scan the config file for a group name
+    label "looking for Apache daemon group"
+    APACHE_GROUP=`(sed -ne 's/^Group //p' < "$AP_CF"|sed -e 1q) 2>/dev/null`
+    if test ! -n "$APACHE_GROUP"; then
+	#-- try harder 
+	for path in `sed -ne 's/^Include //p' < "$AP_CF"` /dev/null; do
+	    APACHE_GROUP=`(sed -ne 's/^Group //p' < "$path"|sed -e 1q) 2>/dev/null`
+	    test -n "$APACHE_GROUP" && break
+	done
+    fi
+
+    if test -n "$APACHE_GROUP"; then
+	if echo "$APACHE_GROUP" | grep '^\$' >/dev/null 2>&1; then
+	    APACHE_GROUP=`eval echo "$APACHE_GROUP"`
+	fi
+	echo "$APACHE_GROUP"
+    else
+	echo "not found"
+    fi
+else
+    APACHE_GROUP=
+    if test -z "$cflag"; then
+	echo "not found"
+    else
+	echo "$cflag: not found"
+	exit 1
+    fi
+fi
+
+#-- if the Apache group is still unknown, look at existing groups and guess
+if test ! -n "$APACHE_GROUP"; then
+    APACHE_GROUP_GUESS=nobody
+    for u in apache httpd www www-data nogroup; do
+	if test x`eval echo "~$u"` != x"~$u"; then
+	    APACHE_GROUP_GUESS=$u
+	    break
+	fi
+    done
+fi
+
+determine_keytab_access
+
+if [ $keytab_exists = no ]; then
+    cat <<-.
+
+	This step creates a service object in Active Directory so 
+	that browsers can authenticate with this web server.
+	You will need to know an account password that has
+	sufficient privileges to create the new service object.
+	Contact your systems administration staff if you do not.
+.
+    if yesorno "Create the HTTP/ service account?"; then
+        
+        echo "Please specify the container DN in which to create the service:"
+        query "Service container DN" CONTAINER default
+        test x"$CONTAINER" = x"default" && CONTAINER=
+
+        query "Service account name:" HTTP_SPN default
+        test x"$HTTP_SPN" = x"default" && HTTP_SPN="HTTP/"
+
+        checkroot
+	kinit "create the service account"
+
+        recordcmd $VASTOOL \
+	    ${uflag+-u "$uflag"} \
+	    service create ${CONTAINER:+-c "$CONTAINER"} "$HTTP_SPN" || \
+	    die "Cannot create $HTTP_SPN service account"
+
+        SAMACCOUNTNAME=`$VASTOOL ${uflag+-u "$uflag"} attrs -q -s "$HTTP_SPN" samaccountname || die "Cannot get samAccountName from $HTTP_SPN service account"`
+        REALM=`echo $HTTP_SPN | cut -d@ -f2 -s`
+        if [ "x$REALM" != "x" ]; then
+          SAMACCOUNTNAME="$SAMACCOUNTNAME@$REALM"
+        else
+          unset REALM
+        fi
+
+	# The keytab maynot be HTTP.keytab, parse the HTTP_SPN and take the first service class up to the /
+        # and use it for the keytab name, this is currently how vastool service create does it.
+        KEYTAB=/etc/opt/quest/vas/`echo $HTTP_SPN | cut -d/ -f1`.keytab
+
+	label "checking new service keytab"
+	if test -f "$KEYTAB"; then 
+	    echo "found"
+	else
+	    echo "still not found"
+	    die "Cannot find $KEYTAB"
+	fi
+	echo ""
+
+	# Update keytab availability
+	determine_keytab_access
+    elif yesorno "Use existing service account?"; then
+
+                checkroot
+
+       		echo "Please specify the samAccountName of the existing service:"
+      		query "samAccountName" SAMACCOUNTNAME
+      		test SAMACCOUNTNAME=
+
+# Prompt for existing service account password
+
+validate=0
+tries=0
+
+        while [ "$tries" -lt 3 ] && [ "$validate" -eq 0 ]; do
+
+oldmodes=`stty -g`
+stty -echo
+		query "Password for $SAMACCOUNTNAME" PASSWORD1
+echo 
+		query "Validate Password for $SAMACCOUNTNAME" PASSWORD2
+
+stty $oldmodes
+
+		if [ "$PASSWORD1" != "$PASSWORD2" ]; then 
+			echo "Passwords for $SAMACCOUNTNAME do not match"
+			tries=`expr $tries + 1`
+		else
+			validate=1
+		fi
+	done
+	if [ $validate != 1 ]; then
+
+		echo "Could not validate password"
+		exit
+	fi
+	
+# Create service account keytab
+ETYPES="aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 arcfour-hmac-md5 des-cbc-crc"
+
+# Get SPN's from the existing service account
+echo ""
+echo "Adding entries to $KEYTAB for:"
+echo ""
+
+REALM=`echo $SAMACCOUNTNAME | cut -d@ -f2 -s`
+if [ "x$REALM" = "x" ]; then
+ unset REALM
+fi
+
+HTTP_SPN="HTTP/${REALM+@"$REALM"}"
+
+http_spn_exist=0
+for spn in `$VASTOOL -u host/ attrs $SAMACCOUNTNAME servicePrincipalName |
+            awk '{print $2}'`; do
+        spn="$spn${REALM+@"$REALM"}"
+	echo "    $spn"
+	if echo "$spn" | grep -i "HTTP/" >/dev/null; then
+        HTTP_SPN="$spn"
+		http_spn_exist=1
+        fi
+	for ETYPE in $ETYPES; do
+        	$KTUTIL -k "$KEYTAB" \
+		add -p $spn -V 0 -e $ETYPE -w $PASSWORD1 || \
+                die "Cannot add $spn to $SAMACCOUNTNAME service account keytab"
+	done
+done
+
+if [ "$http_spn_exist" -ne "1" ]; then
+
+        dnsname=`$VASTOOL -u host/ attrs -q host/ dNSHostName`
+        default_http="HTTP/$dnsname${REALM+@"$REALM"}"
+        HTTP_SPN="$default_http"
+
+	echo "Adding explicit spn for $default_http to keytab"
+	echo ""
+        echo "  WARNING: Explicit service names such as HTTP"
+        echo "  may not work in all environments."
+        echo ""
+
+	for ETYPE in $ETYPES; do
+		$KTUTIL -k "$KEYTAB" \
+		add -p "$default_http" -V 0 -e $ETYPE -w $PASSWORD1 || \
+		die "Cannot add HTTP/ to $SAMACCOUNTNAME service account keytab"
+	done
+fi
+
+primary_spn=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
+$VASTOOL ktutil -k "$KEYTAB" alias $primary_spn $SAMACCOUNTNAME || die "Cannot alias $SAMACCOUNTNAME from $primary_spn in the $KEYTAB"
+
+PASSWORD1=
+PASSWORD2=
+
+	echo ""
+        label "checking new service keytab"
+        if test -f "$KEYTAB"; then
+            echo "found"
+        else
+            echo "still not found"
+            die "Cannot find $KEYTAB"
+        fi
+        echo ""
+
+        # Update keytab availability
+        determine_keytab_access
+    	else
+		echo "(Not creating $HTTP_SPN service account)"
+    	fi
+fi
+
+# Keytab only has to exist for permission checks
+if test -f "$KEYTAB"; then
+  if test ! -n "$APACHE_GROUP"; then
+    echo ""
+    echo "The Apache server process must be able to access the keytab."
+    echo "I didn't find a httpd.conf file so I don't know what creds it uses."
+    echo "Tell me what Unix group it will run as, and I'll check the"
+    echo "keytab file permissions so that it is readable by Apache."
+    echo ""
+    query "Group for Apache httpd process" APACHE_GROUP $APACHE_GROUP_GUESS
+    echo ""
+  fi
+
+  label "checking keytab is readable by $APACHE_GROUP"
+  set -- `/bin/ls -l "$KEYTAB"`
+  case "$1:$4" in
+    -??????r??:*)
+	echo "yes"
+	echo
+	echo "WARNING: keytab is world-readable. This is a security risk."
+	echo
+	;;
+    -???r?????:$APACHE_GROUP) echo "yes" ;;
+    *) echo "no"
+       if yesorno "Change group of $KEYTAB to $APACHE_GROUP?"; then
+           label " -> fixing file mode and ownership"
+           checkroot
+           recordcmd chgrp "$APACHE_GROUP" "$KEYTAB" || 
+	       die "Could not change file group"
+           recordcmd chmod 640 "$KEYTAB" || 
+	   	die "Could not change file mode"
+           echo "fixed"
+       else
+	   echo "(Not changing ownership)"
+       fi 
+       ;;
+  esac
+fi
+if test "$keytab_readable" = "no"; then
+  echo >&2
+  echo "Skipping keytab validity check (keytab is unreadable)." >&2
+  echo >&2
+else # Keytab is readable
+  label "checking keytab can authenticate"
+  tmpcc=/tmp/.mod_auth_vas4cc$$
+  old_KRB5CCNAME="${KRB5CCNAME}"
+  if KRB5CCNAME=FILE:$tmpcc recordcmd $VASTOOL -u "$HTTP_SPN" -k "$KEYTAB" auth -S "$HTTP_SPN" >/dev/null;
+  then
+    echo "yes"
+  else
+    echo "no"
+    echo ""
+    echo "The $HTTP_SPN service keytab: $KEYTAB  could not be used to"
+    echo "authenticate to Active Directory. This may mean that the"
+    echo "service account has expired, that the keytab has become corrupt,"
+    echo "that the HTTP/ service is explicitly defined in the keytab,"
+    echo "or that the password has been changed without updating the keytab."
+    echo ""
+    echo "The error message was:"
+    KRB5CCNAME=FILE:$tmpcc $VASTOOL -u "$HTTP_SPN" -k "$KEYTAB" auth -S "$HTTP_SPN" 2>&1 | sed -e 's/^/  /'
+    echo ""
+    die "Keytab is not usable. Try deleting $KEYTAB and re-running $0"
+  fi
+  KRB5CCNAME="${old_KRB5CCNAME}"
+  rm -f $tmpcc
+fi
+# KB899417
+cat <<.
+
+If you have clients using Internet Explorer, a known issue (KB899417)
+can see them suddenly being unable to authenticate after only 30 minutes.
+A workaround is to create SPN aliases with all the possible 'short-names' 
+that the client could use to access this server (i.e. http://short-name/).
+SPN aliases can also be useful for servers with multiple DNS identities.
+.
+
+if test "$keytab_readable" = "no"; then
+    echo >&2
+    echo "Keytab is not readable. Skipping Service Principal Name (SPN) aliasing." >&2
+    echo "Re-run $0 as root to set up SPN aliasing." >&2
+    echo >&2
+else
+    kinit "run tests on the service account $HTTP_SPN"
+    echo "SamAccountName: $SAMACCOUNTNAME"
+    spns=`$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | wc -l`
+
+    primary=`$KTUTIL -k "$KEYTAB" list 2> /dev/null | awk 'NR==4 {print $3}'`
+
+    #-- change the default to a suggested short spn
+    default_spn=none
+    if test 1 -eq "$spns"; then
+	nbname=`$VASTOOL -u host/ attrs -s host/ sAMAccountName | sed -e 's/^.*: //;s/\$$//'`
+	if test x"HTTP/$nbname" != x"`$VASTOOL -u host/ attrs -u "$SAMACCOUNTNAME" servicePrincipalName | sed -e 's/.*: //'`"; then
+	    default_spn="HTTP/$nbname"
+	fi
+    fi
+
+    while :; do
+	    cat <<.
+
+The HTTP/ service is currently known by these SPNs (service principal names):
+
+.
+	    $VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | 
+		awk '{print "\t" $2 }'
+	    echo
+	    query "Enter a new SPN alias, or 'none' to finish" SPN "$default_spn"
+	    [ x"$SPN" = x"none" ] && break
+
+	    case "$SPN" in
+		-*)
+		    newspns=
+		    found=false
+		    for spn in `$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | 
+			awk '{print $2}'`; do
+			if [ x"-$spn" = x"$SPN" ]; then found=true
+			else newspns="$newspns $spn"; fi
+		    done
+		    if $found; then
+			recordcmd $VASTOOL ${uflag+-u "$uflag"} \
+			    setattrs -m -u "$SAMACCOUNTNAME" servicePrincipalName \
+			    $newspns 
+			recordcmd $VASTOOL ktutil -k "$KEYTAB" \
+			    remove -p ${SPN#-}
+		    else
+			echo "'${SPN#-}' not found" >&2
+		    fi
+		    ;;
+		*)
+		    oldspns=`$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | 
+			awk '{print $2}'`
+		    recordcmd $VASTOOL ${uflag+-u "$uflag"} \
+			    setattrs -m -u "$SAMACCOUNTNAME" servicePrincipalName \
+			    $oldspns $SPN &&\
+		    recordcmd $VASTOOL ktutil -k "$KEYTAB" \
+			    alias $primary $SPN${REALM+@"$REALM"}
+		    ;;
+	    esac
+	    default_spn=none
+    done
+fi
+
+#-- Bitwise operators (decimal integers only)
+binary_or () { awk 'END { c = 0; for (i = 1; a || b; i *= 2) { a0 = a%2; b0 = b%2; if (a0 || b0) c += i; a = (a-a0)/2; b = (b-b0)/2; } print c; }' a="$1" b="$2" < /dev/null ; }
+binary_and () { awk 'END { c = 0; for (i = 1; a && b; i *= 2) { a0 = a%2; b0 = b%2; if (a0 && b0) c += i; a = (a-a0)/2; b = (b-b0)/2; } print c; }' a="$1" b="$2" < /dev/null ; }
+
+# Bug 213: HTTP/ keytab will expire by default
+if test -f "$KEYTAB"; then
+    kinit "check that the service account is usable"
+    label Testing whether service password expires
+    # vastool attrs '-q' flag was only added in 3.2, so use sed magic.
+    uac=`$VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" userAccountControl | sed -e 's,userAccountControl: \([0-9]*\),\1,'`
+    if [ "z$uac" = "z" ]; then
+	die "Unable to retrieve service account attributes, does the service exist?\
+ Delete $KEYTAB and re-run $0 to re-create the service account."
+    fi
+    noexpire_flag=65536 # "Password never expires" (KB305144)
+    if test `binary_and $uac $noexpire_flag` -eq 0; then
+	echo yes
+	echo >&2
+	cat <<-. >&2
+	Unless the group policy is configured otherwise, the HTTP/ service
+	account password will expire at some point, leading to authentication
+	failures.
+.
+	if yesorno "Disable password expiry for the service account? (recommended)"; then
+	    recordcmd $VASTOOL ${uflag+-u "$uflag"} \
+		setattrs -u "$SAMACCOUNTNAME" userAccountControl \
+				  `binary_or $uac $noexpire_flag`
+	    echo
+	fi
+    else
+	echo "no (good)"
+    fi
+fi
+
+#-- check that auth_vas module is loaded when config is parsed
+label "checking mod_auth_vas4 is loaded"
+if test -n "$apxs"; then
+    sbindir=`$apxs -q SBINDIR`
+    target=`$apxs -q TARGET`
+    if recordcmd "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
+	grep 'loaded module.*auth_vas' >/dev/null
+    then
+	echo 'yes'
+
+	label "checking loaded mod_auth_vas4 version"
+	module_version=`"$sbindir/$target" ${AP_CF+-f "$AP_CF"} \
+	    -t -e debug 2>&1 | 
+	    sed -n -e 's/.*mod_auth_vas4 version \([^,]*\),.*/\1/p'`
+	echo "${module_version-not found}"
+
+	if test -z "$module_version"; then
+	    cat <<-.
+
+		WARNING: unable to detect the loaded mod_auth_vas4's version!
+
+.
+	elif test x"$module_version" != x"$PACKAGE_VERSION"; then
+	    cat <<-.
+
+		WARNING: A different version of mod_auth_vas4 is being loaded 
+		by Apache as to what is expected by this script. I was
+		expecting to see version '$PACKAGE_VERSION'.
+
+.
+	fi
+    else
+	echo 'no'
+	cat <<-.
+	
+	It doesn't appear that the Apache web server is loading the VAS
+	authentication module. This could be a problem in the configuration
+	file (missing LoadModule or a syntax error), a mis-installation of 
+	mod_auth_vas4 or VAS4, or perhaps this script is simply invoking the
+	web server in the wrong way.
+
+	The command I used to detect what modules were loaded was:
+
+	   $sbindir/$target ${AP_CF+-f "$AP_CF"} -t -e debug
+
+.
+	die "Module not loaded."
+    fi
+else
+    echo 'unknown (re-run setup script with the -a flag, apxs was not found)'
+fi
+
+echo ""
+$logfile_written && echo "(Log written to $LOGFILE)"
+echo "Finished."
+exit 0
+
+#
+# Licence
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions
+#  are met:
+#  
+#  a. Redistributions of source code must retain the above copyright
+#     notice, this list of conditions and the following disclaimer.
+#  b. Redistributions in binary form must reproduce the above copyright
+#     notice, this list of conditions and the following disclaimer in the
+#     documentation and/or other materials provided with the distribution.
+#  c. Neither the name of Quest Software, Inc. nor the names of its
+#     contributors may be used to endorse or promote products derived from
+#     this software without specific prior written permission.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+#  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+#  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+#  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+#  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+#  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+#  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+#  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+#  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
+#
