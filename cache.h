@@ -37,10 +37,7 @@
  *     Ted Percival <ted.percival@quest.com>
  */
 
-#if !defined(APXS1)
-# include <apr_pools.h>
-#endif /* APXS2 */
-
+#include <apr_pools.h>
 #include <vas.h>
 
 #ifdef __cplusplus

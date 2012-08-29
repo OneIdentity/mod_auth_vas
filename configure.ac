@@ -2,12 +2,13 @@
 
 dnl For exported trees, the version is derived from the NEWS file.
 AC_INIT([mod_auth_vas], 
-	[esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
-	     echo -n `head -n1 NEWS | cut -f1`.exp; fi)],
+	esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
+	     echo -n `head -n1 NEWS | cut -f1`.exp; fi),
 	[support@quest.com])
 AC_PREREQ(2.55)
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR([.])
+AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign -Wall])
 
 AC_CONFIG_SRCDIR([mod_auth_vas.c])
@@ -156,10 +157,10 @@ if test "x$GCC" = "xyes"; then
         orig_CFLAGS="$CFLAGS"
         CFLAGS="$CFLAGS $flag"
 
-        AC_COMPILE_IFELSE([int main() {}],
+        AC_COMPILE_IFELSE([AC_LANG_SOURCE([int main() {}],
                           [AC_MSG_RESULT([yes])],
                           [AC_MSG_RESULT([no])
-                           CFLAGS="$orig_CFLAGS"])
+                           CFLAGS="$orig_CFLAGS"])])
     done
 
     for flag in $DESIRED_LDFLAGS; do
@@ -167,10 +168,10 @@ if test "x$GCC" = "xyes"; then
         orig_LDFLAGS="$LDFLAGS"
         LDFLAGS="$LDFLAGS $flag"
 
-        AC_LINK_IFELSE([int main() {}],
+        AC_LINK_IFELSE([AC_LANG_SOURCE([int main() {}],
                        [AC_MSG_RESULT([yes])],
                        [AC_MSG_RESULT([no])
-                        LDFLAGS="$orig_LDFLAGS"])
+                        LDFLAGS="$orig_LDFLAGS"])])
     done
 fi
 
@@ -401,8 +402,9 @@ AC_SUBST([VAS_CFLAGS])
 AC_SUBST([VAS_LIBS])
 
 # Try vasapi functions
-CFLAGS_save="$CFLAGS" LIBS_save="$LIBS"
-CFLAGS="$CFLAGS $VAS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
+LIBS_save="$LIBS"
+CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
+CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS" LIBS="$LIBS $VAS_LIBS"
 AC_CHECK_FUNC([vas_ctx_alloc],,[
 	       # Prevent the cached "no" being reused
 	       $as_unset ac_cv_func_vas_ctx_alloc
@@ -412,7 +414,7 @@ AC_CHECK_FUNC([vas_ctx_alloc],,[
 			     [VAS_LIBS="$VAS_LIBS -L/opt/quest/lib/support -lgcc_s"],
 			     [AC_MSG_FAILURE([VAS 3 SDK required])])
 	       ])
-CFLAGS="$CFLAGS_save" LIBS="$LIBS_save"
+LIBS="$LIBS_save"
 
 AC_ARG_ENABLE([rcdev-tests],
 	      [AS_HELP_STRING([--enable-rcdev-tests],
@@ -445,11 +447,11 @@ old_LDFLAGS=$LDFLAGS
 CFLAGS="--coverage $CFLAGS"
 LDFLAGS="--coverage $LDFLAGS"
 AC_MSG_CHECKING([whether $CC understands --coverage])
-AC_LINK_IFELSE([int main(void) { return 0; }],
+AC_LINK_IFELSE([AC_LANG_SOURCE([int main(void) { return 0; }],
 	[have_coverage_flags=yes
 	 AC_SUBST([COVERAGE_CFLAGS], [--coverage])
 	 AC_SUBST([COVERAGE_LDFLAGS], [--coverage])],
-	[have_coverage_flags=no])
+	[have_coverage_flags=no])])
 AC_MSG_RESULT([$have_coverage_flags])
 AM_CONDITIONAL([HAVE_COVERAGE], [test "$have_coverage_flags" = "yes"])
 # Restore flags, we don't want coverage information in the regular binaries

@@ -53,6 +53,7 @@
 
 #include "compat.h"
 #include "cache.h"
+#include "log.h"
 
 /* Defaults */
 #define DEFAULT_EXPIRE_SECONDS 60
@@ -141,8 +142,7 @@ auth_vas_cache_remove_expired_items(auth_vas_cache *cache);
  * @param get_key_cb Function to get the item's key. See the auth_vas_cache
  *                   documentation for details.
  */
-auth_vas_cache *
-auth_vas_cache_new(apr_pool_t *parent_pool,
+auth_vas_cache * auth_vas_cache_new(apr_pool_t *parent_pool,
 	vas_ctx_t *vas_ctx,
 	vas_id_t *vas_serverid,
 	void (*ref_cb)(void *),
@@ -150,36 +150,23 @@ auth_vas_cache_new(apr_pool_t *parent_pool,
 	const char *(*get_key_cb)(void *))
 {
     auth_vas_cache *cache = NULL;
+	apr_status_t aprerr;
 
     /* Should we allocate the cache out of the cache subpool instead?
      * Only necessary if caches are destroyed more frequently than processes
      * exit. */
     cache = apr_pcalloc(parent_pool, sizeof(*cache));
     if (!cache) {
-	LOG_P_ERROR(APLOG_ERR, 0, parent_pool,
-		"Failed to allocate cache structure");
-	return NULL;
+        MAV_LOG_P(APLOG_ERR, parent_pool, "Failed to allocate cache structure");
+    	return NULL;
     }
 
-#if defined (APXS1)
-    cache->pool = ap_make_sub_pool(parent_pool);
-    if (!cache->pool) {
-	LOG_P_ERROR(APLOG_ERR, 0, parent_pool,
-		"Failed to create cache memory pool");
-	return NULL;
-    }
-#else /* APXS2 */
-    {
-	apr_status_t aprerr;
 
 	aprerr = apr_pool_create(&cache->pool, parent_pool);
 	if (aprerr) {
-	    LOG_P_ERROR(APLOG_ERR, aprerr, parent_pool,
-		    "Failed to create cache memory pool");
+        MAV_LOG_PERRNO(APLOG_ERR, parent_pool, aprerr, "Failed to create cache memory pool");
 	    return NULL;
 	}
-    }
-#endif /* APXS2 */
 
     cache->table = apr_hash_make(cache->pool);
 
@@ -262,12 +249,13 @@ auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
 	    auth_vas_cache_remove_expired_items(cache);
 	} else {
 	    /* No expired items. Notify the user and remove the oldest one */
-	    LOG_P_ERROR(APLOG_INFO, 0, cache->pool,
+            MAV_LOG_P(APLOG_ERR, cache->pool,
 		    "%s: Removing unexpired item to make room, "
 		    "consider increasing the cache size or decreasing the object lifetime",
 		    __func__);
 	    auth_vas_cache_remove_items_from(cache, cache->oldest);
 	}
+        MAV_LOG_P(APLOG_NOTICE, cache->pool, "This is a TEST");
     }
 
     if (cache->youngest) { /* There are other items */

@@ -435,71 +435,14 @@ test_expired_full_cache(apr_pool_t *pool) {
 
 }
 
-/* Pool allocator for APXS1. Should probably move this to ap_stub.c
- *
- * Really Dumb Leaky implementation that does not actually do memory pooling,
- * just allocates using malloc and forgets. For use only in test cases where
- * the process is short-lived so tracking memory properly does not really
- * matter.
- */
-#if defined(APXS1)
-
-/* This is typedefed to `pool' by ap_alloc.h */
-struct pool {
-    void *unused;
-};
-
-void *ap_palloc(apr_pool_t *mempool, int size) {
-    return malloc(size);
-}
-
-void *ap_pcalloc(apr_pool_t *mempool, int size) {
-    void *mem;
-
-    mem = ap_palloc(mempool, size);
-    memset(mem, '\0', size);
-    return mem;
-}
-
-void ap_log_printf(const server_rec *s, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-}
-
-static int apr_pool_create(apr_pool_t **outpool, apr_pool_t *parent) {
-    static apr_pool_t dummy;
-
-    /* Ensure the pool pointer is not NULL, to satisfy callers */
-    *outpool = &dummy;
-
-    return OK;
-}
-
-apr_pool_t *ap_make_sub_pool(apr_pool_t *parent) {
-    apr_pool_t *newp;
-
-    apr_pool_create(&newp, parent);
-
-    return newp;
-}
-
-static void apr_pool_destroy(apr_pool_t *dpool) {
-    /* Leak. */
-}
-#endif /* APXS1 */
-
 int main(int argc, char *argv[]) {
     int failures = 0;
     apr_pool_t *pool;
 
-#if !defined(APXS1)
     if (apr_app_initialize(&argc, (const char *const **)&argv, NULL))
 	FAIL("apr initialisation");
 
     atexit(apr_terminate);
-#endif /* !APXS1 */
 
     if (apr_pool_create(&pool, NULL))
 	FAIL("creating master test pool");

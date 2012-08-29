@@ -10,5 +10,9 @@ bootstrap () {
 }
 
 set -e
+if [ ! -d "./m4" ]; then
+    echo "creating m4 directory"
+    mkdir "m4"
+fi
 bootstrap .
 bootstrap test/http-get
