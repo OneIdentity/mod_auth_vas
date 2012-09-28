@@ -57,12 +57,6 @@
 
 #include "log.h"
 
-#define VAS_LOG_MODE_FILE 4
-#define VAS_LOG_ALL 9
-#define VAS_LOG_DEBUG_6 6
-#define VAS_LOG_DEBUG_5 5
-#define VAS_API_DEBUG_LOG_FILE_NAME "/tmp/mav_qas_api.debug"
-
 #if HAVE_UNIX_SUEXEC
 # if APR_HAS_USER
 #  include <unixd.h>
@@ -83,13 +77,6 @@
 #if HAVE_AP_PROVIDER_H
 # include <ap_provider.h>
 #endif
-
-/** Macro for returning a value from the match functions via a cleanup label
- * (called finish) to make the code read more easily. */
-#define RETURN(r) do { \
-    result = (r); \
-    goto finish; \
-} while (0)
 
 /*
  * Per-server configuration structure - exists for lifetime of server process.
@@ -117,7 +104,6 @@ typedef struct {
     int                 auth_basic;			    /**< AuthVasUseBasic (default off) */
     int                 auth_authoritative;		/**< AuthVasAuthoritative (default on) */
     int                 export_delegated;		/**< AuthVasExportDelegated (default off) */
-    int                 localize_remote_user;	/**< AuthVasLocalizeRemoteUser (default off) */
     int                 authz;				    /**< AuthVasAuthz (default on) */
     char                *remote_user_map;		/**< AuthVasRemoteUserMap (NULL if unset) */
     char                *remote_user_map_args;	/**< Argument to AuthVasRemoteUserMap (NULL if none) */
@@ -132,7 +118,6 @@ typedef struct {
 #define DEFAULT_USING_AUTH_BASIC                FLAG_OFF
 #define DEFAULT_USING_AUTH_AUTHORITATIVE        FLAG_ON
 #define DEFAULT_USING_EXPORT_DELEGATED          FLAG_OFF
-#define DEFAULT_USING_LOCALIZE_REMOTE_USER      FLAG_OFF
 #define DEFAULT_USING_SUEXEC                    FLAG_OFF
 #define DEFAULT_USING_AUTHZ                     FLAG_ON
 
@@ -144,7 +129,6 @@ typedef struct {
 #define USING_AUTH_BASIC(dc) USING_AUTH_DEFAULT(dc, auth_basic, DEFAULT_USING_AUTH_BASIC)
 #define USING_AUTH_AUTHORITATIVE(dc) USING_AUTH_DEFAULT(dc, auth_authoritative, DEFAULT_USING_AUTH_AUTHORITATIVE)
 #define USING_EXPORT_DELEGATED(dc) USING_AUTH_DEFAULT(dc, export_delegated,   DEFAULT_USING_EXPORT_DELEGATED)
-#define USING_LOCALIZE_REMOTE_USER(dc) USING_AUTH_DEFAULT(dc, localize_remote_user, DEFAULT_USING_LOCALIZE_REMOTE_USER)
 #define USING_SUEXEC(dc) USING_AUTH_DEFAULT(dc, use_suexec, DEFAULT_USING_SUEXEC)
 /** Indicates that Negotiate auth is enabled for _some_ hosts, not
  * necessarily all. Use is_negotiate_enabled_for_client() to check the current
@@ -171,15 +155,12 @@ typedef struct {
  */
 typedef struct {
     auth_vas_user *mav_user;		/* User information (shared) */
-    /* TODO: Set  the vas_user_obj when the auth_vas_user is set. */
-    /* TODO: Make the vas_user_obj part of the auth_vas_user */
     vas_user_t *vas_user_obj;		/* The remote user object (lazy initialisation - possibly NULL) */
     gss_ctx_id_t gss_ctx;		/* Negotiation context */
     gss_buffer_desc client;		/* Exported mech name */
     gss_cred_id_t deleg_cred;		/* Delegated credential */
     krb5_ccache deleg_ccache;		/* Exported cred cache */
 } auth_vas_rnote;
-
 
 /* Forward declaration for module structure: see bottom of this file. */
 module AP_MODULE_DECLARE_DATA auth_vas4_module;
@@ -191,8 +172,6 @@ static const char *set_negotiate_conf(cmd_parms *cmd, void *struct_ptr, const ch
 static int server_ctx_is_valid(server_rec *s);
 static int dn_in_container(const char *dn, const char *container);
 static int is_our_auth_type(const request_rec *r);
-//static int auth_vas_auth_checker(request_rec *r);
-//static int do_basic_accept(request_rec *r, const char *user, const char *password);
 static void log_gss_error(const char *file, int line, int module_index, int level, apr_status_t result, request_rec *r, const char *pfx, OM_uint32 gsserr, OM_uint32 gsserr_minor);
 static void rnote_init(auth_vas_rnote *rn);
 static void rnote_fini(request_rec *r, auth_vas_rnote *rn);
@@ -202,7 +181,6 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line);
 static void auth_vas_server_init(apr_pool_t *p, server_rec *s);
 static void add_basic_auth_headers(request_rec *r);
 static void add_auth_headers(request_rec *r);
-//static int auth_vas_check_authn(request_rec *r);
 #if HAVE_UNIX_SUEXEC
   static ap_unix_identity_t *auth_vas_suexec(const request_rec *r);
 #endif
@@ -249,7 +227,7 @@ static apr_status_t auth_vas_lock(request_rec *r);
 static void auth_vas_unlock(request_rec *r);
 
 static apr_status_t auth_vas_lock(request_rec *r) {
-    	apr_status_t error;
+   	apr_status_t error;
 
 	ASSERT(auth_vas_libvas_mutex != NULL);
 	error = apr_thread_mutex_lock(auth_vas_libvas_mutex);
@@ -259,7 +237,7 @@ static apr_status_t auth_vas_lock(request_rec *r) {
 } /* auth_vas_lock */
 
 static void auth_vas_unlock(request_rec *r) {
-    	apr_status_t error;
+   	apr_status_t error;
 
 	ASSERT(auth_vas_libvas_mutex != NULL);
 	error = apr_thread_mutex_unlock(auth_vas_libvas_mutex);
@@ -275,7 +253,6 @@ static void auth_vas_unlock(request_rec *r) {
 static const char *
 server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 {
-    	/* NB The casts to (char *) are to stop warnings under Apache 1.3.x */
 	return ap_set_string_slot(cmd, 
 	    (char *)GET_SERVER_CONFIG(cmd->server->module_config), 
 	    (char *)arg);
@@ -291,7 +268,6 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_LOCALIZEREMOTEUSER  "AuthVasLocalizeRemoteUser" /**< Deprecated */
 #define CMD_REMOTEUSERMAP       "AuthVasRemoteUserMap"
 #define CMD_SPN                 "AuthVasServerPrincipal"
-#define CMD_OLDSPN              "AuthVasServicePrincipal" /**< Deprecated */
 #define CMD_REALM               "AuthVasDefaultRealm"
 #define CMD_USESUEXEC           "AuthVasSuexecAsRemoteUser"
 #define CMD_NTLMERRORDOCUMENT   "AuthVasNTLMErrorDocument"
@@ -319,10 +295,6 @@ static const command_rec auth_vas_cmds[] =
         (void*)APR_OFFSETOF(auth_vas_dir_config, export_delegated),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Write delegated credentials to a file, setting KRB5CCNAME"),
-    AP_INIT_FLAG(CMD_LOCALIZEREMOTEUSER, ap_set_flag_slot,
-        (void*)APR_OFFSETOF(auth_vas_dir_config, localize_remote_user),
-        ACCESS_CONF | OR_AUTHCFG,
-        "Set REMOTE_USER to a local username instead of a UPN (deprecated in favor of "CMD_REMOTEUSERMAP")"),
     AP_INIT_FLAG(CMD_USESUEXEC, ap_set_flag_slot,
 		(void*)APR_OFFSETOF(auth_vas_dir_config, use_suexec),
 		ACCESS_CONF | OR_AUTHCFG,
@@ -339,10 +311,6 @@ static const command_rec auth_vas_cmds[] =
 		(void*)APR_OFFSETOF(auth_vas_server_config, server_principal),
 		RSRC_CONF,
 		"User Principal Name (LDAP userPrincipalName) for the server"),
-    AP_INIT_TAKE1(CMD_OLDSPN, server_set_string_slot,
-        (void*)APR_OFFSETOF(auth_vas_server_config, server_principal),
-        RSRC_CONF,
-        "User Principal Name (LDAP userPrincipalName) for the server (deprecated in favor of "CMD_SPN")"),
     AP_INIT_TAKE1(CMD_REALM, server_set_string_slot,
         (void*)APR_OFFSETOF(auth_vas_server_config, default_realm),
         RSRC_CONF,
@@ -364,7 +332,7 @@ static const command_rec auth_vas_cmds[] =
 		ACCESS_CONF | OR_AUTHCFG,
 		"Whether mod_auth_vas4 should provide authorization checks, or decline in favor of other authz modules"),
     AP_INIT_ITERATE(CMD_VASPROVIDERS, add_authn_provider,
-        (void*)APR_OFFSETOF(auth_vas_dir_config, authz),
+        (void*)APR_OFFSETOF(auth_vas_dir_config, auth_providers),
         OR_AUTHCFG,
         "specify the auth providers for a directory or location"),
     { NULL }
@@ -422,212 +390,33 @@ static int server_ctx_is_valid(server_rec *s)
  */
 static int set_user_obj(request_rec *r)
 {
-    vas_err_t vaserr;
-
     auth_vas_server_config *sc = NULL;
     auth_vas_rnote *rn = NULL;
+
+    TRACE8_R(r, "%s: called", __func__);
 
     ASSERT(r != NULL);
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
     ASSERT(sc->vas_ctx != NULL);
-
-    TRACE3_R(r, "%s: called", __func__);
 
     rn = GET_RNOTE(r);
     if (!rn) {
         TRACE3_R(r, "%s: HTTP_INTERNAL_SERVER_ERROR: END", __func__);
+        TRACE8_R(r, "%s: end", __func__);
     	return HTTP_INTERNAL_SERVER_ERROR;
     }
-
-    if (rn->vas_user_obj) {
-        TRACE1_R(r, "%s: vas user object is already set", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+    
+    if (auth_vas_user_get_vas_user_obj(rn->mav_user)) {
+        TRACE1_R(r, "%s: vas user object is already set for user %s", __func__, auth_vas_user_get_name(rn->mav_user));
+        TRACE8_R(r, "%s: end", __func__);
     	return 0; /* Already set */
+    }else {
+        ERROR_R(r, "%s: Failed to set user object for %.100s: %s", __func__, RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
+        TRACE8_R(r, "%s: end", __func__);
+        return HTTP_UNAUTHORIZED;
     }
-
-    vaserr = auth_vas_user_get_vas_user(rn->mav_user, &rn->vas_user_obj);
-
-    if (vaserr) {
-    	rn->vas_user_obj = NULL;
-
-	    ERROR_R(r, "%s: Failed to get user object for %.100s: %s", __func__, RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
-
-    	if (vaserr == VAS_ERR_NOT_FOUND) { /* No such user */
-            TRACE3_R(r, "%s: end", __func__);
-	        return HTTP_UNAUTHORIZED;
-        }
-
-        TRACE3_R(r, "%s: end", __func__);
-    	return HTTP_INTERNAL_SERVER_ERROR;
-    }
-    TRACE3_R(r, "%s: end", __func__);
-    return 0; /* success */
-}
-
-/**
- * Checks if the previously authenticated user matches a particular name.
- * Name comparison is done by libvas.
- *   @param r The authenticated request
- *   @param name The name of the user to check
- *   @return OK if the user has the same name, otherwise HTTP_...
- */
-static int
-match_user(request_rec *r, const char *name)
-{
-    int                       err; /*< Temporary storage */
-    int                       result; /*< This function's return code */
-    int                       user_matches = 0;
-    auth_vas_server_config   *sc;
-    auth_vas_rnote           *rnote;
-    vas_user_t *required_user = NULL;
-
-    ASSERT(r != NULL);
-    ASSERT(name != NULL);
-    ASSERT(RUSER(r) != NULL);
-
-    TRACE_R(r, "%s: name=%s RUSER=%s", __func__, name, RUSER(r));
-
-    sc = GET_SERVER_CONFIG(r->server->module_config);
-    ASSERT(sc != NULL);
-    ASSERT(sc->vas_ctx != NULL);
-
-    if ((err = LOCK_VAS(r))) {
-	    ERROR_R(r, "%s: unable to acquire lock", __func__);
-	    return err;
-    }
-    /* Use RETURN() from here on */
-
-    if ((err = rnote_get(sc, r, &rnote)))
-        RETURN(err);
-
-    if ((err = set_user_obj(r)))
-        RETURN(err);
-
-    /* Convert the required user name into a user obj */
-    if (vas_user_init(sc->vas_ctx, sc->vas_serverid, name, 0, &required_user) != VAS_ERR_SUCCESS) {
-        DEBUG_R(r, "vas_user_init(%.100s): %s", name, vas_err_get_string(sc->vas_ctx, 1));
-       	RETURN(HTTP_INTERNAL_SERVER_ERROR); /* Server misconfiguration */
-    }
-
-    if (vas_user_compare(sc->vas_ctx, rnote->vas_user_obj, required_user) == VAS_ERR_SUCCESS) {
-    	user_matches = 1;
-	    TRACE_R(r, "%s: user matches", __func__);
-    } else {
-    	TRACE_R(r, "%s: user does not match", __func__);
-    }
-
-#if defined(MODAUTHVAS_VERBOSE)
-    { 
-	char *adn = NULL;
-	char *bdn = NULL;
-	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, required_user, &adn);
-	(void)vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, rnote->vas_user_obj, &bdn);
-	TRACE_R(r, "%s: <%s> <%s> %s", __func__, adn?adn:"ERROR",
-		bdn?bdn:"ERROR", user_matches ? "match" : "no-match");
-	if (adn) free(adn);
-	if (bdn) free(bdn);
-    }
-#endif
-
-    if (user_matches)
-	RETURN(OK);
-    else
-	RETURN(HTTP_FORBIDDEN);
-
-finish:
-    if (required_user)
-	vas_user_free(sc->vas_ctx, required_user);
-
-    UNLOCK_VAS(r);
-
-    return result;
-}
-
-
-/**
- * Checks if the authenticated user belongs to a particular group.
- * Assumes the server config has been initialised.
- *   @param r The authenticated request
- *   @param name The name of the group to check
- *   @return OK if group contains user, otherwise HTTP_...
- */
-static int
-match_group(request_rec *r, const char *name)
-{
-    vas_err_t                 vaserr;
-    int                       result;
-    int                       err; /*< temp storage */
-    auth_vas_server_config   *sc;
-    auth_vas_rnote           *rnote;
-
-    ASSERT(r != NULL);
-    ASSERT(name != NULL);
-    ASSERT(RUSER(r) != NULL);
-
-    sc = GET_SERVER_CONFIG(r->server->module_config);
-    ASSERT(sc != NULL);
-    ASSERT(sc->vas_ctx != NULL);
-
-    if ((err = LOCK_VAS(r))) {
-    	ERROR_R(r, "%s: unable to acquire lock", __func__);
-	return err;
-    }
-    /* Use RETURN() from here on */
-
-    if ((err = rnote_get(sc, r, &rnote)))
-	RETURN(err);
-
-#if 0 /* This is to be removed, but we do have a customer report saying they
-	 are hitting this (subcase 580317-3). */
-    /* Make sure that we have a valid VAS authentication context.
-     * If it's not there, then we'll just fail since there is
-     * no available group information. */
-    if (rnote->vas_authctx == NULL) {
-        LOG_RERROR(LOG_WARNING, 0, r,
-                   "%s: no available auth context for %s",
-		   __func__,
-                   rnote->vas_pname);
-	RETURN(HTTP_FORBIDDEN);
-    }
-#endif
-
-#define VASVER ((VAS_API_VERSION_MAJOR * 10000) + \
-    	        (VAS_API_VERSION_MINOR * 100)   + \
-    	        VAS_API_VERSION_MICRO)
-#if VASVER < 40100
-#define vas_auth_check_client_membership(c,i,a,n) \
-        LOG_RERROR(APLOG_DEBUG, 0, r, "%s: i is %s", __func__, i ? "set" : "not set"); \
-    	vas_auth_is_client_member(c,a,n)
-#endif
-
-    vaserr = auth_vas_is_user_in_group(rnote->mav_user, name);
-    switch (vaserr) {
-        case VAS_ERR_SUCCESS: /* user is member of group */
-            DEBUG_R(r, "%s: %s is a member of %s", __func__, auth_vas_user_get_principal_name(rnote->mav_user), name);
-	    RETURN(OK);
-            break;
-            
-        case VAS_ERR_NOT_FOUND: /* user not member of group */
-            DEBUG_R(r, "%s: %s not member of %s", __func__, auth_vas_user_get_principal_name(rnote->mav_user), name);
-	    RETURN(HTTP_FORBIDDEN);
-            break;
-            
-        case VAS_ERR_EXISTS: /* configured group not found */
-            WARN_R(r, "%s: group %s does not exist", __func__, name); RETURN(HTTP_FORBIDDEN);
-            break;
-            
-        default: /* other type of error */
-            ERROR_R(r, "%s: fatal vas error: %s", __func__, vas_err_get_string(sc->vas_ctx, 1));
-    	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
-            break;
-    }
-
-finish:
-    UNLOCK_VAS(r);
-
-    return result;
 }
 
 /**
@@ -672,21 +461,6 @@ static int dn_in_container(const char *dn, const char *container)
 	   strcasecmp(dn + offset, container) == 0;
 } /* dn_in_container */
 
-/*
- * A match table used during authorization phase.
- * Translates 'require' types into matcher functions.
- * Match functions must assume the VAS context is UNLOCKED.
- */
-static const struct match {
-    const char *name;
-    int (*func)(request_rec *r, const char *arg);
-    int has_args;
-} matchtab[] = {
-    { "user",	    match_user,	      1 },
-    { "group",	    match_group,      1 },
-    { NULL }
-};
-
 /**
  * Returns true if the configured authentication type for the
  * request is understood by this module.
@@ -714,138 +488,6 @@ static int is_our_auth_type(const request_rec *r)
     return 0;
 } /* is_our_auth_type */
 
-#ifdef UNDEF
-/**
- * Authorization phase hook.
- * This hook is called after check_ authn hook, to determine if
- * the now-authenticated user is permitted access the
- * resource.
- *
- * The general contract appears to be:
- *   - only look at require lines with the right method (GET/POST/etc)
- *   - ignore lines we don't understand
- *   - arguments to a require line are generally disjunctions
- *   - as soon as a require line can be satisfied, return OK
- *   - if there were no 'valid' lines, return DECLINED
- *   @param r The request being authenticated
- *   @return OK if the client user is authorized access, or HTTP_FORBIDDEN
- *           if it isn't.
- */
-static int
-auth_vas_auth_checker(request_rec *r)
-{
-    const apr_array_header_t *requires;
-    int			      i;
-    const struct match	     *match;
-    int			      rval = 0;
-    int			      valid_lines = 0;
-    char		     *arg;
-    auth_vas_dir_config	     *dc;
-
-    ASSERT(r != NULL);
-    dc = GET_DIR_CONFIG(r->per_dir_config);
-    TRACE_R(r, "%s: user=%s authtype=%s",
-	__func__, RUSER(r), RAUTHTYPE(r));
-
-    /* Ignore authz requests for non-VAS authentication or if is explicitly
-     * disabled. */
-    if (!is_our_auth_type(r) || !USING_MAV_AUTHZ(dc))
-	return DECLINED;
-
-    if (!server_ctx_is_valid(r->server)) {
-	if (!USING_AUTH_AUTHORITATIVE(dc))
-	    return DECLINED;
-	LOG_RERROR(APLOG_ERR, 0, r,
-	      "%s: no VAS context for server; FORBIDDEN", __func__);
-	return HTTP_FORBIDDEN;
-    }
-
-    requires = ap_requires(r);
-
-    ASSERT(requires != NULL);
-    TRACE_R(r, "requires->nelts = %d", requires->nelts);
-
-    for (i = 0; i < requires->nelts; i++)
-    {
-	const char *line, *type;
-	require_line *req = &((require_line *)requires->elts)[i];
-
-	/* Ignore Require lines inside an inactive <Limit> container */
-	if ((req->method_mask & AP_METHOD_BIT << r->method_number) == 0)
-	    continue;
-
-	/* Extract the first word after 'Require' */
-	line = req->requirement;
-	type = ap_getword_white(r->pool, &line);
-	ASSERT(type != NULL);
-
-	valid_lines++;
-
-	/* Find the macthing function to use for the requirement type */
-	for (match = matchtab; match->name; match++)
-	    if (strcmp(type, match->name) == 0)
-		break;
-
-	if (!match->name) {
-	    LOG_RERROR(USING_AUTH_AUTHORITATIVE(dc) ? APLOG_NOTICE : APLOG_INFO, 0, r,
-		"%s: Unknown requirement '%s'", __func__, type);
-	    continue;
-	}
-
-	if (match->has_args) {
-	    if (!*line) {
-		LOG_RERROR(APLOG_WARNING, 0, r,
-		    "Missing arguments to 'Require %s'; ignoring", type);
-		continue;
-	    }
-	    /* Apply the match function for each argument after the type */
-	    while (*line) {
-		arg = ap_getword_conf(r->pool, &line);
-		ASSERT(arg != NULL);
-		/* TRACE_R(r, "require %s \"%s\"", type, arg); */
-
-		ASSERT(match != NULL);
-		ASSERT(match->func != NULL);
-                rval = match->func(r, arg);
-		TRACE_R(r, "require %s \"%s\" -> %s", type, arg,
-			    rval == OK ? "OK" : "FAIL");
-		if (rval == OK)
-		    return OK;
-	    }
-	} else {
-	    /* Apply the match function with a NULL argument */
-	    if (*line) {
-		LOG_RERROR(APLOG_WARNING, 0, r,
-		    "Ignoring unexpected arguments to 'Require %s'", type);
-	    }
-	    rval = match->func(r, NULL);
-	    TRACE_R(r, "require %s  -> %s", type, rval == OK ? "OK" : "FAIL");
-	    if (rval == OK)
-		return OK;
-	}
-
-    }
-
-    if (!valid_lines) {
-	LOG_RERROR(USING_AUTH_AUTHORITATIVE(dc) ? APLOG_WARNING : APLOG_INFO, 0, r,
-		"No lines apply; consider 'Require valid-user'");
-	return DECLINED;
-    }
-
-    if (!USING_AUTH_AUTHORITATIVE(dc)) 
-	return DECLINED;
-
-    /* Log message based on mod_authz_user's, but with better English (I hope) */
-    LOG_RERROR(APLOG_ERR, 0, r,
-	    "%s: access to %s failed: user '%s' does not meet "
-	    "the 'require'ments to be allowed access",
-	    __func__, r->uri, RUSER(r));
-
-    return HTTP_FORBIDDEN;
-}
-
-#endif /* UNDEF */
-
 /**
  * Authenticate a user using a plaintext password.
  *
@@ -864,22 +506,26 @@ static authn_status authn_vas_check_password(request_rec *r, const char *usernam
     vas_err_t               vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(r->server->module_config);
     auth_vas_rnote         *rn;
-
+    
+    TRACE8_R(r, "%s: called", __func__);
     DEBUG_R(r, "auth_vas authenticate called for user: user='%s'", username);
 
     if (LOCK_VAS(r)) {
 	    ERROR_R(r, "%s: unable to acquire lock", __func__);
+        TRACE8_R(r, "%s: end", __func__);
     	return AUTH_GENERAL_ERROR;
     }
     /* Use RETURN() from here on */
 
     if (rnote_get(sc, r, &rn)) {
         ERROR_R(r, "auth_vas authenticate: unable to request note");
+        TRACE8_R(r, "%s: end", __func__);
 	    RETURN(AUTH_GENERAL_ERROR);
     }
 
     if (initialize_user(r, username)) {
         ERROR_R(r, "auth_vas authenticate: unable to initialize user %s", username);
+        TRACE8_R(r, "%s: end", __func__);
     	RETURN(AUTH_USER_NOT_FOUND);
     }
 
@@ -905,13 +551,15 @@ static authn_status authn_vas_check_password(request_rec *r, const char *usernam
     UNLOCK_VAS(r);
     /* set_remote_user does its own locking if necessary */
     set_remote_user(r);
-    DEBUG_R(r, "auth_vas authenticate: %s", RUSER(r));
+    DEBUG_R(r, "auth_vas authenticate: Authenticated user is %s", RUSER(r));
+    TRACE8_R(r, "%s: end", __func__);
     return AUTH_GRANTED;
 
 finish:
     /* Release resources */
     UNLOCK_VAS(r);
     
+    TRACE8_R(r, "%s: end", __func__);
     return result;
 } /* authn_vas_check_password */
 
@@ -962,8 +610,7 @@ static void rnote_init(auth_vas_rnote *rn)
 /** Releases storage associated with the rnote.
  * LOCK_VAS() must have been called prior to calling this.
  */
-static void
-rnote_fini(request_rec *r, auth_vas_rnote *rn)
+static void rnote_fini(request_rec *r, auth_vas_rnote *rn)
 {
     auth_vas_server_config *sc;
     OM_uint32 gsserr, minor;
@@ -980,21 +627,19 @@ rnote_fini(request_rec *r, auth_vas_rnote *rn)
 
     if (rn->deleg_cred != GSS_C_NO_CREDENTIAL) {
 	if ((gsserr = gss_release_cred(&minor, &rn->deleg_cred)))
-	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
-		    "gss_release_cred", gsserr, minor);
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r, "gss_release_cred", gsserr, minor);
     }
 
     if (rn->gss_ctx != GSS_C_NO_CONTEXT) {
 	if (rn->client.value)
 	    (void)gss_release_buffer(&minor, &rn->client);
 	if ((gsserr = gss_delete_sec_context(&minor, &rn->gss_ctx, NULL)))
-	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
-		    "gss_delete_sec_context", gsserr, minor);
+	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r, "gss_delete_sec_context", gsserr, minor);
     }
 
     if (rn->mav_user)
 	auth_vas_user_unref(rn->mav_user);
-}
+} /* rnote_fini */
 
 /** This function is called when the request pool is being released.
  * It is passed an auth_vas_rnote pointer we need to cleanup. */
@@ -1006,7 +651,7 @@ static apr_status_t auth_vas_cleanup_request(void *data)
     /* "A cleanup function can safely allocate memory from the pool that is
      * being cleaned up." - APR 1.2 docs. */
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
     rn = GET_RNOTE(r);
     if (rn != NULL) {
 	if (LOCK_VAS(r))
@@ -1015,9 +660,9 @@ static apr_status_t auth_vas_cleanup_request(void *data)
     	UNLOCK_VAS(r);
 	    SET_RNOTE(r, NULL);
     }
-    TRACE3_R(r, "%s: end", __func__);
+    TRACE8_R(r, "%s: end", __func__);
     return OK;
-}
+} /* auth_vas_cleanup_request */
 
 /**
  * Gets a user object for the given username and stores it in the request note.
@@ -1032,7 +677,7 @@ static int initialize_user(request_rec *request, const char *username) {
     auth_vas_server_config *sc;
     auth_vas_rnote *rnote;
 
-    TRACE3_R(request, "%s called", __func__);
+    TRACE8_R(request, "%s called", __func__);
 
     /* Empty username is an automatic authentication failure
      * (and it used to trigger a bug in VAS, bug #9473). */
@@ -1063,7 +708,7 @@ static int initialize_user(request_rec *request, const char *username) {
     RETURN(OK);
 
 finish:
-    TRACE3_R(request, "%s end", __func__);
+    TRACE8_R(request, "%s end", __func__);
     return result;
 } /* initialize_user */
 
@@ -1076,7 +721,7 @@ static int rnote_get(auth_vas_server_config* sc, request_rec *r, auth_vas_rnote 
 {
     auth_vas_rnote  *rn = NULL;
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
     
     rn = GET_RNOTE(r);
     if (rn == NULL) {
@@ -1097,7 +742,7 @@ static int rnote_get(auth_vas_server_config* sc, request_rec *r, auth_vas_rnote 
 
     /* Success */
     *rn_ptr = rn;
-    TRACE3_R(r, "%s: end",__func__);
+    TRACE8_R(r, "%s: end",__func__);
     return 0;
 } /* rnote_get */
 
@@ -1120,9 +765,10 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     gss_name_t              client_name = NULL;
 
     ASSERT(r != NULL);
-    ASSERT(auth_line != NULL);
+    
+    TRACE8_R(r, "%s: called", __func__);
 
-    TRACE3_R(r, "%s: called", __func__);
+    ASSERT(auth_line != NULL);
 
     TRACE1_R(r, "%s: line='%.16s...'", __func__, auth_line);
 
@@ -1130,7 +776,7 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     auth_param = ap_getword_white(r->pool, &auth_line);
     if (auth_param == NULL) {
         MAV_LOG_R(APLOG_NOTICE, r, "%s: Client sent empty Negotiate auth-data parameter", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
     	return DECLINED;
     }
 
@@ -1145,7 +791,7 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     if ((result = LOCK_VAS(r))) {
 	    ERROR_R(r, "%s: unable to acquire lock", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
     	return result;
     }
 
@@ -1153,14 +799,14 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     if ((result = rnote_get(sc, r, &rn))) {
 	    UNLOCK_VAS(r);
     	/* no other resources to free */
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
 	    return result;
     }
 
     if (VAS_ERR_SUCCESS != vas_gss_initialize(sc->vas_ctx, sc->vas_serverid)) {
 	    ERROR_R(r, "Unable to initialize GSS: %s", vas_err_get_string(sc->vas_ctx, 1));
     	UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
     	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -1358,7 +1004,7 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     	UNLOCK_VAS(r);
     }
 
-    TRACE3_R(r, "%s: end", __func__);
+    TRACE8_R(r, "%s: end", __func__);
     return result;
 } /* do_gss_spnego_accept */
 
@@ -1459,7 +1105,7 @@ static int get_server_creds(server_rec *s)
     vas_err_t vaserr;
     auth_vas_server_config *sc = GET_SERVER_CONFIG(s->module_config);
   
-    TRACE_S(s, "%s Called", __func__);
+    TRACE8_S(s, "%s: Called", __func__);
 
     TRACE_S(s, "%s: using %s", __func__, sc->keytab_filename ? sc->keytab_filename : " default HTTP.keytab");
 
@@ -1473,12 +1119,14 @@ static int get_server_creds(server_rec *s)
 					  sc->keytab_filename);
     if (vaserr) {
         ERROR_S(s, "vas_id_establish_cred_keytab failed: %s", vas_err_get_string(sc->vas_ctx, 1));
+        TRACE8_S(s, "%s: end", __func__);
     	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     TRACE_S(s, "Successfully established credentials for %s", sc->server_principal);
 
     sc->creds_established_at = apr_time_now();
+    TRACE8_S(s, "%s: end", __func__);
     return OK;
 } /* get_server_creds */
 
@@ -1494,30 +1142,15 @@ static int get_server_creds(server_rec *s)
  *   @param s the server being initialised for VAS
  *   @param p memory pool associated with server instance
  */
-static void
-auth_vas_server_init(apr_pool_t *p, server_rec *s)
+static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
 {
     vas_err_t               vaserr;
     vas_auth_t             *vasauth;
     auth_vas_server_config *sc;
     char *tmp_realm;
 
-    TRACE3_S(s, "%s: called", __func__);
+    TRACE8_S(s, "%s: called", __func__);
     LOG_S(APLOG_TRACE1, s, "called");
-
-//    char *debug_env = NULL;
-//#define VASAPIDEBUG 1
-//    debug_env = getenv("VASAPIDEBUG");
-//    int vas_api_debug = (debug_env) ? atoi ( debug_env ) : 0;
-
-//    if( vas_api_debug ) {
-/*	    vas_log_init( VAS_LOG_MODE_FILE,
- 		  VAS_LOG_ALL,
-          VAS_LOG_DEBUG_5,
-          VAS_API_DEBUG_LOG_FILE_NAME,
-          0 );
-*/
-//    }
 
     DEBUG_S(s, "%s: Initializing %s for host: %s: Defined on line %i in conf file: %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->server_hostname, s->defn_line_number, s->defn_name ? s->defn_name : "default conf file");
 
@@ -1526,11 +1159,13 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
     if (sc == NULL) {
     	ERROR_S(s, "%s: no server config", __func__);
+        TRACE8_S(s, "%s: end", __func__);
     	return;
     }
 
     if (sc->vas_ctx != NULL) {
     	TRACE1_S(s, "%s: context has already initialised", __func__);
+        TRACE8_S(s, "%s: end", __func__);
         return;
     }
 
@@ -1540,6 +1175,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     vaserr = vas_ctx_alloc(&sc->vas_ctx);
     if (vaserr != VAS_ERR_SUCCESS) {
         ERROR_S(s, "vas_ctx_alloc failed, err = %d", vaserr);
+        TRACE8_S(s, "%s: end", __func__);
     	return;
     }
 
@@ -1570,12 +1206,13 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                           &sc->vas_serverid);
     if (vaserr != VAS_ERR_SUCCESS) {
     	ERROR_S(s, "vas_id_alloc failed on %s, err = %s", sc->server_principal, vas_err_get_string(sc->vas_ctx, 1));
+        TRACE8_S(s, "%s: end", __func__);
     	return;
     }
 
     /* Establish our credentials using the service keytab */
     if (get_server_creds(s) != OK) {
-        TRACE3_S(s, "%s: end", __func__);
+        TRACE8_S(s, "%s: end", __func__);
 	    return;
     }
 
@@ -1617,8 +1254,8 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     set_cache_size(s);
     set_cache_timeout(s);
 
-    TRACE3_S(s, "%s: end", __func__);
-}
+    TRACE8_S(s, "%s: end", __func__);
+} /* auth_vas_server_init */
 
 /**
  * Appends the Basic auth header, if enabled
@@ -1634,15 +1271,13 @@ static void add_basic_auth_headers(request_rec *r)
 
     ASSERT(r != NULL);
 
-    TRACE3_R(r, "%s", __func__);
+    TRACE8_R(r, "%s", __func__);
 
     dc = GET_DIR_CONFIG(r->per_dir_config);
     ASSERT(dc != NULL);
     
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
-    //TODO XXX at some point do we only want to restrict basic auth for AD users by the VasAuthUseBasic Directive, but
-    //still allow mod_auth_basic (aka files, digest) to be checked?
     if (USING_AUTH_BASIC(dc)) {
     	s = apr_psprintf(r->pool, "Basic realm=\"%s\"", ap_auth_name(r) ? ap_auth_name(r) : sc->default_realm);
     	ASSERT(s != NULL);
@@ -1651,8 +1286,8 @@ static void add_basic_auth_headers(request_rec *r)
     }else
         DEBUG_R(r, "%s: AuthVasUseBasic is set to off. Basic Authentication is not allowed", __func__);
 
-    TRACE3_R(r, "%s: end", __func__);
-}
+    TRACE8_R(r, "%s: end", __func__);
+} /* add_basic_auth_headers */
 
 struct ip_cmp_closure {
     request_rec *request;
@@ -1746,26 +1381,26 @@ static int is_negotiate_enabled_for_client(request_rec *r)
 
     ASSERT(r != NULL);
 
-    TRACE3_R(r,"%s called",__func__);
+    TRACE8_R(r,"%s called",__func__);
 
     dc = GET_DIR_CONFIG(r->per_dir_config);
 
     if (!USING_AUTH_NEGOTIATE(dc)) {
         TRACE1_R(r, "%s: Using Auth Negotiate",__func__);
-        TRACE3_R(r, "%s: end",__func__);
+        TRACE8_R(r, "%s: end",__func__);
     	return 0;
     }
 
     if (dc->negotiate_subnets == NULL) { /* All subnets */
         TRACE1_R(r, "%s: Using all subnets", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
     	return 1;
     }
 
    	status = apr_sockaddr_info_get(&closure.sockaddr_p, r->connection->client_ip, APR_UNSPEC, 0, 0, r->pool);
     if (status != APR_SUCCESS) {
         MAV_LOG_RERRNO(APLOG_ERR, r, status, "%s: Error turning %s into a sockaddr struct", __func__, r->connection->client_ip);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
    	    return 0;
     } else {
            TRACE4_R(r, "%s: Success in turning %s into a sockaddr struct", __func__, r->connection->client_ip);
@@ -1774,9 +1409,9 @@ static int is_negotiate_enabled_for_client(request_rec *r)
     closure.request = r;
 
     apr_table_do(mav_ip_subnet_cmp, &closure, dc->negotiate_subnets, NULL);
-    TRACE3_R(r, "%s: end", __func__);
+    TRACE8_R(r, "%s: end", __func__);
     return closure.match_found;
-}
+} /* is_negotiate_enabled_for_client */
 
 /**
  * Appends the headers
@@ -1793,7 +1428,7 @@ static void add_auth_headers(request_rec *r)
 {
     ASSERT(r != NULL);
 
-    TRACE3_R(r, "%s called", __func__);
+    TRACE8_R(r, "%s called", __func__);
 
     if (is_negotiate_enabled_for_client(r)) {
         DEBUG_R(r, "%s: Adding Negotiate to auth_header: %s", __func__, IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate Negotiate" : "WWW-Authenticate Negotiate");
@@ -1802,8 +1437,8 @@ static void add_auth_headers(request_rec *r)
 
     add_basic_auth_headers(r);
 
-    TRACE3_R(r, "%s end", __func__);
-}
+    TRACE8_R(r, "%s end", __func__);
+} /* add_auth_headers */
 
 /**
  * Gets the authentication line from the header
@@ -1813,7 +1448,7 @@ static void add_auth_headers(request_rec *r)
  */
 static int get_auth_line(request_rec *r, const char **auth_line)
 {
-    TRACE3_R(r, "%s: start", __func__);
+    TRACE8_R(r, "%s: start", __func__);
     
     auth_vas_dir_config     *dc = GET_DIR_CONFIG(r->per_dir_config);
     const char *header_auth_line = NULL;
@@ -1840,31 +1475,29 @@ static int get_auth_line(request_rec *r, const char **auth_line)
          * that any other auth module will be able to authenticate either, so
          * there's no need to return DECLINED if not authoritative. */
         TRACE1_R(r, "%s: Returning HTTP_UNAUTHORIZED", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return HTTP_UNAUTHORIZED;
     }
 
-    TRACE3_R(r, "%s: end",__func__);
+    TRACE8_R(r, "%s: end",__func__);
 
     *auth_line = header_auth_line;    
     
     return OK;
-}
+} /* get_auth_line */
 
 /**
- * Authorization phase hook.
- * This hook is called after check_ authn hook, to determine if
- * the now-authenticated user is permitted access the
- * resource.
+ * Analyze the request headers, authenticate the user, 
+ * and set the user information in the request record (r->user and r->ap_auth_type). 
  *
- * The general contract appears to be:
- *   - only look at require lines with the right method (GET/POST/etc)
- *   - ignore lines we don't understand
- *   - arguments to a require line are generally disjunctions
- *   - as soon as a require line can be satisfied, return OK
- *   - if there were no 'valid' lines, return DECLINED
+ * This method is only run when Apache determines that authentication/authorization is required for this 
+ * resource (as determined by the 'Require' directive). 
+ *
+ * It runs after the registered authz_provider checks, and before the registered authn_provider checks. 
+ * This method should be registered with ap_hook_check_authn().
+ *
  *   @param r The request being authenticated
- *   @return OK if the client user is authorized access, or HTTP_FORBIDDEN
+ *   @return OK if the client user is authorized access, DECLINED, or HTTP_FORBIDDEN
  *           if it isn't.
  */
 static int authenticate_gss_user(request_rec *r)
@@ -1878,7 +1511,7 @@ static int authenticate_gss_user(request_rec *r)
     authn_provider_list *current_provider;
     char *decoded_line;
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
 
     current_auth = ap_auth_type(r);
 
@@ -1886,17 +1519,17 @@ static int authenticate_gss_user(request_rec *r)
 
     if(!current_auth || strcasecmp(current_auth, VAS_AUTH_TYPE)) {
         WARN_R(r, "AuthType %s != %s, not handling this request", current_auth ? current_auth : "(null)", VAS_AUTH_TYPE);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return DECLINED;
     }
 
     if (!server_ctx_is_valid(r->server)) {
         if (!USING_AUTH_AUTHORITATIVE(conf)) {
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return DECLINED;
         }
         ERROR_R(r, "%s: no VAS context, check for errors logged at startup", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -1905,12 +1538,12 @@ static int authenticate_gss_user(request_rec *r)
     res = get_auth_line(r, &auth_line);
     if(res) {
         TRACE2_R(r, "%s: get_auth_line result: %i", __func__, res);
-        TRACE3_R(r, "%s: End", __func__);
+        TRACE8_R(r, "%s: End", __func__);
         return res;
     }
 
     auth_type = ap_getword_white(r->pool, &auth_line);
-    TRACE1_R(r, "%s Got: 'Authorization: %s [...]'", __func__, auth_type);
+    TRACE1_R(r, "%s Attempting Authentication using %s auth'", __func__, auth_type);
 
     if( auth_type ) {
         if (strcasecmp(auth_type, "Basic") == 0 && auth_line != NULL) {
@@ -1932,7 +1565,7 @@ static int authenticate_gss_user(request_rec *r)
                 const authn_provider *provider;
 
                 if(!current_provider) {
-                    DEBUG_R(r, "%s: No providers listed in conf, using default %s", __func__, AUTHN_DEFAULT_PROVIDER);
+                    DEBUG_R(r, "%s: No providers listed in conf, using default %s", __func__, DEFAULT_AUTHN_PROVIDER);
                     provider = ap_lookup_provider(AUTHN_PROVIDER_GROUP,
                                                   DEFAULT_AUTHN_PROVIDER,
                                                   AUTHN_PROVIDER_VERSION);
@@ -1973,10 +1606,12 @@ static int authenticate_gss_user(request_rec *r)
             sent_pw = NULL;
 
             if (!USING_AUTH_NEGOTIATE(conf)) {
-                if (!USING_AUTH_AUTHORITATIVE(conf))
+                if (!USING_AUTH_AUTHORITATIVE(conf)) {
+                    TRACE8_R(r, "%s: end", __func__);
                     return DECLINED;
+                }
                 ERROR_R(r, "%s: Negotiate authentication denied (%s off)", __func__, CMD_USENEGOTIATE);
-                TRACE3_R(r, "%s: end", __func__);
+                TRACE8_R(r, "%s: end", __func__);
                 return HTTP_UNAUTHORIZED;
             }
 
@@ -1987,14 +1622,14 @@ static int authenticate_gss_user(request_rec *r)
                 add_basic_auth_headers(r);
             }
             DEBUG_R(r, "%s: auth_result %i", __func__, auth_result);
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return (auth_result == OK || USING_AUTH_AUTHORITATIVE(conf)) ?  auth_result : DECLINED;
         } /* End Negotiate Auth */
         else {
             TRACE2_R(r, "%s: Unknown auth_type %s", __func__, auth_type);
             /* We don't understand. Deny access. */
             add_auth_headers(r);
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return USING_AUTH_AUTHORITATIVE(conf) ? HTTP_UNAUTHORIZED : DECLINED;
         }
     }
@@ -2006,7 +1641,7 @@ static int authenticate_gss_user(request_rec *r)
 
         /* If we're not authoritative, then any error is ignored. */
         if (!(conf->auth_authoritative) && auth_result != AUTH_DENIED) {
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return DECLINED;
         }
 
@@ -2035,177 +1670,15 @@ static int authenticate_gss_user(request_rec *r)
             add_basic_auth_headers(r);
         }
         DEBUG_R(r, "%s: auth_result %i", __func__, return_code);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return return_code;
+    }else{
+        TRACE1_R(r, "%s: auth_result == AUTH_GRANTED. %i", __func__, auth_result);
     }
 
-    TRACE3_R(r, "%s: end", __func__);
+    TRACE8_R(r, "%s: end", __func__);
     return OK;
-}
-
-#ifdef UNDEF
-/**
- * Authentication phase.
- * This hook is called after the generic access_checker hook,
- * but before auth_checker. It analyses the request headers
- * and sets the RUSER(r) and RAUTHTYPE(r) fields, but only if
- * the user is authenticated.
- *
- *  @param r request context
- *  @return OK if spnego or basic authentication succeeded,
- *	    HTTP_INTERNAL_SERVER_ERROR if VAS is not available,
- *	    DECLINED if AuthType did not specify VAS,
- *	    HTTP_UNAUTHORIZED if
- */
-static int auth_vas_check_authn(request_rec *r)
-{
-    const char		        *auth_type = NULL;
-    const char		        *auth_line = NULL;
-    const char		        *type = NULL;
-    char		            *credentials = NULL;
-    const char		        *user = NULL;
-    const char		        *password = NULL;
-    int			            result, obSize;
-    auth_vas_dir_config	    *dc = GET_DIR_CONFIG(r->per_dir_config);
-
-    /* Pull the auth type from .htaccess or <Directory> */
-    type = ap_auth_type(r);
-    TRACE_R(r, "%s: auth_type=%s", __func__, type);
-
-    /*
-     * Ignore requests that aren't for VAS.
-     * XXX - should handle BASIC here as well?
-     */
-    if (type == NULL || strcasecmp(type, VAS_AUTH_TYPE) != 0) {
-    	LOG_RERROR(APLOG_ERR, 0, r, "auth type %s != %s, not handling this request", type ? type : "(null)", VAS_AUTH_TYPE);
-	    return DECLINED;
-    }
-
-    if (!server_ctx_is_valid(r->server)) {
-    	if (!USING_AUTH_AUTHORITATIVE(dc))
-	        return DECLINED;
-      	LOG_RERROR(APLOG_ERR, 0, r, "%s: no VAS context, check for errors logged at startup", __func__);
-       	return HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    /* Pick out the client request's Authorization header(s) */
-    auth_line = apr_table_get(r->headers_in, IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authorization" : "Authorization");
-    if (!auth_line)
-    {
-    	if (USING_AUTH_NEGOTIATE(dc)) {
-	        /* There were no Authorization headers: Deny access now,
-	         * but offer possible means of negotiation via WWW-Authenticate */
-    	    TRACE_R(r, "sending initial negotiate headers");
-	        add_auth_headers(r);
-    	} else if (USING_AUTH_BASIC(dc)) {
-	        TRACE_R(r, "sending initial basic headers");
-	        add_basic_auth_headers(r);
-    	} else {
-	        LOG_RERROR(APLOG_WARNING, 0, r,
-		    "%s off and %s off; no authentication possible",
-    		CMD_USENEGOTIATE, CMD_USEBASIC);
-	    }
-	    /* Note that in the absence of Authorization headers there is no way
-    	 * that any other auth module will be able to authenticate either, so
-	     * there's no need to return DECLINED if not authoritative. */
-        TRACE1_R(r, "%s: Returning HTTP_UNAUTHORIZED", __func__);
-    	return HTTP_UNAUTHORIZED;
-    }
-
-    auth_type = ap_getword_white(r->pool, &auth_line);
-    TRACE_R(r, "Got: 'Authorization: %s [...]'", auth_type);
-
-    /* Handle "Authorization: Negotiate ..." */
-    if (strcasecmp(auth_type, "Negotiate") == 0 && is_negotiate_enabled_for_client(r))
-    {
-    	if (!USING_AUTH_NEGOTIATE(dc)) {
-	        if (!USING_AUTH_AUTHORITATIVE(dc))
-    	    	return DECLINED;
-	        LOG_RERROR(APLOG_ERR, 0, r, "Negotiate authentication denied (%s off)", CMD_USENEGOTIATE);
-    	    return HTTP_UNAUTHORIZED;
-	    }
-	    
-        result = do_gss_spnego_accept(r, auth_line);
-    	if (result != OK) {
-	        /*
-	         * The realm string shows up in the password prompting box (if
-    	     * you add it after basic). This will cause the prompt for
-	         * user name and password to show up.
-    	     *
-	         * TODO: if the user sent back NTLMSSP then it will fail but
-    	     * it already caused the username and password box to show up.
-    	     * So to the user it will appear as if they must type in their
-    	     * username and password twice.  And indeed they must.  The
-    	     * first is for the NTLM info.  The second is for the basic info.
-    	     * We should just get first credentials right out of the NTLM
-    	     * token.
-	         *
-    	     * The workaround is to get users to change IE to
-    	     * do turn on 'Integrated Windows Authentication' in the
-    	     * Internet Options->Advanced tab. This is the default in
-    	     * contemporary releases of IE.
-    	     */
-	        add_basic_auth_headers(r);
-	    }
-	    return (result == OK || USING_AUTH_AUTHORITATIVE(dc)) ?  result : DECLINED;
-    }
-    /* Handle "Authorization: Basic ..." */
-    else if (strcasecmp(auth_type, "Basic") == 0 && auth_line != NULL)
-    {
-    	char *colon = NULL;
-
-	    if (!USING_AUTH_BASIC(dc)) {
-	        if (!USING_AUTH_AUTHORITATIVE(dc))
-    		    return DECLINED;
-	        LOG_RERROR(APLOG_ERR, 0, r, "Basic authentication denied (%s off)", CMD_USEBASIC);
-	        return HTTP_UNAUTHORIZED;
-	    }
-
-    	/*
-    	 * Decode the BASE64 token.
-	     * I've chosen to use APR's decoder here because
-    	 * the VAS library's decoder has the potential call
-    	 * to realloc(credentials).
-	     */
-    	obSize = apr_base64_decode_len( auth_line );
-	    credentials = apr_palloc(r->pool, obSize + 1);
-    	apr_base64_decode(credentials, auth_line);
-	    credentials[obSize] = '\0';
-
-    	TRACE1_R(r, "apr_base64_decode returned %u btyes", obSize);
-
-	    /* Basic auth token is of the form "user:password" */
-    	if ((colon = strchr(credentials, ':')) == NULL)
-	    {
-	        LOG_RERROR(APLOG_ERR, 0, r, "Error parsing credentials, no ':' separator");
-    	    /* N.B. If the basic auth header can't be parsed, there's no point
-    	     * declining if not authoritative. */
-	        return HTTP_UNAUTHORIZED;
-    	}
-
-    	*colon = '\0';
-	    user = credentials;
-    	password = colon + 1;
-
-        //TODO is this necessary any more?
-    	/* Attempt to authenticate using username and password */
-	    if ((result = authn_vas_check_password(r, user, password)) == AUTH_GRANTED) {
-             RAUTHTYPE(r) = "Basic";
-    	     ASSERT(RAUTHTYPE(r) != NULL);
-	         ASSERT(RUSER(r) != NULL);
-             result = OK;
-	    }
-    	return (result == OK || USING_AUTH_AUTHORITATIVE(dc)) ?  result : DECLINED;
-    }
-    /* Handle "Authorization: [other]" */
-    else
-    {
-   	/* We don't understand. Deny access. */
-	    add_auth_headers(r);
-    	return USING_AUTH_AUTHORITATIVE(dc) ? HTTP_UNAUTHORIZED : DECLINED;
-    }
-}
-#endif
+} /* authenticate_gss_user */
 
 #if HAVE_UNIX_SUEXEC
 /**
@@ -2213,8 +1686,7 @@ static int auth_vas_check_authn(request_rec *r)
  * @param r curent request
  * @return pointer to an identity structure
  */
-static ap_unix_identity_t *
-auth_vas_suexec(const request_rec *r)
+static ap_unix_identity_t * auth_vas_suexec(const request_rec *r)
 {
     ap_unix_identity_t *id;
     auth_vas_dir_config *dc;
@@ -2239,7 +1711,7 @@ auth_vas_suexec(const request_rec *r)
     id->userdir = 0;
 
     return id;
-}
+} /* auth_vas_suexec */
 #endif /* HAVE_UNIX_SUEXEC */
 
 /**
@@ -2330,7 +1802,7 @@ static struct ldap_lookup_map {
     { "objectSid",		    vas_user_get_sid },
     { "userPrincipalName",	vas_user_get_upn },
     { NULL, NULL }
-};
+}; /* struct ldap_lookup_map quick_ldap_lookups[] */
 
 /**
  * Set the remote username (REMOTE_USER variable) to the chosen attribute.
@@ -2346,25 +1818,18 @@ static void set_remote_user_attr(request_rec *r, const char *attr)
 
     ASSERT(r != NULL);
 
+    TRACE8_R(r, "%s: called",__func__);
+
     /* Depends on the remote_user_map_methods having the right info */
     ASSERT(attr != NULL);
     ASSERT(attr[0]);
-
-    /* RUSER might already be set - particularly on Apache 1 where it is
-     * per-connection not per-request */
-    /* XXX: It might have to be changed to a different attr */
-    //TODO Does this assume UserPrincipalName is the default? Should it just be removed?
-    /*
-    if(strchr(RUSER(r), '@') == NULL) {
-    	LOG_RERROR(APLOG_DEBUG, 0, r, "%s: REMOTE_USER appears to already have been set to %s", __func__, RUSER(r));
-	    return;
-    }*/
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
 
     if (LOCK_VAS(r)) {
 	    ERROR_R(r, "Failed to lock VAS");
+        TRACE8_R(r, "%s: end", __func__);
 	    return;
     }
 
@@ -2397,7 +1862,7 @@ static void set_remote_user_attr(request_rec *r, const char *attr)
 
     		    DEBUG_R(r, "%s: Using VAS cache for lookup of %s attribute", __func__, attr);
 
-    	    	if (map->vas_func(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj, &attrval) == VAS_ERR_SUCCESS)
+    	    	if (map->vas_func(sc->vas_ctx, sc->vas_serverid,(vas_user_t*)auth_vas_user_get_vas_user_obj(rn->mav_user), &attrval) == VAS_ERR_SUCCESS)
           		{ /* success */
 	    	        RUSER(r) = apr_pstrdup(RUSER_POOL(r), attrval);
 		            free(attrval);
@@ -2415,7 +1880,7 @@ static void set_remote_user_attr(request_rec *r, const char *attr)
     	    struct passwd *pw;
 
 	        DEBUG_R(r, "%s: Using VAS cache for lookup of %cidNumber attribute", __func__, ug);
-    	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj, &pw) == VAS_ERR_SUCCESS)
+    	    if (vas_user_get_pwinfo(sc->vas_ctx, sc->vas_serverid, (vas_user_t*)auth_vas_user_get_vas_user_obj(rn->mav_user), &pw) == VAS_ERR_SUCCESS)
 	        { /* success */
         		RUSER(r) = apr_psprintf(RUSER_POOL(r), "%u", ug == 'u' ? pw->pw_uid : pw->pw_gid);
 		        free(pw);
@@ -2428,7 +1893,7 @@ static void set_remote_user_attr(request_rec *r, const char *attr)
 
     DEBUG_R(r, "%s: VAS cache lookup unavailable for %s, doing LDAP query", __func__, attr);
 
-    if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, rn->vas_user_obj, anames, &attrs) == VAS_ERR_SUCCESS) {
+    if (vas_user_get_attrs(sc->vas_ctx, sc->vas_serverid, (vas_user_t*)auth_vas_user_get_vas_user_obj(rn->mav_user), anames, &attrs) == VAS_ERR_SUCCESS) {
     	char **strvals;
 	    int count;
     	vas_err_t vaserr;
@@ -2456,6 +1921,9 @@ finish:
     UNLOCK_VAS(r);
 
     MAV_LOG_R(APLOG_INFO, r, "Remote user set from %.100s to %.100s (attribute %s)", old_ruser, RUSER(r), attr);
+
+    TRACE8_R(r, "%s: end", __func__);
+
 } /* set_remote_user_attr */
 
 
@@ -2470,7 +1938,7 @@ static void localize_remote_user(request_rec *r, const char *unused)
     char *username;
 
     ASSERT(r != NULL);
-    TRACE_R(r, __func__);
+    TRACE8_R(r, "%s: called",  __func__);
 
     /* Convert the UPN into a UID, then convert the UID back again */
 
@@ -2481,22 +1949,26 @@ static void localize_remote_user(request_rec *r, const char *unused)
     	DEBUG_R(r, "apr_uid_get failed for %s (normal for non-Unix users), " "using strcmp method", RUSER(r));
 
 	    localize_remote_user_strcmp(r);
+        TRACE8_R(r, "%s: end", __func__);
     	return;
     }
 
     /* Unix-enabled user, convert back to their name */
     if ((aprst = apr_uid_name_get(&username, uid, RUSER_POOL(r))) != OK) {
 	    MAV_LOG_RERRNO(APLOG_ERR, r, aprst, "apr_uid_name_get failed for uid %d", uid);
+        TRACE8_R(r, "%s: end", __func__);
 	    return;
     }
 
     /* Set the authorized username to the localized name.
      * username was allocated out of the right pool. */
     RUSER(r) = username;
+    TRACE8_R(r, "%s: end", __func__);
     return;
 
 #else /* !APR_HAS_USER */
     localize_remote_user_strcmp(r);
+    TRACE8_R(r, "%s: end", __func__);
     return;
 #endif /* !APR_HAS_USER */
 } /* localize_remote_user */
@@ -2511,11 +1983,13 @@ static void localize_remote_user_strcmp(request_rec *r)
     char *at, *user_realm;
 
     ASSERT(r != NULL);
-    TRACE_R(r, __func__);
+    TRACE8_R(r, "%s: called",  __func__);
 
     at = strchr(RUSER(r), '@');
-    if (!at)
+    if (!at) {
+        TRACE8_R(r, "%s: end", __func__);
     	return; /* Not a UPN */
+    }
 
     user_realm = at + 1;
 
@@ -2527,6 +2001,7 @@ static void localize_remote_user_strcmp(request_rec *r)
 	    DEBUG_R(r, "stripping matching realm from " "user %s", RUSER(r));
        	*at = '\0'; /* Trimming RUSER(r) directly */
     }
+    TRACE8_R(r, "%s: end", __func__);
 } /* localize_remote_user_strcmp */
 
 /**
@@ -2575,7 +2050,7 @@ static struct {
     { "ldap-attr", set_remote_user_attr, "LDAP attribute" },
     { "local", localize_remote_user, NULL },
     { "default", NULL, NULL }
-};
+}; /* struct remote_user_map_methods */
 
 static const size_t num_remote_user_map_methods =
 	sizeof(remote_user_map_methods) / sizeof(remote_user_map_methods[0]);
@@ -2620,7 +2095,7 @@ set_remote_user_map_conf(cmd_parms *cmd, void *struct_ptr, const char *args)
 
     return apr_psprintf(cmd->pool,
 	    "Unrecognised parameter to "CMD_REMOTEUSERMAP": %s", optval1);
-}
+} /* set_remote_user_map_conf */
 
 /**
  * Sets RUSER(r) according to the remote_user_map configuration.
@@ -2633,7 +2108,7 @@ static void set_remote_user(request_rec *r)
     const char *method_name, *args;
     int i;
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
 
 	DEBUG_R(r, "%s: setting REMOTE_USER for %s", __func__, RUSER(r));
 
@@ -2653,14 +2128,14 @@ static void set_remote_user(request_rec *r)
 	        if (remote_user_map_methods[i].method)
 		        (*remote_user_map_methods[i].method)(r, args);
             DEBUG_R(r, "%s: Mapped user to %s using %s %s name mapping", __func__, RUSER(r), method_name, (args ? args: ""));
-            TRACE3_R(r, "%s: End",__func__);
+            TRACE8_R(r, "%s: End",__func__);
     	    return;
 	    }
     }
     /* XXX: This should already have been detected and flagged as an error */
     ERROR_R(r, "Unknown " CMD_REMOTEUSERMAP " \"%s\"", method_name);
 
-    TRACE3_R(r, "%s: End",__func__);
+    TRACE8_R(r, "%s: End",__func__);
 } /* set_remote_user */
 
 /**
@@ -2670,10 +2145,10 @@ static int auth_vas_fixup(request_rec *r)
 {
     const auth_vas_dir_config *dc;
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
 
     if (!is_our_auth_type(r)) {
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
 	    return DECLINED;
     }
 
@@ -2682,10 +2157,10 @@ static int auth_vas_fixup(request_rec *r)
 
     export_cc(r);
 
-    TRACE3_R(r, "%s: end", __func__);
+    TRACE8_R(r, "%s: end", __func__);
 
     return OK;
-}
+} /* auth_vas_fixup */
 
 /**
  * Creates and initialises a directory configuration structure.
@@ -2705,7 +2180,6 @@ static void * auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 	conf->auth_basic = FLAG_UNSET;
 	conf->auth_authoritative = FLAG_UNSET;
 	conf->export_delegated = FLAG_UNSET;
-	conf->localize_remote_user = FLAG_UNSET;
 	conf->remote_user_map = "default";
 	conf->remote_user_map_args = NULL;
 	conf->use_suexec = FLAG_UNSET;
@@ -2745,26 +2219,9 @@ static void * auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *ne
         else /* Flag set */
 	        merged_dc->negotiate_subnets = new_dc->negotiate_subnets;
 
-    	/*
-    	 * Handle deprecated AuthVasLocalizeRemoteUser
-    	 *  AuthVasLocalizeRemoteUser on  -> AuthVasRemoteUserMap local
-    	 *  AuthVasLocalizeRemoteUser off -> AuthVasRemoteUserMap default
-    	 */
     	if (strcasecmp(new_dc->remote_user_map, "default") != 0) {
-            if (new_dc->localize_remote_user != FLAG_UNSET && strcasecmp(new_dc->remote_user_map, "local") != 0) {
-                MAV_LOG_P(APLOG_NOTICE, p, "Ignoring " CMD_LOCALIZEREMOTEUSER " option " "because " CMD_REMOTEUSERMAP " is set");
-            }
-
 	        merged_dc->remote_user_map = apr_pstrdup(p, new_dc->remote_user_map);
 	        merged_dc->remote_user_map_args = apr_pstrdup(p, new_dc->remote_user_map_args);
-    	} else if (new_dc->localize_remote_user == FLAG_ON) {
-	        merged_dc->remote_user_map = "local";
-	        merged_dc->remote_user_map_args = NULL;
-    	} else if (new_dc->localize_remote_user == FLAG_OFF &&
-	    	strcasecmp(base_dc->remote_user_map, "local") == 0) {
-	        /* Localize is explicitly off but the parent's was explicitly on */
-    	    merged_dc->remote_user_map = "default";
-	        merged_dc->remote_user_map_args = NULL;
     	} else {
 	        merged_dc->remote_user_map = apr_pstrdup(p, base_dc->remote_user_map);
 	        merged_dc->remote_user_map_args = apr_pstrdup(p, base_dc->remote_user_map_args);
@@ -2787,7 +2244,7 @@ static void * auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *ne
     	}
     }
     return (void *)merged_dc;
-}
+} /* auth_vas_merge_dir_config */
 
 /**
  * Merges a parent server configuration with a base server configuration.
@@ -2853,7 +2310,7 @@ static void *auth_vas_merge_server_config(apr_pool_t *p, void *base_conf, void *
     }
 
     return (void *) merged_sc;
-}
+} /* auth_vas_merge_server_config */
 
 /** Passed an auth_vas_server_config pointer */
 static apr_status_t auth_vas_server_config_destroy(void *data)
@@ -2926,8 +2383,7 @@ static void auth_vas_print_version(apr_pool_t *plog)
  *   @param ptemp memory pool for temporary storage
  *   @param s the server being configured
  */
-static int auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog,
-	apr_pool_t *ptemp, server_rec *s)
+static int auth_vas_post_config(apr_pool_t *p, apr_pool_t *plog, apr_pool_t *ptemp, server_rec *s)
 {
     server_rec *sp;
 
@@ -2959,7 +2415,6 @@ static void auth_vas_child_init(apr_pool_t *p, server_rec *s)
     }
 } /* auth_vas_child_init */
 
-
 /**
  *
  *
@@ -2968,8 +2423,7 @@ static void auth_vas_child_init(apr_pool_t *p, server_rec *s)
  */
 static const char *add_authn_provider(cmd_parms *cmd, void *config, const char *arg)
 {
-    MAV_LOG_P(APLOG_TRACE3, cmd->pool, "%s: called", __func__); 
-    tfprintf("Start");
+    TRACE8_P( cmd->pool, "%s: called", __func__); 
 
     auth_vas_dir_config *conf = (auth_vas_dir_config *)config;
     authn_provider_list *newp;
@@ -2978,7 +2432,6 @@ static const char *add_authn_provider(cmd_parms *cmd, void *config, const char *
     newp->provider_name = arg;
 
     MAV_LOG_P(APLOG_DEBUG, cmd->pool, "%s: Authn provider %s", __func__, arg);
-    tfprintf("Authn provider %s", arg);
 
     /* lookup and cache the actual provider now */
     newp->provider = ap_lookup_provider(AUTHN_PROVIDER_GROUP,
@@ -2987,40 +2440,34 @@ static const char *add_authn_provider(cmd_parms *cmd, void *config, const char *
 
     if (newp->provider == NULL) {
         /* by the time they use it, the provider should be loaded and registered with us. */
-        tfprintf("Unknown Authn provider: %s", newp->provider_name);
-        tfprintf("End");
+        DEBUG_P(cmd->pool, "%s: Unknown Authn provider: %s", __func__, newp->provider_name);
+        TRACE8_P(cmd->pool, "%s: end", __func__);
         return apr_psprintf(cmd->pool, "Unknown Authn provider: %s", newp->provider_name);
     }
 
-
-    // TODO: What critera do they need to have in order to be a Provider for VAS authtype?
-    // basic password check. Is this all?
     if (!newp->provider->check_password) {
         /* if it doesn't provide the appropriate function, reject it */
-        tfprintf("The '%s' Authn provider doesn't support basic vas Authentication", newp->provider_name);
-        tfprintf("End");
-        return apr_psprintf(cmd->pool, "The '%s' Authn provider doesn't support basic vas Authentication", newp->provider_name);
+        DEBUG_P(cmd->pool, "%s: The '%s' Authn provider doesn't support basic vas Authentication", __func__, newp->provider_name);
+        TRACE8_P(cmd->pool, "%s: end", __func__);
+        return apr_psprintf(cmd->pool, "The '%s' Authn provider doesn't support basic VAS Authentication", newp->provider_name);
     }
 
     /* Add it to the list now. */
     if (!conf->auth_providers) {
-        tfprintf("Added Authn provider <%s> to list of Vas providers", newp->provider_name);
-        MAV_LOG_P(APLOG_DEBUG, cmd->pool, "%s: Added Authn provider %s to list of Vas providers", __func__, newp->provider_name);
+        DEBUG_P(cmd->pool, "%s: Added Authn provider %s to list of Vas providers", __func__, newp->provider_name);
         conf->auth_providers = newp;
     }
     else {
         authn_provider_list *last = conf->auth_providers;
 
         while (last->next) {
-            tfprintf("Last provider %s", last->provider_name);
+            TRACE1_P(cmd->pool, "%s: Last provider %s", __func__, last->provider_name);
             last = last->next;
         }
         last->next = newp;
-            tfprintf("Added Authn provider <%s> to list of VAS providers", last->next->provider_name);
+        DEBUG_P(cmd->pool, "%s: dded Authn provider <%s> to list of VAS providers", __func__, last->next->provider_name);
     }
-    tfprintf("End");
-    MAV_LOG_P(APLOG_TRACE3, cmd->pool, "%s: end", __func__);
-
+    TRACE8_P(cmd->pool, "%s: end", __func__);
     return NULL;
 } /* add_authn_provider */
 
@@ -3043,14 +2490,14 @@ static authz_status check_unixgroup_membership(request_rec *r, const char *group
 
     ASSERT(r != NULL);
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
 
     if(!groupname) {
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_DENIED;
     }
     if(!pw) {
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_DENIED;
     }
 
@@ -3074,13 +2521,13 @@ static authz_status check_unixgroup_membership(request_rec *r, const char *group
              * is way too new so we cast size_t to unsigned long */
             MAV_LOG_RERRNO(APLOG_ERR, r, APR_ENOMEM, "%s: apr_palloc (%lu + %lu)", __func__, (unsigned long)sizeof(struct group), (unsigned long)buflen);
             UNLOCK_VAS(r);
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return AUTHZ_GENERAL_ERROR;
         }
         if ((err = getgrnam_r(groupname, gbuf, buf, buflen, &gr))) {
             WARN_R(r, "%s: getgrnam_r: cannot access group '%s': %s", __func__, groupname, sensible_strerror_r(err, buf, buflen));
             UNLOCK_VAS(r);
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return AUTHZ_GENERAL_ERROR;
         }
     }
@@ -3090,14 +2537,14 @@ static authz_status check_unixgroup_membership(request_rec *r, const char *group
     if (!gr && errno) {
         WARN_R(r, "%s: getgrnam: cannot access group '%s'", __func__,  groupname);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_GENERAL_ERROR;
     }
 #endif /* !HAVE_GETGRNAM_R */
     if (!gr) {
         WARN_R(r, "%s: No such group '%s'", __func__, groupname);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_DENIED;
     }
 
@@ -3105,7 +2552,7 @@ static authz_status check_unixgroup_membership(request_rec *r, const char *group
     if (pw->pw_gid == gr->gr_gid) {
         TRACE1_R(r, "%s: user %s primary group matches %s", __func__, RUSER(r), groupname);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_GRANTED;
     }
 
@@ -3114,12 +2561,12 @@ static authz_status check_unixgroup_membership(request_rec *r, const char *group
         if (strcmp(pw->pw_name, *sp) == 0) {
             TRACE1_R(r, "%s: user %s is a member of the unix-group %s", __func__, RUSER(r), groupname);
             UNLOCK_VAS(r);
-            TRACE3_R(r, "%s: end", __func__);
+            TRACE8_R(r, "%s: end", __func__);
             return AUTHZ_GRANTED;
         }
     } 
 
-    TRACE3_R(r, "%s: end", __func__);
+    TRACE8_R(r, "%s: end", __func__);
     return result;
 } /* check_unixgroup_membership */
 
@@ -3136,17 +2583,27 @@ static authz_status authz_vas_unixgroup_check_authorization(request_rec *r, cons
     int                     err;
     authz_status            result = AUTHZ_DENIED;
     auth_vas_server_config  *sc;
+    auth_vas_dir_config     *dc;
     auth_vas_rnote          *rnote;
     struct passwd           *pw =      NULL;
 
     ASSERT(r != NULL);
+    TRACE8_R(r, "%s: called", __func__);
 
-    TRACE3_R(r, "%s: called", __func__);
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+
+    if ( !USING_MAV_AUTHZ(dc))
+    {
+        TRACE8_R(r, "%s: end", __func__);
+        return DECLINED;
+    }
 
     if (!r->user) {
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_DENIED_NO_USER;
     }
+
+    TRACE1_R(r, "%s: user=%s, authtype=%s", __func__, RUSER(r), RAUTHTYPE(r));
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
@@ -3154,7 +2611,7 @@ static authz_status authz_vas_unixgroup_check_authorization(request_rec *r, cons
 
     if ((err = LOCK_VAS(r))) {
         ERROR_R(r, "%s: unable to acquire lock", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return err;
     }
 
@@ -3163,7 +2620,7 @@ static authz_status authz_vas_unixgroup_check_authorization(request_rec *r, cons
     if ((err = rnote_get(sc, r, &rnote))) {
         TRACE1_R(r, "%s: failed to get rnote", __func__);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return err;
     }
 
@@ -3172,28 +2629,34 @@ static authz_status authz_vas_unixgroup_check_authorization(request_rec *r, cons
     if ((err = set_user_obj(r))) {
         TRACE1_R(r, "%s: failed to set user object", __func__);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end",__func__);
+        TRACE8_R(r, "%s: end",__func__);
         return err;
     }
 
     /* Determine the user's unix name */
     vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, rnote->vas_user_obj, &pw);
+    vas_user_t * vas_user_obj = (vas_user_t*)auth_vas_user_get_vas_user_obj(rnote->mav_user);
+
+    if(!vas_user_obj){
+        TRACE1_R(r, "%s: vas_user_obj is not set for user %s", __func__, auth_vas_user_get_name(rnote->mav_user));
+    }
+
+    vaserr = vas_user_get_pwinfo(sc->vas_ctx, NULL, (vas_user_t*)auth_vas_user_get_vas_user_obj(rnote->mav_user), &pw);
     if (vaserr == VAS_ERR_NOT_FOUND) {
         /* User does not map to a unix user, so cannot be part of a group */
         TRACE1_R(r, "%s: User does not map to a unix user, so cannot be part of a unix-group", __func__);
         UNLOCK_VAS(r);
         if(pw) free(pw);
-        TRACE3_R(r, "%s: end",__func__);
+        TRACE8_R(r, "%s: end",__func__);
         return AUTHZ_DENIED;
     }
     if (vaserr != VAS_ERR_SUCCESS) {
         ERROR_R(r, "%s: vas_user_get_pwinfo(): %s", __func__, vas_err_get_string(sc->vas_ctx, 1));
         UNLOCK_VAS(r);
         if(pw) free(pw);
-        TRACE3_R(r, "%s: end",__func__);
+        TRACE8_R(r, "%s: end",__func__);
         return AUTHZ_GENERAL_ERROR;
     }
-
 
     const char* group_names = require_args;
     char *group_name;
@@ -3217,7 +2680,7 @@ static authz_status authz_vas_unixgroup_check_authorization(request_rec *r, cons
     if(pw) free(pw);
     DEBUG_R(r, "%s: require unix-group-> %s", __func__, result == AUTHZ_GRANTED ? "AUTHZ_GRANTED" : "AUTHZ_DENIED");
     TRACE1_R(r, "%s: returned %i", __func__, result);
-    TRACE3_R(r, "%s: end",__func__);
+    TRACE8_R(r, "%s: end",__func__);
     return result;
 
 } /* authz_vas_unixgroup_check_authorization */
@@ -3236,16 +2699,27 @@ static authz_status authz_vas_adgroup_check_authorization(request_rec *r, const 
     int                     err = AUTHZ_DENIED;
     authz_status            result = AUTHZ_DENIED;
     auth_vas_server_config  *sc;
+    auth_vas_dir_config     *dc;
     auth_vas_rnote          *rnote;
 
     ASSERT(r != NULL);
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
+
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+
+    if ( !USING_MAV_AUTHZ(dc))
+    {
+        TRACE8_R(r, "%s: end", __func__);
+        return DECLINED;
+    }
 
     if (!r->user) {
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_DENIED_NO_USER;
     }
+
+    TRACE1_R(r, "%s: user=%s, authtype=%s", __func__, RUSER(r), RAUTHTYPE(r));
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
@@ -3253,14 +2727,14 @@ static authz_status authz_vas_adgroup_check_authorization(request_rec *r, const 
 
     if ((err = LOCK_VAS(r))) {
         ERROR_R(r, "%s: unable to acquire lock", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return err;
     }
 
     if ((err = rnote_get(sc, r, &rnote))) {
         TRACE1_R(r, "%s: failed to get rnote", __func__);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return err;
     }
 
@@ -3305,7 +2779,7 @@ static authz_status authz_vas_adgroup_check_authorization(request_rec *r, const 
     UNLOCK_VAS(r);
     DEBUG_R(r, "%s: require ad-user -> %s", __func__, result == AUTHZ_GRANTED ? "AUTHZ_GRANTED" : "AUTHZ_DENIED");
     TRACE1_R(r, "%s: returned %i", __func__, result);
-    TRACE3_R(r, "%s: end",__func__);
+    TRACE8_R(r, "%s: end",__func__);
     return result;
 
 } /* authz_vas_adgroup_check_authorization */
@@ -3323,18 +2797,29 @@ static authz_status authz_vas_adcontainer_check_authorization(request_rec *r, co
     int                     err = AUTHZ_DENIED;
     authz_status            result = AUTHZ_DENIED;
     auth_vas_server_config  *sc = NULL;
+    auth_vas_dir_config     *dc = NULL;
     auth_vas_rnote          *rnote = NULL;
-    vas_user_t              *vasuser = NULL;
+//    vas_user_t              *vasuser = NULL;
     char                    *dn = NULL;
 
     ASSERT(r != NULL);
 
-    TRACE3_R(r, "%s: called", __func__);
+    TRACE8_R(r, "%s: called", __func__);
+
+    dc = GET_DIR_CONFIG(r->per_dir_config);
+
+    if ( !USING_MAV_AUTHZ(dc))
+    {
+        TRACE8_R(r, "%s: end", __func__);
+        return DECLINED;
+    }
 
     if (!r->user) {
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return AUTHZ_DENIED_NO_USER;
     }
+
+    TRACE1_R(r, "%s: user=%s, authtype=%s", __func__, RUSER(r), RAUTHTYPE(r));
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
     ASSERT(sc != NULL);
@@ -3342,23 +2827,18 @@ static authz_status authz_vas_adcontainer_check_authorization(request_rec *r, co
 
     if ((err = LOCK_VAS(r))) {
         ERROR_R(r, "%s: unable to acquire lock", __func__);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return err;
     }
 
     if ((err = rnote_get(sc, r, &rnote))) {
         TRACE1_R(r, "%s: failed to get rnote", __func__);
         UNLOCK_VAS(r);
-        TRACE3_R(r, "%s: end", __func__);
+        TRACE8_R(r, "%s: end", __func__);
         return err;
     }
 
-    if ((vaserr = auth_vas_user_get_vas_user(rnote->mav_user, &vasuser))) {
-        ERROR_R(r, "%s: error initializing user object: %d, %s", __func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
-        RETURN(AUTHZ_DENIED);
-    }
-
-    if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, vasuser, &dn )) != VAS_ERR_SUCCESS ) {
+    if ((vaserr = vas_user_get_dn(sc->vas_ctx, sc->vas_serverid, (vas_user_t*)auth_vas_user_get_vas_user_obj(rnote->mav_user), &dn )) != VAS_ERR_SUCCESS ) {
         ERROR_R(r, "%s: error getting user's distinguishedName: %d, %s", __func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
         RETURN(AUTHZ_DENIED);
     }
@@ -3375,7 +2855,7 @@ static authz_status authz_vas_adcontainer_check_authorization(request_rec *r, co
             result = AUTHZ_GRANTED;
             break;
         } 
-        TRACE2_R(r, "%s: user dn \"%s\" is not in container \"%s\"", __func__, dn, container_name);
+        TRACE2_R(r, "%s: user dn \"%s\" is NOT in container \"%s\"", __func__, dn, container_name);
     }
 
 finish:
@@ -3384,14 +2864,13 @@ finish:
         DEBUG_R(r, "%s: user dn \"%s\" is not in any of the require ad-dn containers \"%s\"", __func__, dn, require_args);
     }   
 
-    if (vasuser) vas_user_free(sc->vas_ctx, vasuser);
     if (dn)      free(dn);
 
     UNLOCK_VAS(r);
 
     DEBUG_R(r, "%s: require ad-dn-> %s", __func__, result == AUTHZ_GRANTED ? "AUTHZ_GRANTED" : "AUTHZ_DENIED");
     TRACE1_R(r, "%s: returned %i", __func__, result);
-    TRACE3_R(r, "%s: end",__func__);
+    TRACE8_R(r, "%s: end",__func__);
     return result;
 
 } /* authz_vas_adcontainer_check_authorization */
@@ -3431,6 +2910,8 @@ static const authz_provider authz_vas_adcontainer_provider =
  */
 static void auth_vas_register_hooks(apr_pool_t *p)
 {
+    MAV_LOG_P(APLOG_TRACE1, p, "Registering auth_vas hooks");
+
     auth_vas_print_version(p);
 
     /* Register authn provider
@@ -3456,7 +2937,6 @@ static void auth_vas_register_hooks(apr_pool_t *p)
                               &authz_vas_adcontainer_provider,
                               AP_AUTH_INTERNAL_PER_CONF);
 
- //   ap_hook_check_authn(auth_vas_check_authn, NULL, NULL, APR_HOOK_MIDDLE, AP_AUTH_INTERNAL_PER_CONF);
     ap_hook_check_authn(authenticate_gss_user, NULL, NULL, APR_HOOK_MIDDLE, AP_AUTH_INTERNAL_PER_CONF);
     ap_hook_post_config(auth_vas_post_config, NULL, NULL, APR_HOOK_MIDDLE);
     ap_hook_child_init(auth_vas_child_init, NULL, NULL, APR_HOOK_MIDDLE);
@@ -3482,3 +2962,45 @@ AP_DECLARE_MODULE(auth_vas4) =
     auth_vas_cmds,                  /* cmds */
     auth_vas_register_hooks         /* register_hooks */
 };
+
+/*
+ * Prints a message with a GSS error code to traceLogFileName if TRACE_DEBUG is defined otherwise prints to stderr
+ */
+void print_gss_err(const char *prefix, OM_uint32 major_status, OM_uint32 minor_status)
+{
+    OM_uint32       majErr, minErr  = 0;
+    OM_uint32       message_context = 0;
+    gss_buffer_desc status_string   = GSS_C_EMPTY_BUFFER;
+
+    if ( GSS_ERROR(major_status) || GSS_SUPPLEMENTARY_INFO(major_status) ) {
+        /* First process the Major status code */
+        do {
+            /* Get the status string associated
+               with the Major (GSS=API) status code */
+            majErr = gss_display_status( &minErr, major_status, GSS_C_GSS_CODE, GSS_C_NO_OID, &message_context, &status_string );
+            /* Print the status string */
+            #ifdef TRACE_DEBUG
+                tfprintf("%s: %.*s\n", prefix, (int)status_string.length, (char*)status_string.value );
+            #else
+                fprintf(stderr, "%s: %.*s\n", prefix, (int)status_string.length, (char*)status_string.value );
+            #endif
+            /* Free the status string buffer */
+            gss_release_buffer( &minErr, &status_string );
+        } while( message_context && !GSS_ERROR( majErr ) );
+
+        /* Then process the Minor status code */
+        do {
+            /* Get the status string associated
+               with the Minor (mechanism) status code */
+            majErr = gss_display_status( &minErr, minor_status, GSS_C_MECH_CODE, GSS_C_NO_OID, &message_context, &status_string );
+            /* Print the status string */
+            #ifdef TRACE_DEBUG
+                tfprintf(": %.*s\n", (int)status_string.length, (char*)status_string.value );
+            #else
+                fprintf(stderr, ": %.*s\n", (int)status_string.length, (char*)status_string.value );
+            #endif
+            /* Free the status string buffer */
+            gss_release_buffer( &minErr, &status_string );
+        } while( message_context && !GSS_ERROR( majErr ) );
+    }
+}
