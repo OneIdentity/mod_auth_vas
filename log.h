@@ -9,6 +9,7 @@
 
 #include <http_log.h>
 #include "compat.h"
+#include <vas_gss.h>
 
 #if __GNUC__
 #   define MAV_LOG_R(level,request,format,args...) ap_log_rerror(APLOG_MARK, level, OK, request, format, ##args)
@@ -53,17 +54,30 @@
 #   define TRACE6_S(s,f,a...) MAV_LOG_S(APLOG_TRACE6,s,f, ##a)
 #   define TRACE7_S(s,f,a...) MAV_LOG_S(APLOG_TRACE7,s,f, ##a)
 #   define TRACE8_S(s,f,a...) MAV_LOG_S(APLOG_TRACE8,s,f, ##a)
+
+#   define ERROR_P(p,f,a...)  MAV_LOG_P(APLOG_ERR,p,f,##a)
+#   define WARN_P(p,f,a...)   MAV_LOG_P(APLOG_WARNING,p,f,##a)
+#   define DEBUG_P(p,f,a...)  MAV_LOG_P(APLOG_DEBUG,p,f,##a)
+#   define TRACE1_P(p,f,a...) MAV_LOG_P(APLOG_TRACE1,p,f,##a)
+#   define TRACE2_P(p,f,a...) MAV_LOG_P(APLOG_TRACE2,p,f,##a)
+#   define TRACE3_P(p,f,a...) MAV_LOG_P(APLOG_TRACE3,p,f,##a)
+#   define TRACE4_P(p,f,a...) MAV_LOG_P(APLOG_TRACE4,p,f, ##a)
+#   define TRACE5_P(p,f,a...) MAV_LOG_P(APLOG_TRACE5,p,f, ##a)
+#   define TRACE6_P(p,f,a...) MAV_LOG_P(APLOG_TRACE6,p,f, ##a)
+#   define TRACE7_P(p,f,a...) MAV_LOG_P(APLOG_TRACE7,p,f, ##a)
+#   define TRACE8_P(p,f,a...) MAV_LOG_P(APLOG_TRACE8,p,f, ##a)
+
 #else /* C99 */
-#   define ERROR_R(r,f,...)  MAV_LOG_R(APLOG_ERR, r, f, ##a)
-#   define DEBUG_R(r,f,...)  MAV_LOG_R(APLOG_DEBUG, r, f, ##a)
-#   define TRACE1_R(r,f,...) MAV_LOG_R(APLOG_TRACE1, r, f, ##a)
-#   define TRACE2_R(r,f,...) MAV_LOG_R(APLOG_TRACE2, r, f, ##a)
-#   define TRACE3_R(r,f,...) MAV_LOG_R(APLOG_TRACE3, r, f, ##a)
-#   define TRACE4_R(r,f,...) MAV_LOG_R(APLOG_TRACE4, r, f, ##a)
-#   define TRACE5_R(r,f,...) MAV_LOG_R(APLOG_TRACE5, r, f, ##a)
-#   define TRACE6_R(r,f,...) MAV_LOG_R(APLOG_TRACE6, r, f, ##a)
-#   define TRACE7_R(r,f,...) MAV_LOG_R(APLOG_TRACE7, r, f, ##a)
-#   define TRACE8_R(r,f,...) MAV_LOG_R(APLOG_TRACE8, r, f, ##a)
+#   define ERROR_R(r,f,...)  MAV_LOG_R(APLOG_ERR, r, __VA_ARGS__)
+#   define DEBUG_R(r,f,...)  MAV_LOG_R(APLOG_DEBUG, r, __VA_ARGS__)
+#   define TRACE1_R(r,f,...) MAV_LOG_R(APLOG_TRACE1, r, __VA_ARGS__)
+#   define TRACE2_R(r,f,...) MAV_LOG_R(APLOG_TRACE2, r, __VA_ARGS__)
+#   define TRACE3_R(r,f,...) MAV_LOG_R(APLOG_TRACE3, r, __VA_ARGS__)
+#   define TRACE4_R(r,f,...) MAV_LOG_R(APLOG_TRACE4, r, __VA_ARGS__)
+#   define TRACE5_R(r,f,...) MAV_LOG_R(APLOG_TRACE5, r, __VA_ARGS__)
+#   define TRACE6_R(r,f,...) MAV_LOG_R(APLOG_TRACE6, r, __VA_ARGS__)
+#   define TRACE7_R(r,f,...) MAV_LOG_R(APLOG_TRACE7, r, __VA_ARGS__)
+#   define TRACE8_R(r,f,...) MAV_LOG_R(APLOG_TRACE8, r, __VA_ARGS__)
 
 #   define ERROR_S(s,f,...)  MAV_LOG_S(APLOG_ERR,s,__VA_ARGS__)
 #   define DEBUG_S(s,f,...)  MAV_LOG_S(APLOG_DEBUG,s,__VA_ARGS__)
@@ -75,6 +89,18 @@
 #   define TRACE6_S(s,f,...) MAV_LOG_S(APLOG_TRACE6,s,__VA_ARGS__)
 #   define TRACE7_S(s,f,...) MAV_LOG_S(APLOG_TRACE7,s,__VA_ARGS__)
 #   define TRACE8_S(s,f,...) MAV_LOG_S(APLOG_TRACE8,s,__VA_ARGS__)
+
+#   define ERROR_P(p,f,...)  MAV_LOG_P(APLOG_ERR,p,__VA_ARGS__)
+#   define DEBUG_P(p,f,...)  MAV_LOG_P(APLOG_DEBUG,p,__VA_ARGS__)
+#   define TRACE1_P(p,f,...) MAV_LOG_P(APLOG_TRACE1,p,__VA_ARGS__)
+#   define TRACE2_P(p,f,...) MAV_LOG_P(APLOG_TRACE2,p,__VA_ARGS__)
+#   define TRACE3_P(p,f,...) MAV_LOG_P(APLOG_TRACE3,p,__VA_ARGS__)
+#   define TRACE4_P(p,f,...) MAV_LOG_P(APLOG_TRACE4,p,__VA_ARGS__)
+#   define TRACE5_P(p,f,...) MAV_LOG_P(APLOG_TRACE5,p,__VA_ARGS__)
+#   define TRACE6_P(p,f,...) MAV_LOG_P(APLOG_TRACE6,p,__VA_ARGS__)
+#   define TRACE7_P(p,f,...) MAV_LOG_P(APLOG_TRACE7,p,__VA_ARGS__)
+#   define TRACE8_P(p,f,...) MAV_LOG_P(APLOG_TRACE8,p,__VA_ARGS__)
+
 #endif /* __GNUC__ */
 
 /*
@@ -113,7 +139,7 @@
 #ifdef TRACE_DEBUG
 
     static FILE* traceLogFile = NULL;
-    static const char *traceLogFileName = "/tmp/debug_trace.log";
+    static const char *traceLogFileName = "/tmp/mav_debug_trace.log";
 
 #   define tfprintf(msg, args...){\
         traceLogFile = fopen( traceLogFileName, "a" );\
@@ -128,5 +154,9 @@
 #   define tfprintf
 #endif
 
+/*
+ * Prints a message with a GSS error code to traceLogFileName if TRACE_DEBUG is defined otherwise prints to stderr
+ */
+void print_gss_err(const char *prefix, OM_uint32 major_status, OM_uint32 minor_status);
 
 #endif /* MAV_LOG_H */

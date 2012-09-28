@@ -101,4 +101,11 @@
 
 #define IS_FORWARD_PROXY_REQUEST(r) ((r)->proxyreq == PROXYREQ_PROXY)
 
+/** Macro for returning a value from the match functions via a cleanup label
+ * (called finish) to make the code read more easily. */
+#define RETURN(x) do { \
+        result = (x); \
+        goto finish; \
+} while (0)
+
 #endif /* MAV_COMPAT_H */

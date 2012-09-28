@@ -3,7 +3,6 @@
     - setup-mod_auth_vas now traps on a trap list for kinit
     - Shortened the description of the module in pkg/mav.pp.in for building AIX bff
     - Added dependencies checks in pkg/mav.pp.in for http 2.4
-
     
 3.6.8   (2011-04-04)
         - Defined apr_snprintf for Apache 1.x builds Bug #802.

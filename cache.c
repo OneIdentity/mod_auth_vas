@@ -244,32 +244,31 @@ auth_vas_cache_insert(auth_vas_cache *cache, const char *key, void *value)
     /* Make sure there is room for this item */
     if (apr_hash_count(cache->table) >= cache->max_size) {
 
-	if (HAS_EXPIRED(cache->oldest)) {
-	    /* At least one expired item. Clean up as many as possible. */
-	    auth_vas_cache_remove_expired_items(cache);
-	} else {
-	    /* No expired items. Notify the user and remove the oldest one */
+	    if (HAS_EXPIRED(cache->oldest)) {
+	        /* At least one expired item. Clean up as many as possible. */
+    	    auth_vas_cache_remove_expired_items(cache);
+	    } else {
+	        /* No expired items. Notify the user and remove the oldest one */
             MAV_LOG_P(APLOG_ERR, cache->pool,
 		    "%s: Removing unexpired item to make room, "
 		    "consider increasing the cache size or decreasing the object lifetime",
 		    __func__);
-	    auth_vas_cache_remove_items_from(cache, cache->oldest);
-	}
-        MAV_LOG_P(APLOG_NOTICE, cache->pool, "This is a TEST");
+    	    auth_vas_cache_remove_items_from(cache, cache->oldest);
+	    }
     }
 
     if (cache->youngest) { /* There are other items */
-	new_item->older = cache->youngest;
-	cache->youngest->younger = new_item;
+    	new_item->older = cache->youngest;
+	    cache->youngest->younger = new_item;
     } else { /* No other items */
-	cache->oldest = new_item;
+    	cache->oldest = new_item;
     }
 
     cache->youngest = new_item;
 
     /* Ref the item now that it's going into the cache. */
     if (cache->ref_item_cb)
-	cache->ref_item_cb(value);
+	    cache->ref_item_cb(value);
 
     apr_hash_set(cache->table, key, APR_HASH_KEY_STRING, new_item);
 }

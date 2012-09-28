@@ -13,6 +13,7 @@ mod_auth_vas4_la_SOURCES = \
 			  mod_auth_vas4.c \
 			  cache.c cache.h \
 			  user.c user.h \
+			  log.h \
 			  #
 
 mod_auth_vas4_la_CPPFLAGS = $(AM_CPPFLAGS) \

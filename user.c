@@ -82,7 +82,7 @@ struct auth_vas_user {
     char	*principal_name; /**< Krb5 userPrincipalName */
     char	*password;
     int	credflags; /**< Flags used when establishing credentials */
-};
+}; /* struct auth_vas_user */
 
 /**
  * Determine whether the given user is in a particular group.
@@ -98,26 +98,19 @@ struct auth_vas_user {
  *
  * @sa vas_auth_check_client_membership
  */
-vas_err_t
-auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
+vas_err_t auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
     vas_ctx_t *vasctx;
 
     if (user->vas_authctx == NULL)
-	return VAS_ERR_INVALID_PARAM;
+        return VAS_ERR_INVALID_PARAM;
 
     vasctx = auth_vas_cache_get_vasctx(user->cache);
 
     /* No caching, simply a pass-through because
      * vas_auth_check_client_membership does not hit the network. */
 
-    return vas_auth_check_client_membership(vasctx, user->vas_id,
-	    user->vas_authctx, group);
-}
-
-#define RETURN(x) do { \
-    result = (x); \
-    goto finish; \
-} while (0)
+    return vas_auth_check_client_membership(vasctx, user->vas_id, user->vas_authctx, group);
+} /* auth_vas_is_user_in_group */
 
 /**
  * Get (and cache) the auth_vas_user for the given username.
@@ -142,7 +135,6 @@ vas_err_t auth_vas_user_alloc(
     cached_user = (auth_vas_user*)auth_vas_cache_get(cache, username);
 
     if (!cached_user) {
-//	    char *upn;
 
         tfprintf("User enterened name %s\n", username);
 
@@ -150,47 +142,10 @@ vas_err_t auth_vas_user_alloc(
     	if (vaserr)
 	        RETURN(vaserr);
 
-//    	vaserr = vas_id_get_name(vasctx, local_id, &upn, NULL);
-//	    if (vaserr) {
-//	        /* We'd better fail the whole function. */
-  //  	    vas_id_free(vasctx, local_id);
-	//        RETURN(vaserr);
-    //	}
-
-      //  tfprintf("vas_id_get_name lookup returned %s\n", upn);
-/*
-        char* pname;
-        vaserr = vas_name_to_principal(vasctx, username, VAS_NAME_TYPE_USER, 0, &pname);
-        if(vaserr) {
-            tfprintf("Failed to get principal name for username %s.100s: %s", username, vas_err_get_string(vasctx,1));
-        }else {
-            tfprintf("Principal name for username %s: is %s", username, pname);
-        //    if(pname) free(pname);
-
-        }
-*/
-/*
-        vaserr = vas_id_get_user( vasctx, auth_vas_cache_get_serverid(cache), &cached_user->vas_user_obj );
-        if(vaserr) {
-            tfprintf("Failed to get vas_user_obj from vas_id %s\n", vas_err_get_string(vasctx, 1));
-        } else {
-            tfprintf("Got vald vas_user_obj for vas_id %s\n", username);
-            char * samaccountname;
-            vaserr = vas_user_get_sam_account_name(vasctx, auth_vas_cache_get_serverid(cache), cached_user->vas_user_obj, &samaccountname);
-            if(vaserr) {
-                tfprintf("Failed to get samaccountname for user %.100s: %s", username, vas_err_get_string(vasctx,1));
-            }else{
-                tfprintf("SamaccountName %s\n", samaccountname);
-                if(samaccountname) free(samaccountname);
-            }
-        }            
-*/
     	cached_user = calloc(1, sizeof(*cached_user));
 	    cached_user->cache = cache;
     	cached_user->username = strdup(username);
 	    cached_user->vas_id = local_id;
-        //cached_user->principal_name = upn;
- //       cached_user->principal_name = pname;
 
         vaserr = auth_vas_user_set_vas_user_obj(cached_user);
         if (vaserr) {
@@ -202,11 +157,11 @@ vas_err_t auth_vas_user_alloc(
             vaserr = vas_user_get_krb5_client_name( vasctx, local_id, cached_user->vas_user_obj, &krb5princname);
             if (vaserr) {
                 tfprintf("Failed to get Kerberos Client Name for user %.100s: %s", username, vas_err_get_string(vasctx,1));
-         //       RETURN(vaserr);
+                vas_id_free(vasctx, local_id);
+                RETURN(vaserr);
             }else{
                 tfprintf("krb5PrincipalName %s\n", krb5princname);
                 cached_user->principal_name = krb5princname;
-//                if(krb5princname) free(krb5princname);
             }
         }
 
@@ -223,7 +178,7 @@ vas_err_t auth_vas_user_alloc(
 
 finish:
     return result;
-}
+} /* auth_vas_user_alloc */
 
 /**
  * Sets the user's vas_auth state based on GSS authentication.
@@ -234,8 +189,7 @@ finish:
  *
  * Based on vas_gss_auth, and has the same return codes.
  */
-vas_err_t
-auth_vas_user_use_gss_result(
+vas_err_t auth_vas_user_use_gss_result(
 	auth_vas_user *user,
 	gss_cred_id_t cred,
 	gss_ctx_id_t context)
@@ -243,32 +197,22 @@ auth_vas_user_use_gss_result(
     vas_err_t vaserr;
     vas_ctx_t *vasctx;
 
-    if (!cred)
-    {
-	    tfprintf("%s: Cred is null",__FUNCTION__);
-    }else if (cred == GSS_C_NO_CREDENTIAL)
-    {
-	    tfprintf("%s: Cred is == to GSS_C_NO_CREDENTIAL", __FUNCTION__);
-    }else
-	    tfprintf("%s: Cred is valid", __FUNCTION__);
-
     if (user->vas_authctx) /* cached */
     {
-        tfprintf("%s: User is already cached\n", __FUNCTION__);
-	return VAS_ERR_SUCCESS;
+        tfprintf("user has already been cached");
+	    return VAS_ERR_SUCCESS;
     }
 
     vasctx = auth_vas_cache_get_vasctx(user->cache);
 
     vaserr = vas_gss_auth(vasctx, cred, context, &user->vas_authctx);
-    if (vaserr)
-    {
-        tfprintf("vas_gss_auth failed with %d", vaserr);
+    if (vaserr) {
+        print_gss_err("vas_gss_auth", vaserr, 0);
     	user->vas_authctx = NULL; /* ensure */
     }
 
     return vaserr;
-}
+} /* auth_vas_user_use_gss_result */
 
 /**
  * Get a vas_user_t for the given auth_vas_user.
@@ -278,8 +222,7 @@ auth_vas_user_use_gss_result(
  *
  * The result must be freed by the caller using vas_user_free().
  */
-vas_err_t
-auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
+vas_err_t auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
 {
     vas_ctx_t *vasctx;
     vas_id_t *serverid;
@@ -291,9 +234,10 @@ auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
      * susceptible to failure when username-attr-name is not userPrincipalName.
      */
     return vas_user_init(vasctx, serverid, avuser->username, 0, vasuserp);
-}
+} /* auth_vas_user_get_vas_user */
+
 /**
- *  Set the vas_user_t object for the give auth_vas_user.
+ *  Set the vas_user_t object for the given auth_vas_user.
  *
  *  The result should be freed by the auth_vas_user_unref method
  */
@@ -314,35 +258,40 @@ vas_err_t auth_vas_user_set_vas_user_obj(auth_vas_user *vasuser)
         tfprintf("Failed to init user object: %s\n", vas_err_get_string(vasctx,1));
     }
     return vaserr;
-}
+} /* auth_vas_user_set_vas_user_obj */
 
 /**
  * Get the user's username, as they provided it.
  */
-const char *
-auth_vas_user_get_name(const auth_vas_user *user)
+const char * auth_vas_user_get_name(const auth_vas_user *user)
 {
     return user->username;
-}
+} /* auth_vas_user_get_name */
 
 /**
  * Get the user's Krb5PrincipalName.
  */
-const char *
-auth_vas_user_get_principal_name(const auth_vas_user *user)
+const char * auth_vas_user_get_principal_name(const auth_vas_user *user)
 {
     return user->principal_name;
-}
+} /* auth_vas_user_get_principal_name */
+
+/**
+ * Get the users's vas user object 
+ */
+const vas_user_t * auth_vas_user_get_vas_user_obj(auth_vas_user *user)
+{
+    return user->vas_user_obj;
+} /* auth_vas_user_get_principal_name */
 
 /**
  * Increments the reference count on the given user object.
  *
  * This function is not thread-safe.
  */
-void
-auth_vas_user_ref(auth_vas_user *user) {
+void auth_vas_user_ref(auth_vas_user *user) {
     ++user->refcount;
-}
+} /* auth_vas_user_ref */
 
 /**
  * Decrements the reference count on the given user object.
@@ -350,8 +299,7 @@ auth_vas_user_ref(auth_vas_user *user) {
  *
  * This function is not thread-safe.
  */
-void
-auth_vas_user_unref(auth_vas_user *user) {
+void auth_vas_user_unref(auth_vas_user *user) {
 
     ASSERT(user->refcount > 0);
 
@@ -380,7 +328,7 @@ auth_vas_user_unref(auth_vas_user *user) {
 
 	free(user);
     }
-}
+} /* auth_vas_user_unref */
 
 /**
  * Establishes credentials for the given user with the given password and
@@ -396,8 +344,7 @@ auth_vas_user_unref(auth_vas_user *user) {
  *
  * @see vas_id_establish_cred_password, vas_auth
  */
-vas_err_t
-auth_vas_user_authenticate(
+vas_err_t auth_vas_user_authenticate(
 	auth_vas_user *user,
 	int credflags,
 	const char *password)
@@ -411,25 +358,24 @@ auth_vas_user_authenticate(
     serverid = auth_vas_cache_get_serverid(user->cache);
 
     if (credflags == user->credflags && user->password != NULL) {
-	/* We already know the user's password */
-	if (strcmp(user->password, password) == 0)
-	    RETURN(VAS_ERR_SUCCESS);
-	else
-	    RETURN(VAS_ERR_FAILURE);
+    	/* We already know the user's password */
+	    if (strcmp(user->password, password) == 0)
+	        RETURN(VAS_ERR_SUCCESS);
+    	else
+	        RETURN(VAS_ERR_FAILURE);
     }
     
     if (user->password) {
-	/* Avoid leaving user passwords in memory. */
-	memset(user->password, '\0', strlen(user->password));
-	free(user->password);
-	user->password = NULL;
+	    /* Avoid leaving user passwords in memory. */
+    	memset(user->password, '\0', strlen(user->password));
+	    free(user->password);
+    	user->password = NULL;
     }
 
     /* Do a real VAS lookup. This causes Kerberos traffic (TGS-REQ, TGS-REP) */
-    vaserr = vas_id_establish_cred_password(vasctx, user->vas_id, credflags,
-	    password);
+    vaserr = vas_id_establish_cred_password(vasctx, user->vas_id, credflags, password);
     if (vaserr)
-	RETURN(vaserr);
+    	RETURN(vaserr);
 
     /* Successfully authenticated. Save the auth info */
     user->password = strdup(password);
@@ -438,15 +384,15 @@ auth_vas_user_authenticate(
     /* Authenticate the user to our service. Causes Kerberos traffic. */
     vaserr = vas_auth(vasctx, user->vas_id, serverid, &user->vas_authctx);
     if (vaserr) {
-	user->vas_authctx = NULL; /* ensure */
-	RETURN(vaserr);
+	    user->vas_authctx = NULL; /* ensure */
+    	RETURN(vaserr);
     }
 
     RETURN(VAS_ERR_SUCCESS);
 
 finish:
     return result;
-}
+} /* auth_vas_user_authenticate */
 
 /* vim: ts=8 sw=4 noet tw=80
  */
