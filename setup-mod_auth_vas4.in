@@ -702,7 +702,7 @@ if test -n "$apxs"; then
 	label "checking loaded mod_auth_vas4 version"
 	module_version=`"$sbindir/$target" ${AP_CF+-f "$AP_CF"} \
 	    -t -e debug 2>&1 | 
-	    sed -n -e 's/.*mod_auth_vas4 version \([^,]*\),.*/\1/p'`
+	    sed -n -e 's/.*mod_auth_vas version \([^,]*\),.*/\1/p'`
 	echo "${module_version-not found}"
 
 	if test -z "$module_version"; then
