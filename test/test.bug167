@@ -17,7 +17,7 @@ ap_conf_save
 
 ap_conf_append <<-.
 	<Directory "$DOC_DIR">
-		AuthType VAS
+		AuthType VAS4
 		AuthVasUseBasic on
 		Require user somebody
 	</Directory>
