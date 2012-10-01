@@ -23,7 +23,7 @@ ap_conf_save
 ap_conf_append <<-.
 	LogLevel debug
 	<Directory "$DOC_DIR">
-		AuthType VAS
+		AuthType VAS4
 		Require valid-user
 	</Directory>
 .
@@ -47,7 +47,7 @@ ap_conf_restore
 ap_conf_append <<-.
 	LogLevel debug
 	<Directory "$DOC_DIR">
-		AuthType VAS
+		AuthType VAS4
 		Require valid-user
 		AuthVasNTLMErrorDocument "fizzle $$"
 	</Directory>
@@ -65,7 +65,7 @@ ap_conf_restore
 ap_conf_append <<-.
 	LogLevel debug
 	<Directory "$DOC_DIR">
-		AuthType VAS
+		AuthType VAS4
 		Require valid-user
 		AuthVasNTLMErrorDocument $DOC_URI/errdoc
 	</Directory>

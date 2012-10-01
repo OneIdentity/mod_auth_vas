@@ -53,24 +53,24 @@ script="$1"
 VASTOOL=/opt/quest/bin/vastool
 SUDO=sudo
 TMPDIR=/var/tmp
-USER_test=testuser
-DOMAIN_test=RCDEV
-REALM_test=RCDEV.VINTELA.COM
-PASSWD_test=testuser
+USER_test=r2-tu-1
+DOMAIN_test=R2
+REALM_test=R2.PROD
+PASSWD_test=Test1234
 USER_local=local
 PASSWD_local=local
 USER_disabled=disabled
 PASSWD_disabled=disabled
 USER_expired=expired
 PASSWD_expired=expired
-USER_nomatch=samaccount
-PASSWD_nomatch=samaccount
-USER_nonunix=testusern
-PASSWD_nonunix=testusern
-CN_nonunix="CN=Users,DC=rcdev,DC=vintela,DC=com"
+USER_nomatch=r2-tu-2
+PASSWD_nomatch=Test1234
+USER_nonunix=r2-tu-2
+PASSWD_nonunix=Test1234
+CN_nonunix="CN=Users,DC=rc,DC=prod"
 USER_diffcn=computeruser
 PASSWD_diffcn=computeruser
-CN_diffcn="CN=Computers,DC=rcdev,DC=vintela,DC=com"
+CN_diffcn="CN=Computers,DC=rc,DC=prod"
 USER_nearlocal=nearloca
 PASSWD_nearlocal=nearloca
 # Primary group, should not be a supplementary group
@@ -80,7 +80,7 @@ TEST_DESC=' ** no description ** '
 
 FETCH=http-get/get
 
-modpath=`cd .. && /bin/pwd`/mod_auth_vas.so
+modpath=`cd .. && /bin/pwd`/mod_auth_vas4.so
 
 if test -n "$DEBUG" -a x"$DEBUG" != x"false"; then
     NDEBUG=false; DEBUG=true
@@ -183,8 +183,8 @@ case "$PLATFORM" in
 	ap_restart () { $SUDO $APACHECTL restart >/dev/null ; }
 
 	test -x $FETCH || fail "$FETCH: not found"
-	rpm -q mod_auth_vas >/dev/null || fail "mod_auth_vas not installed"
-	VERSION=`rpm -q --queryformat '%{VERSION}' mod_auth_vas`
+	rpm -q mod_auth_vas4 >/dev/null || fail "mod_auth_vas not installed"
+	VERSION=`rpm -q --queryformat '%{VERSION}' mod_auth_vas4`
 
 	;;
     suse)
@@ -295,19 +295,24 @@ case "$PLATFORM" in
 	;;
 
     debian-apache2|debian)
-	APACHE=/usr/sbin/apache2
-	APACHECTL=/usr/sbin/apache2ctl
-	CONF=/etc/apache2/sites-enabled/regress.conf
+#	APACHE=/usr/sbin/apache2
+	APACHE=/usr/local/apache2/bin/httpd
+	#APACHECTL=/usr/sbin/apache2ctl
+	APACHECTL=/usr/local/apache2/bin/apachectl
+	CONF=/usr/local/apache2/sites-enabled/regress.conf
+	#CONF=/etc/apache2/sites-enabled/regress.conf
 	AP_DOCROOT=/var/www
-	AP_ERROR_LOG=/var/log/apache2/error.log
+	#AP_ERROR_LOG=/var/log/apache2/error.log
+    AP_ERROR_LOG=/usr/local/apache2/logs/error_log
 	AP_URL=http://`hostname --fqdn`
-	DOC_URI=/regress/
+	DOC_URI=/regress
 	DOC_DIR=$AP_DOCROOT$DOC_URI
-    	DOC_URL=$AP_URL$DOC_URI
+   	DOC_URL=$AP_URL:90$DOC_URI
 
 	# Some hackery required to avoid having the default vhost take our
 	# test requests and do the wrong thing with them
-	DEFAULT_CONFIG_SYMLINK=/etc/apache2/sites-enabled/000-default
+	#DEFAULT_CONFIG_SYMLINK=/etc/apache2/sites-enabled/000-default
+	DEFAULT_CONFIG_SYMLINK=/usr/local/apache2/conf/httpd.conf
 	DEFAULT_CONFIG_SYMLINK_TARGET=`readlink $DEFAULT_CONFIG_SYMLINK`
 
 	ap_conf_save () { : ; }
@@ -318,8 +323,7 @@ case "$PLATFORM" in
 	    else
 		REPLACE_AP_DEFAULT_CONFIG=false
 	    fi
-	    $SUDO sh -c "echo 'NameVirtualHost *' >> $CONF
-	    echo '<VirtualHost *>' >> $CONF
+	    $SUDO sh -c echo "'<VirtualHost *>' >> $CONF
 	    echo ' DocumentRoot /var/www' >> $CONF
 	    echo '#+$script' >> $CONF
 	    cat >> $CONF
@@ -342,12 +346,12 @@ case "$PLATFORM" in
 	# /etc/apache2/envvars since apache2 2.2.8-1. Without them, you can't call
 	# the apache2 binary directly or it will fail with
 	#   apache2: bad user name ${APACHE_RUN_USER}
-	if [ -r /etc/apache2/envvars ]; then
-	    . /etc/apache2/envvars
+	if [ -r /usr/local/apache2/bin/envvars ]; then
+	    . /usr/local/apache2/bin/envvars
 	fi
 
 	test -x $FETCH || fail "$FETCH: not found"
-	VERSION=`strings /usr/lib/apache2/modules/mod_auth_vas.so | grep ^mod_auth_vas/ | cut -d/ -f2`
+	VERSION=`strings /usr/local/apache2/modules/mod_auth_vas4.so | grep ^mod_auth_vas4/ | cut -d/ -f2`
 	;;
 
     *)
