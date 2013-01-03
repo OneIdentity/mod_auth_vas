@@ -236,7 +236,7 @@ test_max_size(apr_pool_t *parent_pool) {
 /* We have to provide ap_log_perror because the cache (stupidly) does its own
  * logging through that function.
  * At some point it won't be so gregarious. */
-void ap_log_perror(const char *file, int line, int level,
+void ap_log_perror(const char *file, int line, int level, int module_index,
 	apr_status_t status, apr_pool_t *p, const char *fmt, ...)
 {
     va_list ap;
