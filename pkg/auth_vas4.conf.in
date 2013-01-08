@@ -1,4 +1,4 @@
-LoadModule auth_vas_module4 @AP_MODULEDIR@/mod_auth_vas4@FINAL_DSOEXT@
+LoadModule auth_vas4_module @AP_MODULEDIR@/mod_auth_vas4@FINAL_DSOEXT@
 
 # By putting all mod_auth_vas options and protected directories in an
 # IfModule section you can easily enable or disable the module without
