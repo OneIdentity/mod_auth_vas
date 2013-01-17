@@ -770,7 +770,7 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     ASSERT(auth_line != NULL);
 
-    TRACE1_R(r, "%s: line='%.16s...'", __func__, auth_line);
+    TRACE1_R(r, "%s: line='%.32s...'", __func__, auth_line);
 
     /* Get the parameter after "Authorization" */
     auth_param = ap_getword_white(r->pool, &auth_line);
@@ -1456,7 +1456,7 @@ static int get_auth_line(request_rec *r, const char **auth_line)
     /* Pick out the client request's Authorization header(s) */
     header_auth_line = apr_table_get(r->headers_in, (PROXYREQ_PROXY == r->proxyreq) ? "Proxy-Authorization" : "Authorization");
 
-    TRACE4_R(r, "%s: auth_line %s", __func__, header_auth_line ? header_auth_line : "Not set");
+    TRACE4_R(r, "%s: auth_line '%.42s...'", __func__, header_auth_line ? header_auth_line : "Not set");
 
     if (!header_auth_line)
     {
@@ -2754,6 +2754,7 @@ static authz_status authz_vas_adgroup_check_authorization(request_rec *r, const 
     while((group_name = ap_getword_conf(r->pool, &group_names)) && group_name[0]) {
         TRACE1_R(r, "%s: checking if user is member of group %s", __func__, group_name);
         vaserr = auth_vas_is_user_in_group(rnote->mav_user, group_name);
+        TRACE3_R(r, "%s: auth_vas_is_user_in_group error code: %i", __func__, vaserr);
         if(vaserr == VAS_ERR_SUCCESS) {
             TRACE1_R(r, "%s: user %s is a member of group %s", __func__, auth_vas_user_get_principal_name(rnote->mav_user), group_name);
             result = AUTHZ_GRANTED;
