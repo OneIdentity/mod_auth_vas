@@ -190,25 +190,29 @@ finish:
  * Based on vas_gss_auth, and has the same return codes.
  */
 vas_err_t auth_vas_user_use_gss_result(
-	auth_vas_user *user,
+	auth_vas_user *avuser,
 	gss_cred_id_t cred,
 	gss_ctx_id_t context)
 {
     vas_err_t vaserr;
     vas_ctx_t *vasctx;
+    vas_id_t *serverid;
 
-    if (user->vas_authctx) /* cached */
+    OM_uint32 minor_status;
+
+    if (avuser->vas_authctx) /* cached */
     {
         tfprintf("user has already been cached");
 	    return VAS_ERR_SUCCESS;
     }
 
-    vasctx = auth_vas_cache_get_vasctx(user->cache);
+    vasctx = auth_vas_cache_get_vasctx(avuser->cache);
+    serverid = auth_vas_cache_get_serverid(avuser->cache);
 
-    vaserr = vas_gss_auth(vasctx, cred, context, &user->vas_authctx);
+    vaserr = vas_gss_auth_with_server_id(&minor_status, vasctx, cred, context, serverid, &avuser->vas_authctx);
     if (vaserr) {
-        print_gss_err("vas_gss_auth", vaserr, 0);
-    	user->vas_authctx = NULL; /* ensure */
+        print_gss_err("vas_gss_auth", vaserr, minor_status);
+    	avuser->vas_authctx = NULL; /* ensure */
     }
 
     return vaserr;
