@@ -215,6 +215,9 @@ auth_vas_user_use_gss_result(
 {
     vas_err_t vaserr;
     vas_ctx_t *vasctx;
+    vas_id_t  *serverid;
+
+    OM_uint32 minor_status;
 
     if (!cred)
     {
@@ -232,8 +235,9 @@ auth_vas_user_use_gss_result(
     }
 
     vasctx = auth_vas_cache_get_vasctx(user->cache);
+    serverid = auth_vas_cache_get_serverid(user->cache);
 
-    vaserr = vas_gss_auth(vasctx, cred, context, &user->vas_authctx);
+    vaserr = vas_gss_auth_with_server_id(&minor_status, vasctx, cred, context, serverid, &user->vas_authctx);
     if (vaserr)
     {
         tfprintf("%s: vas_gss_auth failed with %d", __FUNCTION__, vaserr);
