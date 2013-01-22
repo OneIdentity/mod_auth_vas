@@ -10,5 +10,6 @@ bootstrap () {
 }
 
 set -e
+mkdir -p m4
 bootstrap .
 bootstrap test/http-get
