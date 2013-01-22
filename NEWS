@@ -1,4 +1,24 @@
-3.6.8   (2011-04-04)
+3.6.8   (2012-08-28)
+         - Utilized a new method that was added in QAS 4.0.3.177 api
+           called vas_gss_auth_with_server_id. New method allows us to
+           pass in an already established vas_id_t that represents our
+           server_id with the correct path already set for a custom
+           keytab path that is set by AuthVasKeytabFile. Bug fix #831
+           Related to QAS bug 27613
+     
+        - setup-mod_auth_vas traps on trap list for knit.
+        
+        - Shortened the description of the module in pkg/map.pp.in for
+          building AIX bff.
+      
+        - Updated apxs search path in setup-mod_auth_vas.in to include
+          IBM's HTTPServer.
+
+        - Added additional debug.
+
+        - Fixed compile time warnings.
+
+3.6.7   (2011-04-04)
         - Defined apr_snprintf for Apache 1.x builds Bug #802.
 
         - updated to compile on linux PPC.
