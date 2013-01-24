@@ -17,6 +17,10 @@
         - Added additional debug.
 
         - Fixed compile time warnings.
+    
+        - Added the use of the m4 macros
+  
+        - Added do {..} while (0) to protect debug block for tfprintf
 
 3.6.7   (2011-04-04)
         - Defined apr_snprintf for Apache 1.x builds Bug #802.
