@@ -63,26 +63,39 @@
 #include "cache.h"
 
 #define TRACE_DEBUG 1
-static FILE* traceLogFile = NULL;
-static const char *traceLogFileName = "/tmp/debug_trace.log";
 
 /*
- *  * Prints trace messages to traceLogFileName
- *   */
+ * Prints trace messages to traceLogFileName
+ */
 #ifdef TRACE_DEBUG
-#define tfprintf(msg, args...){\
-	        traceLogFile = fopen( traceLogFileName, "a" );\
-	        if( traceLogFile ){\
-			                fprintf(traceLogFile, "%s - %s PID %d LINE %d FILE %s:%s MSG: ", __DATE__, __TIME__, getpid(), __LINE__, __FILE__, __FUNCTION__);\
-			                fprintf(traceLogFile, msg, ##args);\
-			                fprintf(traceLogFile, "\n" );\
-			                fclose(traceLogFile);\
-			        }\
-}
-#else
-#define tfprintf
-#endif
 
+    static FILE* traceLogFile = NULL;
+    static const char *traceLogFileName = "/tmp/mav_debug_trace.log";
+
+#  if __GNUC__
+#    define tfprintf(fmt, args...) do {\
+            traceLogFile = fopen( traceLogFileName, "a" );\
+            if( traceLogFile ){\
+              fprintf(traceLogFile, "%s - %s PID %d LINE %d FILE %s:%s MSG: ", __DATE__, __TIME__, getpid(), __LINE__, __FILE__, __FUNCTION__);\
+              fprintf(traceLogFile, fmt, ##args);\
+              fprintf(traceLogFile, "\n" );\
+              fclose(traceLogFile);\
+            }\
+        } while (0)
+#  else /* C99 */
+#    define tfprintf(...) do {\
+            traceLogFile = fopen( traceLogFileName, "a" );\
+            if( traceLogFile ){\
+              fprintf(traceLogFile, "%s - %s PID %d LINE %d FILE %s:%s MSG: ", __DATE__, __TIME__, getpid(), __LINE__, __FILE__, __func__);\
+              fprintf(traceLogFile, __VA_ARGS__);\
+              fprintf(traceLogFile, "\n" );\
+              fclose(traceLogFile);\
+            }\
+     } while (0)
+#  endif
+#else
+#  define tfprintf
+#endif
 
 /**
  * A cacheable user object.
@@ -218,16 +231,16 @@ auth_vas_user_use_gss_result(
 
     if (!cred)
     {
-	    tfprintf("%s: Cred is null",__FUNCTION__);
+	    tfprintf("Cred is null");
     }else if (cred == GSS_C_NO_CREDENTIAL)
     {
-	    tfprintf("%s: Cred is == to GSS_C_NO_CREDENTIAL", __FUNCTION__);
+	    tfprintf("Cred is == to GSS_C_NO_CREDENTIAL");
     }else
-	    tfprintf("%s: Cred is valid", __FUNCTION__);
+	    tfprintf("Cred is valid");
 
     if (user->vas_authctx) /* cached */
     {
-        tfprintf("%s: User is already cached\n", __FUNCTION__);
+        tfprintf("User is already cached\n");
 	return VAS_ERR_SUCCESS;
     }
 
@@ -236,7 +249,7 @@ auth_vas_user_use_gss_result(
     vaserr = vas_gss_auth(vasctx, cred, context, &user->vas_authctx);
     if (vaserr)
     {
-        tfprintf("%s: vas_gss_auth failed with %d", __FUNCTION__, vaserr);
+        tfprintf("vas_gss_auth failed with %d", vaserr);
 	user->vas_authctx = NULL; /* ensure */
     }
 
