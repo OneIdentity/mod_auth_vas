@@ -157,10 +157,10 @@ if test "x$GCC" = "xyes"; then
         orig_CFLAGS="$CFLAGS"
         CFLAGS="$CFLAGS $flag"
 
-        AC_COMPILE_IFELSE([AC_LANG_SOURCE([int main() {}],
+        AC_COMPILE_IFELSE([int main() {}],
                           [AC_MSG_RESULT([yes])],
                           [AC_MSG_RESULT([no])
-                           CFLAGS="$orig_CFLAGS"])])
+                           CFLAGS="$orig_CFLAGS"])
     done
 
     for flag in $DESIRED_LDFLAGS; do
@@ -168,10 +168,10 @@ if test "x$GCC" = "xyes"; then
         orig_LDFLAGS="$LDFLAGS"
         LDFLAGS="$LDFLAGS $flag"
 
-        AC_LINK_IFELSE([AC_LANG_SOURCE([int main() {}],
+        AC_LINK_IFELSE([int main() {}],
                        [AC_MSG_RESULT([yes])],
                        [AC_MSG_RESULT([no])
-                        LDFLAGS="$orig_LDFLAGS"])])
+                        LDFLAGS="$orig_LDFLAGS"])
     done
 fi
 
@@ -447,11 +447,11 @@ old_LDFLAGS=$LDFLAGS
 CFLAGS="--coverage $CFLAGS"
 LDFLAGS="--coverage $LDFLAGS"
 AC_MSG_CHECKING([whether $CC understands --coverage])
-AC_LINK_IFELSE([AC_LANG_SOURCE([int main(void) { return 0; }],
+AC_LINK_IFELSE([int main(void) { return 0; }],
 	[have_coverage_flags=yes
 	 AC_SUBST([COVERAGE_CFLAGS], [--coverage])
 	 AC_SUBST([COVERAGE_LDFLAGS], [--coverage])],
-	[have_coverage_flags=no])])
+	[have_coverage_flags=no])
 AC_MSG_RESULT([$have_coverage_flags])
 AM_CONDITIONAL([HAVE_COVERAGE], [test "$have_coverage_flags" = "yes"])
 # Restore flags, we don't want coverage information in the regular binaries
