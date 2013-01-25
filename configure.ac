@@ -16,6 +16,8 @@ AC_CONFIG_FILES([Makefile pkg/Makefile])
 
 AC_PREFIX_DEFAULT([/opt/quest])
 
+AC_LANG([C])
+
 AH_BOTTOM([/* Bug 718: Compilation error with Oracle on RHEL if string.h
  * comes after httpd.h. */
 #ifdef HAVE_STRING_H
@@ -157,7 +159,7 @@ if test "x$GCC" = "xyes"; then
         orig_CFLAGS="$CFLAGS"
         CFLAGS="$CFLAGS $flag"
 
-        AC_COMPILE_IFELSE([int main() {}],
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM],
                           [AC_MSG_RESULT([yes])],
                           [AC_MSG_RESULT([no])
                            CFLAGS="$orig_CFLAGS"])
@@ -168,7 +170,7 @@ if test "x$GCC" = "xyes"; then
         orig_LDFLAGS="$LDFLAGS"
         LDFLAGS="$LDFLAGS $flag"
 
-        AC_LINK_IFELSE([int main() {}],
+        AC_LINK_IFELSE([AC_LANG_PROGRAM],
                        [AC_MSG_RESULT([yes])],
                        [AC_MSG_RESULT([no])
                         LDFLAGS="$orig_LDFLAGS"])
@@ -447,7 +449,7 @@ old_LDFLAGS=$LDFLAGS
 CFLAGS="--coverage $CFLAGS"
 LDFLAGS="--coverage $LDFLAGS"
 AC_MSG_CHECKING([whether $CC understands --coverage])
-AC_LINK_IFELSE([int main(void) { return 0; }],
+AC_LINK_IFELSE([AC_LANG_PROGRAM],
 	[have_coverage_flags=yes
 	 AC_SUBST([COVERAGE_CFLAGS], [--coverage])
 	 AC_SUBST([COVERAGE_LDFLAGS], [--coverage])],
