@@ -157,10 +157,10 @@ if test "x$GCC" = "xyes"; then
         orig_CFLAGS="$CFLAGS"
         CFLAGS="$CFLAGS $flag"
 
-        AC_COMPILE_IFELSE([AC_LANG_SOURCE([int main() {}],
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,)],
                           [AC_MSG_RESULT([yes])],
                           [AC_MSG_RESULT([no])
-                           CFLAGS="$orig_CFLAGS"])])
+                           CFLAGS="$orig_CFLAGS"])
     done
 
     for flag in $DESIRED_LDFLAGS; do
@@ -168,10 +168,10 @@ if test "x$GCC" = "xyes"; then
         orig_LDFLAGS="$LDFLAGS"
         LDFLAGS="$LDFLAGS $flag"
 
-        AC_LINK_IFELSE([AC_LANG_SOURCE([int main() {}],
+        AC_LINK_IFELSE([AC_LANG_PROGRAM(,)],
                        [AC_MSG_RESULT([yes])],
                        [AC_MSG_RESULT([no])
-                        LDFLAGS="$orig_LDFLAGS"])])
+                        LDFLAGS="$orig_LDFLAGS"])
     done
 fi
 
@@ -196,7 +196,7 @@ if test `uname -s` = "HP-UX"; then
     fi
 fi
 
-AC_MSG_CHECKING([what the module's final file extension will be])
+AC_MSG_CHECKING([what the module file extension will be])
 # The file extension that the module will be installed with.
 # Usually .so. Sometimes libtool is not installed, in which case we assume .so
 if which libtool >/dev/null 2>&1; then
