@@ -1,8 +1,15 @@
 %set
-  name="mod-auth-vas"
-[solaris] name="QSFTmav"
-[deb] name="@DEBPKGNAME@"
-[rpm] name="@RPMPKGNAME@"
+if [ -n "$MAVPACKAGENAME" ]; then 
+ name=$MAVPACKAGENAME
+else
+ name="mod-auth-vas"
+ [solaris] name="QSFTmav"
+ [deb] name="@DEBPKGNAME@"
+ [rpm] name="@RPMPKGNAME@"
+fi
+
+[solaris] pp_solaris_name=QSFTmav
+
   summary="VAS authn & authz for Apache"
   description="Authentication & authorization module for the Apache web server \
   for use in conjunction with VAS (Vintela Authentication Services) from \
