@@ -45,7 +45,7 @@
 
 #include <vas.h>
 #include <vas_gss.h>
-#include <gssapi/gssapi_krb5.h>
+#include <gssapi_krb5.h>
 #include <pwd.h>
 
 #include <httpd.h>
