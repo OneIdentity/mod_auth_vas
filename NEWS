@@ -1,11 +1,23 @@
 3.6.8.1 (2013-02-03)
-        - Because bug fix #831 depended on a QAS 4.0.3.177 api change
-          this broke backwards compatibility.  Added a new way to
-          check for existing symbols in the loaded library to validate
-          that a function exists, if not it will fall back to the old
-          method.  In regards to #831 if QAS 4.0.3.177+ is being used
-          the new method vas_gss_auth_with_server_id will be used, all
-          versions prior to this will use vas_gss_auth.
+         - Because bug fix #831 depended on a QAS 4.0.3.177 api change
+           this broke backwards compatibility.  Added a new way to
+           check for existing symbols in the loaded library to validate
+           that a function exists, if not it will fall back to the old
+           method.  In regards to #831 if QAS 4.0.3.177+ is being used
+           the new method vas_gss_auth_with_server_id will be used, all
+           versions prior to this will use vas_gss_auth.
+
+         - MAV package name can now be partially set from an environment
+           variable MAVPACKAGENAME. The PolyPackage build system will
+           look at this variable (as defined in mav.pp.in) to help 
+           determine the final name of the built MAV package.
+
+         - Fixed autoconf errors about AC_LANG_SOURCE.
+
+         - Minor debug updates to better relate what keytabs and service
+           accounts are being used for the server and its viritual hosts.
+
+         - The -u option now works with -n in the http-get/get binary.
 
 3.6.8   (2012-08-28)
          - Utilized a new method that was added in QAS 4.0.3.177 api
