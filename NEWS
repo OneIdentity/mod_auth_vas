@@ -1,4 +1,6 @@
 4.0.0.1 (2013-2-06)
+         - The -u option now works with -n in the http-get/get binary.
+
          - Because bug fix #831 depended on a QAS 4.0.3.177 api change
            this broke backwards compatibility.  Added a new way to
            check for existing symbols in the loaded library to validate
