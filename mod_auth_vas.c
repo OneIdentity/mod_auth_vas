@@ -1374,8 +1374,6 @@ initialize_user(request_rec *request, const char *username) {
     sc = GET_SERVER_CONFIG(request->server->module_config);
     rnote = GET_RNOTE(request);
 
-    TRACE_R(request, "%s: using server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
-
     /* This is a soft assertion */
     if (rnote->user != NULL) {
 	LOG_RERROR(APLOG_ERR, 0, request,
@@ -1456,7 +1454,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     ASSERT(r != NULL);
     ASSERT(auth_line != NULL);
 
-    TRACE_R(r, "%s: line='%.16s...'", __func__, auth_line);
+    TRACE_R(r, "%s: line='%.32s...'", __func__, auth_line);
 
     /* Get the parameter after "Authorization" */
     auth_param = ap_getword_white(r->pool, &auth_line);
@@ -1468,7 +1466,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     sc = GET_SERVER_CONFIG(r->server->module_config);
 
-    TRACE_R(r, "%s: server keytab: %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
+    TRACE_R(r, "%s: server keytab: %s", __func__, sc->keytab_filename ? sc->keytab_filename : "using default HTTP.keytab");
     TRACE_R(r, "%s: server principal: %s", __func__, sc->server_principal ? sc->server_principal : "Not Set");
 
     /* setup the input token */
@@ -1512,7 +1510,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
 	sc = GET_SERVER_CONFIG(r->server->module_config);
 
-        TRACE_R(r, "%s: server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
+        TRACE_R(r, "%s: server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "using default HTTP.keytab");
 
 	/* Get the client's name */
 	err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
@@ -1838,7 +1836,7 @@ get_server_creds(server_rec *s)
   
     TRACE_S(s, "%s", __func__);
 
-    TRACE_S(s, "%s: server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "Not Set");
+    TRACE_S(s, "%s: using %s", __func__, sc->keytab_filename ? sc->keytab_filename : " default HTTP.keytab");
 
     /* Don't try getting a TGT yet.
      * SPNs that are not also UPNs cannot get a TGT and would fail. */
@@ -2300,7 +2298,6 @@ add_auth_headers(request_rec *r)
 static int
 auth_vas_check_user_id(request_rec *r)
 {
-    const apr_array_header_t *requires;
     const char		     *auth_type = NULL;
     const char		     *auth_line = NULL;
     const char		     *type = NULL;
@@ -2332,9 +2329,6 @@ auth_vas_check_user_id(request_rec *r)
 	      "%s: no VAS context, check for errors logged at startup", __func__);
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
-
-    /* Determine if its an ANY or ALL match on requirements */
-    requires = ap_requires(r);
 
     /* Pick out the client request's Authorization header(s) */
     auth_line = apr_table_get(r->headers_in,
