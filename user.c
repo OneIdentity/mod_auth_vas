@@ -224,13 +224,14 @@ vas_err_t
 auth_vas_user_use_gss_result(
 	auth_vas_user *user,
 	gss_cred_id_t cred,
-	gss_ctx_id_t context)
+	gss_ctx_id_t context,
+    const dso_fn_t *dso_fn)
 {
     vas_err_t vaserr;
     vas_ctx_t *vasctx;
     vas_id_t  *serverid;
 
-    OM_uint32 minor_status;
+    OM_uint32 minor_status = 0;
 
     if (!cred)
     {
@@ -244,17 +245,23 @@ auth_vas_user_use_gss_result(
     if (user->vas_authctx) /* cached */
     {
         tfprintf("User is already cached\n");
-	return VAS_ERR_SUCCESS;
+	    return VAS_ERR_SUCCESS;
     }
 
     vasctx = auth_vas_cache_get_vasctx(user->cache);
-    serverid = auth_vas_cache_get_serverid(user->cache);
+    
+    if ( !dso_fn->vas_gss_auth_with_server_id_fn )
+    {
+        vaserr = vas_gss_auth(vasctx, cred, context, &user->vas_authctx);
+    }else{
+        serverid = auth_vas_cache_get_serverid(user->cache);
+        vaserr = dso_fn->vas_gss_auth_with_server_id_fn(&minor_status, vasctx, cred, context, serverid, &user->vas_authctx);
+    }
 
-    vaserr = vas_gss_auth_with_server_id(&minor_status, vasctx, cred, context, serverid, &user->vas_authctx);
     if (vaserr)
     {
         tfprintf("vas_gss_auth failed with %d", vaserr);
-	user->vas_authctx = NULL; /* ensure */
+        user->vas_authctx = NULL; /* ensure */
     }
 
     return vaserr;
