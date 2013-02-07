@@ -1,8 +1,13 @@
 %set
-  name="mod-auth-vas4"
-[solaris] name="QSFTmav4"
-[deb] name="@DEBPKGNAME@"
-[rpm] name="@RPMPKGNAME@"
+if [ -n "$MAVPACKAGENAME" ]; then
+ name=$MAVPACKAGENAME
+else
+ name="mod-auth-vas4"
+ [solaris] name="QSFTmav"
+ [deb] name="@DEBPKGNAME@"
+ [rpm] name="@RPMPKGNAME@"
+fi
+
   summary="VAS4 authn & authz for Apache 2.4"
   description="Authentication & authorization module for the Apache web server \
   for use in conjunction with VAS (Vintela Authentication Services) from \
