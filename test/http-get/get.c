@@ -682,7 +682,7 @@ get_nego(urlarg, principal)
 #if VAS_API_VERSION_MAJOR >= 4
 	if (vas_ctx_alloc(&vas))
 	    errx(1, "vas_ctx_alloc");
-	if (vas_id_alloc(vas, NULL, &vasid))
+	if (vas_id_alloc(vas, principal, &vasid))
 	    errx(1, "vas_id_alloc: %s", 
 		    vas_err_get_string(vas, 1));
 	if (debug) {
