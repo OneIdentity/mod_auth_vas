@@ -1,290 +1,44 @@
-4.0     (2012-8-20)
-    - Updated apxs search paths in setup-mod_auth_vas.in to included IBM's HTTPServer
-    - setup-mod_auth_vas now traps on a trap list for kinit
-    - Shortened the description of the module in pkg/mav.pp.in for building AIX bff
-    - Added dependencies checks in pkg/mav.pp.in for http 2.4
-    
-3.6.8   (2011-04-04)
-        - Defined apr_snprintf for Apache 1.x builds Bug #802.
+4.0.0.1 (2013-2-06)
+         - Because bug fix #831 depended on a QAS 4.0.3.177 api change
+           this broke backwards compatibility.  Added a new way to
+           check for existing symbols in the loaded library to validate
+           that a function exists, if not it will fall back to the old
+           method.  In regards to #831 if QAS 4.0.3.177+ is being used
+           the new method vas_gss_auth_with_server_id will be used, all
+           versions prior to this will use vas_gss_auth.
 
-        - updated to compile on linux PPC.
+         - MAV package name can now be partially set from an environment
+           variable MAVPACKAGENAME. The PolyPackage build system will
+           look at this variable (as defined in mav.pp.in) to help
+           determine the final name of the built MAV package.
 
-        - Added do {...} while loops to protect blocsk in APXS1.
+         - Fixed misquoted CFLAGS & LDFLAGS tests.
 
-        - setup-mod_auth_vas now works in cross-forest or cross-domain
-          scenarios Bug #790.
-       
-        - mod_auth_vas could get into a deadlock state if set_usr_obj
-          failed when trying to set the remote users attr Bug #794
+         - Utilized a new method that was added in QAS 4.0.3.177 api
+           called vas_gss_auth_with_server_id. New method allows us to
+           pass in an already established vas_id_t that represents our
+           server_id with the correct path already set for a custom
+           keytab path that is set by AuthVasKeytabFile. Bug fix #831
+           Related to QAS bug 27613
+         - Fixed name for loading the MAV4 module
 
-3.6.6   (2010-05-20)
-        - VirtualHosts now inherit MAV server context settings Bug #747.
+         - Updated test-cache to work with http 2.4 - Bug fix 830
 
-        - Lowered "NTLM authentication attempted" messages from error to
-          info Bug #748.
-        
-        - Return 401 Unauthorized instead of 500 Internal Server Error for
-          unknown users Bug #764.
+         - Changed module name from mod_auth_vas to mod_auth_vas4 and AuthType is now VAS4
 
-        - Updated the usage message for the setup-mod_auth_vas script to
-          include the -u user option.
-       
-        - Added module name to log messages Bug #749.
+4.0.0.0 (2012-8-20)
+         - Shortened the description of the module in pkg/mav.pp.in for building AIX bff
 
-        - Updated the setup-mod_auth_vas script to allow for an existing
-          Active Directory object to be used as the HTTP service account.
+         - Added dependencies checks in pkg/mav.pp.in for http 2.4
 
-3.6.5	(2009-12-03)
-	- Don't link to libgcc_s unless necessary.
+         - Updated apxs search paths in setup-mod_auth_vas.in to included IBM's HTTPServer
 
-	- Support building on Solaris 8 with Apache 1.3.
+         - Bug fix 790. setup-mod-auth-vas now supports cross-forest and cross-domain scenarios.
 
-	- Print "not found" if there is no HTTP keytab. Vintela bug #15629.
+         - Bug fix 794 - in set_remote_user_attr goto the cleanup section instead of existing on a set_user_obj failure. This is to prevent dead locking on itself.
 
-	- Add versioned dependency on Apache 2 when building a deb package.
-	  Bug #594.
+         - Minor change to better handle building the mod_auth_vas library file
 
-	- Work around bug-ridden tools on Solaris by re-executing with
-	  /usr/xpg4/bin in the PATH. Bug #537.
+         - Bug fix # 802 - defined apr_snprintf to compile on apache 1.3
 
-	- Add /usr/local/apache2/bin and /usr/local/apache/bin to APXS
-	  search path.
-
-	- Use old-school sysv symbol hash in shared library to avoid
-	  RPM dependency on rtld(GNU_HASH). Bug #636.
-
-	- Include string.h before httpd.h to fix compilation with
-	  Oracle on RHEL. Bug #718.
-
-	- Fix spurious log message about AuthVasLocalizeRemoteUser.
-	  Bug #741.
-
-3.6.4	(2008-09-01)
-	- Fix a crash on Apache 1.x when using Negotiate authentication.
-	  Bug #563.
-
-	- Avoid a possible crash after 10 hours (Kerberos credential expiry)
-	  by renewing credentials every 5 hours. Bug #569.
-
-	- Fix a memory leak due to incorrect reference counting on cached
-	  user objects. Bug #575.
-
-	- Fix `AuthVasRemoteUserMap ldap-attr userPrincipalName` returning
-	  the wrong name for users whose sAMAccountName is different from
-	  the first part of their userPrincipalName.
-
-	- Fix auth_vas.conf.in being deleted during `make clean`.
-
-	- Fix huge cache timeouts being clamped too small.
-
-	- Refuse to build for Apache 1 without EAPI as mod_auth_vas has been
-	  unable to run without EAPI (on Apache 1) since 3.6.0.
-
-3.6.3   (2008-07-25)
-	- Fixed a crash if the server could not establish Kerberos credentials
-	  and then tried to handle a Basic authentication request. Bug #556.
-
-	- Fixed platform detection for packaging. Bug #540.
-
-3.6.2	(2008-07-11)
-	- Fixed corruption of the internal auth cache that would result in
-	  a double-free error, crash, or refcount assertion. This would affect
-	  any server with "AuthVasUseBasic On". Bug #517.
-
-	- Fixed setup-mod_auth_vas trying to use "-u service" when creating the
-	  service account. Bug #525.
-
-	- Fixed the error message when parsing an invalid IP subnet.
-
-	- Removed failure-inducing "-z defs" linker option. Fixes undefined
-	  symbol errors when building.
-
-	- Detects the apache group in setup-mod_auth_vas when it is set by
-	  environment variable, eg. in /etc/apache2/envvars on Debian &
-	  similar. Bug #524.
-
-	- Moved module compilation to libtool and automake instead of hacking
-	  around apxs. GNU make is no longer required.
-
-	- Added "make package" target to build a package for deb & RPM
-	  systems.
-
-	- Add ./configure option --with-32bit-on-64bit to build a 32-bit module
-	  on 64-bit systems.
-
-3.6.1	(2008-04-07)
-
-	- Fixed "AuthVasRemoteUserMap ldap-attr" hanging the server when
-	  using Negotiate authentication. Bug #510.
-
-3.6.0	(2008-03-28)
-
-	- New option: AuthVasAuthz for disabling mod_auth_vas authorization
-	  checks altogether. Useful for accepting Negotiate authentication but
-	  doing all authorization in other modules. Bug #482.
-
-	- New option: AuthVasKeytabFile for explicitly specifying the location
-	  of the keytab file to use for server credentials. Bug #369.
-
-	- Support mod_auth_vas as an authorization provider for
-	  mod_auth_basic by setting "AuthBasicProvider vas".
-	  This is not appreciably different from using mod_auth_vas with
-	  Negotiate disabled and Basic enabled. Bug #385.
-
-	- AuthName is used for the realm in Basic auth as it ought to be.
-	  Bug #495.
-
-	- Fixed mod_auth_vas not working in proxy mode (sending wrong headers).
-	  Bug #488.
-
-	- Renamed AuthVasServicePrincipal to AuthVasServerPrincipal to better
-	  reflect its purpose. The original name is still accepted. Bug #407.
-
-	- Added caching of in-memory objects to speed up Basic authentication.
-	  Can be tweaked using the AuthVasCacheSize and AuthVasCacheExpire
-	  options.
-
-	- Lower log levels for authorization-related messages, similar to those
-	  used in Apache's authorization modules. Bug #247.
-
-	- Check the user's primary gid in "Require unix-group". Bug #496.
-
-	- Only try to add the +DAportable compile flag on HP-UX.
-	  Thanks Scott Steverson. Bug #477.
-
-	- Fixed problems compiling on HP-UX. Thanks Tom Hundt.
-
-3.5.3   (2007-12-19)
-
-	- Fixed "Require container" not allowing anyone access (bug #450).
-
-	- Made the Basic auth failure log message easier to understand.
-
-	- Removed -std=c89 build flag: it made the compiler too strict,
-	  particularly on Solaris.
-
-	- Removed -Wl,-z,defs link flag when building for APXS1 where we
-	  expect undefined symbols (ap_*).
-
-	- Fixed compiler warnings about unused variables when building for
-	  APXS1.
-
-3.5.2   (2007-12-17)
-
-	- Fixed "Require unix-group" incorrectly allowing remote users if
-	  there was a problem resolving the username (bug #445).
-
-3.5.1   (2007-10-17)
-
-	- Fixed "Require user" directives sometimes leading to
-	  VAS_ERR_CRED_NEEDED authentication failures (bug #370).
-
-	- Added an example CGI that shows the REMOTE_USER variable and
-	  delegated credentials (if any).
-
-	- Clearer logging of trace & diagnostic messages.
-
-3.5.0   (2007-08-13)
-
-	- New option: AuthVasSuexecAsRemoteUser (default off), fixes suEXEC
-	  failures outside the DocumentRoot (bug #271).
-
-	- New option: AuthVasRemoteUserMap to specify what to put in the
-	  REMOTE_USER variable (mainly LDAP attributes).
-
-	- New option: AuthVasNTLMErrorDocument to specify the error page to
-	  serve when a client tries NTLM authentication (bug #210).
-	  A built-in error page is served by default.
-
-	- Extended the AuthVasUseNegotiate option to accept a list of subnets
-	  to use Negotiate auth on (bug #337).
-
-	- Test the keytab at startup where possible.
-
-	- Improved setup script portability for Solaris.
-
-	- Fixed case-sensitivity with Basic auth (bug #214).
-
-	- Correctly set the intermediate module extension when
-	  automatic detection fails.
-
-	- New setup-mod_auth_vas option '-u' to specify the user account to
-	  use.
-
-	- Set REMOTE_USER to the userPrincipalName by default.
-	  (This only changes the behavior of Basic auth - Negotiate already
-	   set it to the userPrincipalName.)
-
-	- AuthVasLocalizeRemoteUser now "localizes" non-Unix users (bug #319)
-	  for consistency.
-
-	- Fixed trace messages being printed as errors on Apache 1 (bug #317).
-
-	- Fixed LocalizeRemoteUser and ExportDelegated not working on Apache 1
-	  (bug #327).
-
-	- Look for apxs in /usr/IBMIHS/bin for the IBM HTTP Server (bug #349).
-
-	- Try linking to libgcc_s if vas-config's flags alone were insufficient
-	  (bug #349).
-
-	- Try to find APXS's compiler even when it is not in the PATH
-	  (bug #349).
-
-3.4.0
-	- Log version number, libvas version during startup
-	- Setup script changes:
-	    * checks that the module is loadable and is the right version
-	    * allows specifying location of apxs and/or httpd.conf (-a/-c flag)
-	    * warns if the HTTP/ account has expired
-	    * allows adding of principal name aliases
-	    * allows disabling password expiry on the service account (bug #213)
-	- Support C99 vararg macros (Sun CC) and non-GNU make
-	- Support using the compiler that apxs suggests
-	- Enhancement bug 126: AuthVasLocalizeRemoteUser
-	- Support for Debian & Ubuntu apache configuration file locations
-	- Log NTLM requests clearly
-	- Resend auth challenge in failed Basic auth requests
-	  (fixes #167: Users get locked out when using Basic auth)
-3.3.0
-	- Enhancement bug 64: 'Require unix-group <group>'
-	- Fixes auth_vas_create_server_config debug message going to stderr
-	- Fixes bug 66, where seg fault occurs during unauthenticated req
-	- Enhancement bug 50: AuthVasExportDelegated
-	- Fixes bug 51 where 'apache -t' (configtest) would segfault
-	- Improve resource locking
-	- Fixes bug 58, failure to establish creds on startup.
-3.2.3
-	- Fixes bug 44 where an empty test directory caused configure to fail
-	- Fixes bug 46 where passwords were not checked properly
-	- Fixes bug 47 where an empty username would cause the server to abort
-	- Avoids unlocking a mutex that was never locked
-3.2.2
-	- Fixes bug 42 where AuthVasNegotiate did not always work
-	- Remove race conditions and from setup-mod_auth_vas
-	- Setup changed to set group (not user) access to the keytab file 
-3.2.1 
-	- Replace makefile with autoconf/configure
-	- Ehancement bug 9: VASAuthAuthoritative (Paul Whittaker)
-3.2.0 [internal release only]
-	- Use VAS3.0 API
-	- Improve VAS error messages
-	- Storage improvement for Apache 1
-	- Setup prompts user to make changes or not
-	- Makefile support for IBM HTTP Server 6
-	- Makefile support for HPUX Apache
-	- Passwords not written to logfiles in debug mode
-3.1.2
-	- Fixed bug 4833 where server config directives were ignored
-	- Support for suexec
-3.1.1
-	- Fixes bug 4784 where 'Requires valid-user' directive was ignored
-	- Include keytab setup helper script
-3.1.0
-	- Major fixes for Apache 1 compatibility
-	- Fixes bug 4712 where CGI scripts would core dump
-	- Fixes bug 4713 where AuthVasDefaultRealm directive not recognised
-3.0.1
-	- Enables internal diagnostics by default
-3.0.0
-	- Initial release after re-write
+         - Use 'do {..} while(0)' to protect blocks in APXS1

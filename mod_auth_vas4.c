@@ -91,6 +91,7 @@ typedef struct {
     char            *cache_size;            /* Configured cache size */
     char            *cache_time;            /* Configured cache lifetime */
     char            *keytab_filename;       /* AuthVasKeytabFile */
+    dso_fn_t        dso_fn;                 /* List of new QAS API function pointers  */
 } auth_vas_server_config;
 
 /*
@@ -872,12 +873,13 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	    gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
 	    vas_gss_acquire_cred(sc->vas_ctx, sc->vas_serverid, &minor_status, GSS_C_ACCEPT, &servercred);
 	     
-    	vaserr = auth_vas_user_use_gss_result(rn->mav_user, servercred, rn->gss_ctx);
+    	vaserr = auth_vas_user_use_gss_result(rn->mav_user, servercred, rn->gss_ctx, &sc->dso_fn);
     	if (vaserr) {
 	        result = HTTP_UNAUTHORIZED;
     	    /* We know that the cache & user stuff uses the same vas context as
 	         * the server, but using the vas_ctx here still feels dirty. */
 	        ERROR_R(r, "%s: auth_vas_user_use_gss_result failed: %s", __func__, vas_err_get_string(sc->vas_ctx, 1));
+            log_gss_error(APLOG_MARK, APLOG_ERR, 0, r, "auth_vas_user_use_gss_result", vaserr, 0);
     	    goto done;
 	    }
 
@@ -1147,7 +1149,10 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
     vas_err_t               vaserr;
     vas_auth_t             *vasauth;
     auth_vas_server_config *sc;
-    char *tmp_realm;
+    char                   *tmp_realm;
+    apr_status_t           rv;
+    char                   dso_errbuf[256];
+    char                   apr_errbuf[256];
 
     TRACE8_S(s, "%s: called", __func__);
     LOG_S(APLOG_TRACE1, s, "called");
@@ -1167,6 +1172,24 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
     	TRACE1_S(s, "%s: context has already initialised", __func__);
         TRACE8_S(s, "%s: end", __func__);
         return;
+    }
+
+    if((rv = apr_dso_load(&sc->dso_fn.dso_h, NULL, p)) != APR_SUCCESS) {
+      /* Log Some sort of error that we couldn't load the lib, if it doesn't work then we just fall back to our normal methods anyway so not a critical failure*/
+        apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+        apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+        TRACE3_S(s, "%s: apr error %d: %s.  Reason: %s.  Non-critical failure. MAV will not be able to dynamically determine loaded symbols.", __func__, rv, apr_errbuf, dso_errbuf);
+        sc->dso_fn.dso_h = NULL;
+    }else {
+        TRACE3_S(s, "%s: dlopen return handle is for the main program", __func__);
+        /* Check if the function's symbols we care about exist in the handle, if so set them */
+        if ((rv = apr_dso_sym((apr_dso_handle_sym_t*)&sc->dso_fn.vas_gss_auth_with_server_id_fn, sc->dso_fn.dso_h, "vas_gss_auth_with_server_id")) == APR_SUCCESS) { 
+            TRACE3_S(s, "%s: Loaded module contained the symbol vas_gss_auth_with_server_id, calling method vas_gss_auth_with_server_id",  __func__);
+        }else {
+            apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+            apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+            TRACE3_S(s, "%s: apr error %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function: vas_gss_auth_with_server_id. Non-critical failure. using default vas_gss_auth method.", __func__, rv, apr_errbuf, dso_errbuf);
+        }
     }
 
     DEBUG_S(s, "%s: Using servicePrincipalName '%s'", __func__, sc->server_principal);
@@ -2323,6 +2346,8 @@ static apr_status_t auth_vas_server_config_destroy(void *data)
 	        auth_vas_cache_flush(sc->cache);
     	    sc->cache = NULL;
 	    }
+
+        if(sc->dso_fn.dso_h!= NULL) apr_dso_unload(sc->dso_fn.dso_h);
         
     	/* sc->default_realm is always handled by apache */
 	    /* sc->keytab_filename is always handled by apache */

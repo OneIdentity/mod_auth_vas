@@ -141,11 +141,11 @@
     static FILE* traceLogFile = NULL;
     static const char *traceLogFileName = "/tmp/mav_debug_trace.log";
 
-#   define tfprintf(msg, args...){\
+#   define tfprintf(fmt, args...){\
         traceLogFile = fopen( traceLogFileName, "a" );\
         if( traceLogFile ){\
             fprintf(traceLogFile, "%s - %s PID %d LINE %d FILE %s:%s MSG: ", __DATE__, __TIME__, getpid(), __LINE__, __FILE__, __FUNCTION__);\
-            fprintf(traceLogFile, msg, ##args);\
+            fprintf(traceLogFile, fmt, ##args);\
             fprintf(traceLogFile, "\n" );\
             fclose(traceLogFile);\
         }\
