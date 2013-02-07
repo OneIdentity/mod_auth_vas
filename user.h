@@ -37,6 +37,7 @@
  *     Ted Percival <ted.percival@quest.com>
  */
 
+#include <apr_dso.h>
 #include <vas.h>
 #include <vas_gss.h>
 
@@ -48,6 +49,16 @@ extern "C" {
 
 /* types */
 typedef struct auth_vas_user auth_vas_user;
+
+/*
+ * Contains a list of funtion pointers.
+ * Can be used to ensure backwards compatibilty when QAS API changes
+ * and defines a new API call we want to use.
+ */
+typedef struct {
+    vas_err_t (*vas_gss_auth_with_server_id_fn)(OM_uint32 *minor_status, vas_ctx_t *ctx, gss_cred_id_t cred, gss_ctx_id_t context, vas_id_t *server_id, vas_auth_t **auth);
+    apr_dso_handle_t       *dso_h;
+} dso_fn_t;
 
 /* functions */
 
@@ -70,7 +81,7 @@ vas_err_t
 auth_vas_user_authenticate(auth_vas_user *user, int credflags, const char *password);
 
 vas_err_t
-auth_vas_user_use_gss_result(auth_vas_user *user, gss_cred_id_t cred, gss_ctx_id_t context);
+auth_vas_user_use_gss_result(auth_vas_user *user, gss_cred_id_t cred, gss_ctx_id_t context, const dso_fn_t *dso_fn);
 
 vas_err_t
 auth_vas_is_user_in_group(auth_vas_user *user, const char *group);

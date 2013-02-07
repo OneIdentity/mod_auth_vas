@@ -1,3 +1,12 @@
+3.6.8.1 (2013-02-03)
+        - Because bug fix #831 depended on a QAS 4.0.3.177 api change
+          this broke backwards compatibility.  Added a new way to
+          check for existing symbols in the loaded library to validate
+          that a function exists, if not it will fall back to the old
+          method.  In regards to #831 if QAS 4.0.3.177+ is being used
+          the new method vas_gss_auth_with_server_id will be used, all
+          versions prior to this will use vas_gss_auth.
+
 3.6.8   (2012-08-28)
          - Utilized a new method that was added in QAS 4.0.3.177 api
            called vas_gss_auth_with_server_id. New method allows us to
@@ -34,13 +43,6 @@
        
         - mod_auth_vas could get into a deadlock state if set_usr_obj
           failed when trying to set the remote users attr Bug #794
-        
-        - Utilized a new method that was added in QAS 4.0.3.177 api
-          called vas_gss_auth_with_server_id. New method allows us to
-          pass in an already established vas_id_t that represents our
-          server_id with the correct path already set for a custom
-          keytab path that is set by AuthVasKeytabFile. Bug fix #831
-          Related to QAS bug 27613
 
 3.6.6   (2010-05-20)
         - VirtualHosts now inherit MAV server context settings Bug #747.
