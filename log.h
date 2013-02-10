@@ -1,4 +1,4 @@
-#ifndef MAV_LOG_H
+#ifndef MiAV_LOG_H
 #define MAV_LOG_H
 
 /*
@@ -157,6 +157,43 @@
 /*
  * Prints a message with a GSS error code to traceLogFileName if TRACE_DEBUG is defined otherwise prints to stderr
  */
-void print_gss_err(const char *prefix, OM_uint32 major_status, OM_uint32 minor_status);
+static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uint32 minor_status)
+{
+    OM_uint32       majErr, minErr  = 0;
+    OM_uint32       message_context = 0;
+    gss_buffer_desc status_string   = GSS_C_EMPTY_BUFFER;
+
+    if ( GSS_ERROR(major_status) || GSS_SUPPLEMENTARY_INFO(major_status) ) {
+        /* First process the Major status code */
+        do {
+            /* Get the status string associated
+ *                with the Major (GSS=API) status code */
+            majErr = gss_display_status( &minErr, major_status, GSS_C_GSS_CODE, GSS_C_NO_OID, &message_context, &status_string );
+            /* Print the status string */
+            #ifdef TRACE_DEBUG
+                tfprintf("%s: %.*s\n", prefix, (int)status_string.length, (char*)status_string.value );
+            #else
+                fprintf(stderr, "%s: %.*s\n", prefix, (int)status_string.length, (char*)status_string.value );
+            #endif
+            /* Free the status string buffer */
+            gss_release_buffer( &minErr, &status_string );
+        } while( message_context && !GSS_ERROR( majErr ) );
+
+        /* Then process the Minor status code */
+        do {
+            /* Get the status string associated
+ *                with the Minor (mechanism) status code */
+            majErr = gss_display_status( &minErr, minor_status, GSS_C_MECH_CODE, GSS_C_NO_OID, &message_context, &status_string );
+            /* Print the status string */
+            #ifdef TRACE_DEBUG
+                tfprintf(": %.*s\n", (int)status_string.length, (char*)status_string.value );
+            #else
+                fprintf(stderr, ": %.*s\n", (int)status_string.length, (char*)status_string.value );
+            #endif
+            /* Free the status string buffer */
+            gss_release_buffer( &minErr, &status_string );
+        } while( message_context && !GSS_ERROR( majErr ) );
+    }
+}
 
 #endif /* MAV_LOG_H */

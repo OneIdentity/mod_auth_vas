@@ -218,7 +218,7 @@ vas_err_t auth_vas_user_use_gss_result(
     }
 
     if (vaserr) {
-        print_gss_err("vas_gss_auth", vaserr, minor_status);
+        mav_print_gss_err("vas_gss_auth", vaserr, minor_status);
     	avuser->vas_authctx = NULL; /* ensure */
     }
 
