@@ -441,7 +441,7 @@ stty $oldmodes
 	fi
 	
 # Create service account keytab
-ETYPES="aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 arcfour-hmac-md5 des-cbc-crc"
+ETYPES="aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 arcfour-hmac-md5 des-cbc-crc des-cbc-md5"
 
 # Get SPN's from the existing service account
 echo ""
