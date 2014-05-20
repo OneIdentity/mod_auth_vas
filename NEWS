@@ -1,3 +1,20 @@
+3.6.8.2 (2014-05-19)
+        - Added ability to enable QAS API debug Bug# 848
+
+        - AuthVasCacheSize & AuthVasCacheExpire now are merged correctly
+          when set in both the parent and virtual host configs. Bug # 847
+
+        - AuthVasServerPrincipal is now working correctly when set in
+          parent config as well as virtual configs.
+
+        - Added a new per server directive AuthVasApiDebugLevel in
+          relation to bug# 848 to set the debug level of the QAS API
+          logging. Logging by default will be sent to syslog with the 
+          name mod_auth_vas.
+ 
+        - If AuthVasApiDebugLevel is > 2 QAS API nested log messages
+          will be included. 
+
 3.6.8.1 (2013-02-03)
          - Because bug fix #831 depended on a QAS 4.0.3.177 api change
            this broke backwards compatibility.  Added a new way to

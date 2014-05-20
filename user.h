@@ -57,6 +57,9 @@ typedef struct auth_vas_user auth_vas_user;
  */
 typedef struct {
     vas_err_t (*vas_gss_auth_with_server_id_fn)(OM_uint32 *minor_status, vas_ctx_t *ctx, gss_cred_id_t cred, gss_ctx_id_t context, vas_id_t *server_id, vas_auth_t **auth);
+    vas_err_t (*vas_log_init_log_fn)(int log_mode, int log_debug_level, const char* log_file);
+    void      (*vas_log_deinit_log_fn)(void);
+    vas_err_t (*vas_err_set_option_fn)(vas_ctx_t* ctx, int option, ... );
     apr_dso_handle_t       *dso_h;
 } dso_fn_t;
 

@@ -284,6 +284,8 @@ auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp)
     vasctx = auth_vas_cache_get_vasctx(avuser->cache);
     serverid = auth_vas_cache_get_serverid(avuser->cache);
 
+	tfprintf("auth_vas_user name: %s", avuser->username);
+
     /* Use username instead of principal_name because any other name is
      * susceptible to failure when username-attr-name is not userPrincipalName.
      */

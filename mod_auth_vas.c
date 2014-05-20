@@ -85,6 +85,16 @@
     goto finish; \
 } while (0)
 
+/**
+ * VAS_LOG_MODE_FILE: 0 - none, 1 - syslog, 3 - stderr, 4 - file
+ **/
+#define VAS_LOG_MODE_FILE 1
+/**
+ * VAS_API_DEBUG_LOG_FILE_NAME: Name of the log file if VAS_LOG_MODE_FILE is 4
+ * or name to log as if VAS_LOG_MODE_FILE is 1
+ **/
+#define VAS_API_DEBUG_LOG_FILE_NAME "mod_auth_vas"
+
 /*
  * Per-server configuration structure - exists for lifetime of server process.
  */
@@ -99,6 +109,7 @@ typedef struct {
     char *cache_time;               /* Configured cache lifetime */
     char *keytab_filename;          /* AuthVasKeytabFile */
     dso_fn_t dso_fn;                /* Function pointers */
+    int      vas_api_debug_level;   /* Enable QAS API debug  */
 } auth_vas_server_config;
 
 /*
@@ -299,6 +310,12 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 	    (char *)arg);
 }
 
+static const char *
+server_set_int_slot(cmd_parms *cmd, void *ignored, const char* arg)
+{
+    return ap_set_int_slot(cmd, (char *)GET_SERVER_CONFIG(cmd->server->module_config), arg);
+}
+
 /*
  * Configuration commands table for this module.
  */
@@ -317,6 +334,7 @@ server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 #define CMD_CACHEEXPIRE		"AuthVasCacheExpire"
 #define CMD_KEYTABFILE		"AuthVasKeytabFile"
 #define CMD_AUTHZ		"AuthVasAuthz"
+#define CMD_VASAPIDEBUGLEVEL    "AuthVasApiDebugLevel"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -380,6 +398,10 @@ static const command_rec auth_vas_cmds[] =
 		(void*)APR_OFFSETOF(auth_vas_dir_config, authz),
 		ACCESS_CONF | OR_AUTHCFG,
 		"Whether mod_auth_vas should provide authorization checks, or decline in favor of other authz modules"),
+    AP_INIT_TAKE1(CMD_VASAPIDEBUGLEVEL, server_set_int_slot,
+        (void*)APR_OFFSETOF(auth_vas_server_config, vas_api_debug_level),
+        RSRC_CONF,
+        "Specify the QAS API debug level"),
     { NULL }
 };
 
@@ -509,6 +531,7 @@ set_user_obj(request_rec *r)
 		"%s: Failed to get user object for %.100s: %s",
 		__func__,
 		RUSER(r), vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 
 	if (vaserr == VAS_ERR_NOT_FOUND) /* No such user */
 	    return HTTP_UNAUTHORIZED;
@@ -565,6 +588,8 @@ match_user(request_rec *r, const char *name)
 	LOG_RERROR(APLOG_DEBUG, 0, r,
 		   "vas_user_init(%.100s): %s", name,
 		   vas_err_get_string(sc->vas_ctx, 1));
+
+    vas_err_clear(sc->vas_ctx);
 
 	RETURN(HTTP_INTERNAL_SERVER_ERROR); /* Server misconfiguration */
     }
@@ -674,10 +699,11 @@ match_group(request_rec *r, const char *name)
             
         case VAS_ERR_NOT_FOUND: /* user not member of group */
             LOG_RERROR(APLOG_DEBUG, 0, r,
-                       "%s: %s not member of %s",
+                       "%s: %s is not a member of %s reason: %s",
                        __func__,
                        auth_vas_user_get_principal_name(rnote->user),
-                       name);
+                       name, vas_err_get_string(sc->vas_ctx, 1));
+            vas_err_clear(sc->vas_ctx);
 	    RETURN(HTTP_FORBIDDEN);
             break;
             
@@ -694,6 +720,7 @@ match_group(request_rec *r, const char *name)
                        "%s: fatal vas error: %s",
                        __func__,
                        vas_err_get_string(sc->vas_ctx, 1));
+            vas_err_clear(sc->vas_ctx);
 	    RETURN(HTTP_INTERNAL_SERVER_ERROR);
             break;
     }
@@ -778,6 +805,7 @@ match_unix_group(request_rec *r, const char *name)
 	LOG_RERROR(APLOG_ERR, 0, r,
                    "%s: vas_user_get_pwinfo(): %s", __func__,
                    vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 	RETURN(HTTP_INTERNAL_SERVER_ERROR);
     }
 
@@ -915,6 +943,7 @@ match_container(request_rec *r, const char *container)
 		"%s: error initializing user object: %d, %s",
 		__func__,
 		vaserr, vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -924,6 +953,7 @@ match_container(request_rec *r, const char *container)
 	LOG_RERROR(APLOG_WARNING, 0, r,
 		"%s: error getting user's distinguishedName: %d, %s",
 		__func__, vaserr, vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 	RETURN(HTTP_FORBIDDEN);
     }
 
@@ -1217,6 +1247,7 @@ check_password(request_rec *r, const char *username, const char *password)
 	LOG_RERROR(APLOG_ERR, 0, r, /* This log message mimics mod_auth_basic's */
 		"user %s: authentication failure for \"%s\": %s",
 		username, r->uri, vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 	RETURN(AUTH_DENIED);
     }
 
@@ -1388,6 +1419,7 @@ initialize_user(request_rec *request, const char *username) {
 	LOG_RERROR(APLOG_ERR, 0, request,
 		"%s: Failed to initialize user for %s: %s",
 		__func__, username, vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 	RETURN(HTTP_UNAUTHORIZED);
     }
 
@@ -1489,13 +1521,13 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     if (VAS_ERR_SUCCESS != vas_gss_initialize(sc->vas_ctx, sc->vas_serverid)) {
 	LOG_RERROR(APLOG_ERR, 0, r, "Unable to initialize GSS: %s",
 		vas_err_get_string(sc->vas_ctx, 1));
+    vas_err_clear(sc->vas_ctx);
 	UNLOCK_VAS(r);
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
     /* Accept token - have the VAS api handle the base64 stuff for us */
-    TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d",
-            (int) in_token.length);
+    TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d", (int) in_token.length);
     gsserr = vas_gss_spnego_accept(sc->vas_ctx, sc->vas_serverid,
 	    NULL, &rn->gss_ctx, NULL,
 	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token,
@@ -1503,105 +1535,105 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 
     /* Handle completed GSSAPI negotiation */
     if (gsserr == GSS_S_COMPLETE) {
-	OM_uint32       minor_status, err;
-	gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
-	vas_err_t	vaserr;
-	auth_vas_server_config	*sc;
+		OM_uint32       minor_status, err;
+		gss_buffer_desc buf = GSS_C_EMPTY_BUFFER;
+		vas_err_t	vaserr;
+		auth_vas_server_config	*sc;
 
-	sc = GET_SERVER_CONFIG(r->server->module_config);
+		sc = GET_SERVER_CONFIG(r->server->module_config);
 
         TRACE_R(r, "%s: server keytab %s", __func__, sc->keytab_filename ? sc->keytab_filename : "using default HTTP.keytab");
 
-	/* Get the client's name */
-	err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
-		NULL, NULL, NULL, NULL, NULL, NULL);
-	if (err != GSS_S_COMPLETE) {
-	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
-		    "gss_inquire_context", err, minor_status);
-	    goto done;
-	}
+		/* Get the client's name */
+		err = gss_inquire_context(&minor_status, rn->gss_ctx, &client_name,
+			NULL, NULL, NULL, NULL, NULL, NULL);
+		if (err != GSS_S_COMPLETE) {
+		    result = HTTP_UNAUTHORIZED;
+	    	log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
+		    	"gss_inquire_context", err, minor_status);
+		    goto done;
+		}
 
-	/* Convert the client's name into a visible string */
-	err = gss_display_name(&minor_status, client_name, &buf, NULL);
-	if (err != GSS_S_COMPLETE) {
-	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
-		    "gss_display_name", err, minor_status);
-	    goto done;
-	}
+		/* Convert the client's name into a visible string */
+		err = gss_display_name(&minor_status, client_name, &buf, NULL);
+		if (err != GSS_S_COMPLETE) {
+		    result = HTTP_UNAUTHORIZED;
+	    	log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
+		    	"gss_display_name", err, minor_status);
+		    goto done;
+		}
 
-	/* Copy out the authenticated user's name. */
-	RUSER(r) = apr_pstrmemdup(RUSER_POOL(r), buf.value, buf.length);
-	gss_release_buffer(&minor_status, &buf);
-	if (RUSER(r) == NULL) {
-	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_pstrmemdup");
-	    result = HTTP_INTERNAL_SERVER_ERROR;
-	    goto done;
-	}
+		/* Copy out the authenticated user's name. */
+		RUSER(r) = apr_pstrmemdup(RUSER_POOL(r), buf.value, buf.length);
+		gss_release_buffer(&minor_status, &buf);
+		if (RUSER(r) == NULL) {
+	    	LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_pstrmemdup");
+		    result = HTTP_INTERNAL_SERVER_ERROR;
+		    goto done;
+		}
 
-	/* Create the remote user object now that we have their name */
-	result = initialize_user(r, RUSER(r));
-	if (result)
-	    goto done;
+		/* Create the remote user object now that we have their name */
+		result = initialize_user(r, RUSER(r));
+		if (result)
+	    	goto done;
 
-	/* Set RUSER to the configured attribute.
-	 * This has to be done after user object initialisation to ensure
-	 * the right user object is created.
-	 * set_remote_user() does its own locking if necessary. */
-	UNLOCK_VAS(r);
-	set_remote_user(r);
-	LOCK_VAS(r);
+		/* Set RUSER to the configured attribute.
+		 * This has to be done after user object initialisation to ensure
+		 * the right user object is created.
+		 * set_remote_user() does its own locking if necessary. */
+		UNLOCK_VAS(r);
+		set_remote_user(r);
+		LOCK_VAS(r);
 
-	/* Save the VAS auth context */
-	{
-	    gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
-	    vas_gss_acquire_cred(sc->vas_ctx, sc->vas_serverid, &minor_status, GSS_C_ACCEPT, &servercred);
+		/* Save the VAS auth context */
+		{
+	    	gss_cred_id_t servercred = GSS_C_NO_CREDENTIAL;
+		    vas_gss_acquire_cred(sc->vas_ctx, sc->vas_serverid, &minor_status, GSS_C_ACCEPT, &servercred);
 	    
-	vaserr = auth_vas_user_use_gss_result(rn->user, servercred, rn->gss_ctx, &sc->dso_fn);
-	if (vaserr) {
-	    result = HTTP_UNAUTHORIZED;
-	    /* We know that the cache & user stuff uses the same vas context as
-	     * the server, but using the vas_ctx here still feels dirty. */
-	    LOG_RERROR(APLOG_ERR, 0, r,
-		    "%s: auth_vas_user_use_gss_result failed: %s", __func__,
-		    vas_err_get_string(sc->vas_ctx, 1));
-        log_gss_error(APLOG_MARK, APLOG_ERR, 0, r, "auth_vas_user_use_gss_result", vaserr, 0);
+			vaserr = auth_vas_user_use_gss_result(rn->user, servercred, rn->gss_ctx, &sc->dso_fn);
+			if (vaserr) {
+	    		result = HTTP_UNAUTHORIZED;
+				/* We know that the cache & user stuff uses the same vas context as
+			   	 * the server, but using the vas_ctx here still feels dirty. */
+			    LOG_RERROR(APLOG_ERR, 0, r,
+				    "%s: auth_vas_user_use_gss_result failed: %s", __func__,
+				    vas_err_get_string(sc->vas_ctx, 1));
+		        log_gss_error(APLOG_MARK, APLOG_ERR, 0, r, "auth_vas_user_use_gss_result", vaserr, 0);
+                vas_err_clear(sc->vas_ctx);
 
-	    goto done;
-	}
+			    goto done;
+			}
 
-	/* FIXME: free properly */
-	gss_release_cred(&minor_status, &servercred);
+			/* FIXME: free properly */
+			gss_release_cred(&minor_status, &servercred);
 
-	}
+		}	
 
-	/* Keep a copy of the client's mechanism name in the connection note */
-	err = gss_export_name(&minor_status, client_name, &rn->client);
-	if (err != GSS_S_COMPLETE) {
-	    result = HTTP_UNAUTHORIZED;
-	    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
-		    "gss_export_name", err, minor_status);
-	}
+		/* Keep a copy of the client's mechanism name in the connection note */
+		err = gss_export_name(&minor_status, client_name, &rn->client);
+		if (err != GSS_S_COMPLETE) {
+	    	result = HTTP_UNAUTHORIZED;
+		    log_gss_error(APLOG_MARK, APLOG_ERR, 0, r,
+			    "gss_export_name", err, minor_status);
+		}
 
-	TRACE_R(r, "authenticated user: '%s'", RUSER(r));
+		TRACE_R(r, "authenticated user: '%s'", RUSER(r));
 
-	/* Authentication has succeeded at this point */
-	RAUTHTYPE(r) = (char *)VAS_AUTH_TYPE;
-	result = OK;
+		/* Authentication has succeeded at this point */
+		RAUTHTYPE(r) = (char *)VAS_AUTH_TYPE;
+		result = OK;
     } else if (gsserr == GSS_S_CONTINUE_NEEDED) {
-	TRACE_R(r, "waiting for more tokens from client");
-	result = HTTP_UNAUTHORIZED;
+		TRACE_R(r, "waiting for more tokens from client");
+		result = HTTP_UNAUTHORIZED;
     } else if (strncmp(auth_param, "TlRM", 4) == 0) {
-	const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
-	LOG_RERROR(APLOG_INFO, 0, r,
-		    "NTLM authentication attempted");
-	/* Already logged the failure cause */
-	gsserr = 0;
-	if (dc->ntlm_error_document)
-	    ap_custom_response(r, HTTP_UNAUTHORIZED, dc->ntlm_error_document);
-	else
-	    ap_custom_response(r, HTTP_UNAUTHORIZED, apr_pstrcat(r->pool,
+		const auth_vas_dir_config *dc = GET_DIR_CONFIG(r->per_dir_config);
+		LOG_RERROR(APLOG_INFO, 0, r, "NTLM authentication attempted");
+		/* Already logged the failure cause */
+		gsserr = 0;
+		if (dc->ntlm_error_document)
+	    	ap_custom_response(r, HTTP_UNAUTHORIZED, dc->ntlm_error_document);
+		else
+		    ap_custom_response(r, HTTP_UNAUTHORIZED, apr_pstrcat(r->pool,
 			DOCTYPE_HTML_2_0
 			"<HTML><HEAD>\n"
 			"<TITLE>NTLM authentication not supported</TITLE>\n"
@@ -1640,75 +1672,67 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 			"</BODY></HTML>\n"
 			, NULL
 			));
-	result = HTTP_UNAUTHORIZED;
+		result = HTTP_UNAUTHORIZED;
     } else {
-	/* Any other result means we send back an Unauthorized result */
-	LOG_RERROR(APLOG_ERR, 0, r,
-                   "%s: %s",
-		   __func__,
-                   vas_err_get_string(sc->vas_ctx, 1));
-	result = HTTP_UNAUTHORIZED;
+		/* Any other result means we send back an Unauthorized result */
+		LOG_RERROR(APLOG_ERR, 0, r, "%s: %s", __func__, vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);
+        result = HTTP_UNAUTHORIZED;
     }
 
  done:
     vas_gss_deinitialize(sc->vas_ctx);
 
-    if (GSS_ERROR(gsserr))
-	LOG_RERROR(APLOG_ERR, 0, r,
-		   "%s: %s",
-		   __func__,
-		   vas_err_get_string(sc->vas_ctx, 1));
+    if (GSS_ERROR(gsserr)) {
+		LOG_RERROR(APLOG_ERR, 0, r, "%s: %s", __func__, vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);
+    }
 
     UNLOCK_VAS(r);
 
     /* If there is an out token we need to return it in the header -
      * it's already base64 encoded */
     if (out_token.value && result != OK) {
-	char   *auth_out;		/* "Negotiate <token>" string */
-	size_t	auth_out_size;
+		char   *auth_out;		/* "Negotiate <token>" string */
+		size_t	auth_out_size;
 
 #define NEGOTIATE_TEXT "Negotiate "
 #define NEGOTIATE_SIZE	10 /* strlen("Negotiate ") */
 
-	/* Allocate space for the header value */
+		/* Allocate space for the header value */
         auth_out_size = out_token.length + NEGOTIATE_SIZE + 1;
-	auth_out = apr_palloc(r->pool, auth_out_size);
-	if (auth_out == NULL) {
-	    LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
-	    result = HTTP_INTERNAL_SERVER_ERROR;
-	    goto cleanup;
-	}
+		auth_out = apr_palloc(r->pool, auth_out_size);
+		if (auth_out == NULL) {
+	    	LOG_RERROR(APLOG_ERR, APR_ENOMEM, r, "apr_palloc");
+		    result = HTTP_INTERNAL_SERVER_ERROR;
+		    goto cleanup;
+		}
 
-	/* Construct the header value string */
-	strcpy(auth_out, NEGOTIATE_TEXT);
-	strncat(auth_out, out_token.value, out_token.length);
+		/* Construct the header value string */
+		strcpy(auth_out, NEGOTIATE_TEXT);
+		strncat(auth_out, out_token.value, out_token.length);
 
-	/* Add to the outgoing header set. */
-	apr_table_setn(r->err_headers_out,
-		IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate"
-					    : "WWW-Authenticate",
-		auth_out);
-	/* add_basic_auth_headers(r); */
+		/* Add to the outgoing header set. */
+		apr_table_setn(r->err_headers_out, IS_FORWARD_PROXY_REQUEST(r) ? "Proxy-Authenticate" : "WWW-Authenticate", auth_out);
+		/* add_basic_auth_headers(r); */
     }
 
     /* Detect NTLMSSP attempts */
-    if (gsserr == GSS_S_DEFECTIVE_TOKEN &&
-        in_token.length >= 7 &&
-        memcmp(in_token.value, "NTLMSSP", 7) == 0)
+    if (gsserr == GSS_S_DEFECTIVE_TOKEN && in_token.length >= 7 && memcmp(in_token.value, "NTLMSSP", 7) == 0)
     {
-	LOG_RERROR(APLOG_NOTICE, 0, r,
-	    "Client used unsupported NTLMSSP authentication");
+		LOG_RERROR(APLOG_NOTICE, 0, r,
+	    	"Client used unsupported NTLMSSP authentication");
     }
 
  cleanup:
     if (LOCK_VAS(r))
-	LOG_RERROR(APLOG_WARNING, 0, r,
-	    "do_gss_spnego_accept: cannot acquire lock to release resources");
+		LOG_RERROR(APLOG_WARNING, 0, r,
+	    	"do_gss_spnego_accept: cannot acquire lock to release resources");
     else {
-	gss_release_buffer(&gsserr, &out_token);
-	if (client_name)
-	    gss_release_name(NULL, &client_name);
-	UNLOCK_VAS(r);
+		gss_release_buffer(&gsserr, &out_token);
+		if (client_name)
+	    	gss_release_name(NULL, &client_name);
+		UNLOCK_VAS(r);
     }
 
     return result;
@@ -1850,6 +1874,7 @@ get_server_creds(server_rec *s)
 	LOG_ERROR(APLOG_ERR, 0, s,
 		"vas_id_establish_cred_keytab failed: %s",
 		vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);    
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -1885,7 +1910,6 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     TRACE_S(s, "%s: Initializing %s for host: %s: Defined on line %i in conf file: %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->server_hostname, s->defn_line_number, s->defn_name);
 
     sc = GET_SERVER_CONFIG(s->module_config);
-    TRACE_S(s, "%s: Server config=%pp", __func__, sc); /* %pp is apr_vformatter syntax for a (void*) */
 
     if (sc == NULL) {
 	LOG_ERROR(APLOG_ERR, 0, s,
@@ -1898,24 +1922,67 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	return;
     }
 
+    /* If the server_principal has not been set by the user then set it here.
+     * We no longer set a default when the server config is initialized
+     * Bug #846 fix: jayson.hurst@software.dell.com (4-1-14)
+     */
+    if(sc->server_principal == NULL) sc->server_principal = DEFAULT_SERVER_PRINCIPAL;
+
+    TRACE_S(s, "%s: Server config=%pp", __func__, sc); /* %pp is apr_vformatter syntax for a (void*) */
+
     if((rv = apr_dso_load(&sc->dso_fn.dso_h, NULL, p)) != APR_SUCCESS) {
       /* Log Some sort of error that we couldn't load the lib, if it doesn't work then we just fall back to our normal methods anyway so not a critical failure*/
         apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
         apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
-        TRACE_S(s, "%s: apr error %d: %s.  Reason: %s.  Non-critical failure. MAV will not be able to dynamically determine loaded symbols.", __func__, rv, apr_errbuf, dso_errbuf);
+        TRACE_S(s, "%s: apr error %d: %s.  Reason: %s. Non-critical failure. MAV will not be able to dynamically determine loaded symbols.", __func__, rv, apr_errbuf, dso_errbuf);
         sc->dso_fn.dso_h = NULL;
     }else {
         TRACE_S(s, "%s: dlopen return handle is for the main program", __func__);
 
         /* Check if the function's symbols we care about exist in the handle, if so set them */
-        if ((rv = apr_dso_sym((apr_dso_handle_sym_t*)&sc->dso_fn.vas_gss_auth_with_server_id_fn, sc->dso_fn.dso_h, "vas_gss_auth_with_server_id")) == APR_SUCCESS) { 
+        if ( (rv = apr_dso_sym( (apr_dso_handle_sym_t*)&sc->dso_fn.vas_gss_auth_with_server_id_fn,
+                                sc->dso_fn.dso_h,
+                                "vas_gss_auth_with_server_id")) == APR_SUCCESS) { 
             TRACE_S(s, "%s: Loaded module contained the symbol vas_gss_auth_with_server_id, calling method vas_gss_auth_with_server_id",  __func__);
         }else {
             apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
             apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
-            TRACE_S(s, "%s: apr error %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function: vas_gss_auth_with_server_id. Non-critical failure. using default vas_gss_auth method.", __func__, rv, apr_errbuf, dso_errbuf);
+            TRACE_S(s, "%s: apr INFO %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function: vas_gss_auth_with_server_id. Non-critical failure. using default vas_gss_auth method.", __func__, rv, apr_errbuf, dso_errbuf);
         }
+
+        if ( (rv = apr_dso_sym( (apr_dso_handle_sym_t*)&sc->dso_fn.vas_log_init_log_fn,
+                                sc->dso_fn.dso_h,
+                                "vas_log_init_log")) == APR_SUCCESS) {
+            TRACE_S(s, "%s: Loaded module contained the symbol vas_log_init_log, calling method vas_log_init_log",  __func__);
+        }else {
+            apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+            apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+            TRACE_S(s, "%s: apr INFO %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function: vas_log_init_log. Non-critical failure. VAS API debug will not be enabled", __func__, rv, apr_errbuf, dso_errbuf);
+        }
+
+        if ( (rv = apr_dso_sym( (apr_dso_handle_sym_t*)&sc->dso_fn.vas_log_deinit_log_fn,
+                                sc->dso_fn.dso_h,
+                                "vas_log_deinit_log")) == APR_SUCCESS) {
+            TRACE_S(s, "%s: Loaded module contained the symbol vas_log_deinit_log, calling vas_log_deinit_log", __func__);
+        } else {
+            apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+            apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+            TRACE_S(s, "%s: apr INFO %d: %s. Reason :%s. vas_log_deinit_log is not contained in the version of QAS being used. Not calling", __func__, rv, apr_errbuf, dso_errbuf);
+        }
+
+        if ( (rv = apr_dso_sym( (apr_dso_handle_sym_t*)&sc->dso_fn.vas_err_set_option_fn, sc->dso_fn.dso_h, "vas_err_set_option")) == APR_SUCCESS) {
+            TRACE_S(s, "%s: Loaded module contained the symbol vas_err_set_option.", __func__);
+        }else {
+            apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+            apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+            TRACE_S(s, "%s: apr INFO %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function vas_err_set_option. Non-critical failure. Nested VAS API debug will not be enbled.", __func__, rv, apr_errbuf, dso_errbuf);
+        }
+
     }
+
+    if(sc->dso_fn.vas_log_init_log_fn){
+        sc->dso_fn.vas_log_init_log_fn( VAS_LOG_MODE_FILE, sc->vas_api_debug_level, VAS_API_DEBUG_LOG_FILE_NAME);
+    }    
 
     TRACE_S(s, "%s: Using servicePrincipalName '%s'", __func__, sc->server_principal);
 
@@ -1926,6 +1993,15 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 		"vas_ctx_alloc failed, err = %d",
 	       	vaserr);
 	return;
+    }
+
+    /* If debug is set to 3 or higher enabled nested QAS api debugging */
+    if(sc->vas_api_debug_level > 2 ) {
+        if(sc->dso_fn.vas_err_set_option_fn) {
+            if(!sc->dso_fn.vas_err_set_option_fn(sc->vas_ctx, 1, 1)) {
+                TRACE_S(s, "%s: Nested QAS API debug has been enabled", __func__);
+            }
+        }
     }
 
 #if 0 /* Only available since about VAS 3.0.2.5.
@@ -1960,6 +2036,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
                   "vas_id_alloc failed on %s, err = %s",
                   sc->server_principal,
                   vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);
 	return;
     }
 
@@ -1991,6 +2068,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	    LOG_ERROR(APLOG_ERR, 0, s,
 		      "vas_auth failed, err = %s",
 		      vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);
 	}
 
 	if (errinfo)
@@ -2544,6 +2622,7 @@ export_cc(request_rec *r)
             LOG_RERROR(APLOG_ERR, 0, r,
                        "vas_krb5_get_context: %s",
                        vas_err_get_string(sc->vas_ctx, 1));
+            vas_err_clear(sc->vas_ctx);
 	    goto finish;
     }
 
@@ -2663,6 +2742,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		    LOG_RERROR(APLOG_ERR, 0, r,
 			    "Error looking up %s attribute in VAS cache: %s",
 			    attr, vas_err_get_string(sc->vas_ctx, 1));
+            vas_err_clear(sc->vas_ctx);
 		}
 		goto finish;
 	    }
@@ -2687,6 +2767,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 		LOG_RERROR(APLOG_ERR, 0, r,
 			"Error looking up %cidNumber attribute in VAS cache: %s",
 			ug, vas_err_get_string(sc->vas_ctx, 1));
+            vas_err_clear(sc->vas_ctx);
 	    }
 	    goto finish;
 	}
@@ -2716,6 +2797,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	    LOG_RERROR(APLOG_ERR, 0, r,
 		    "Failed getting %s attribute values: %s",
 		    attr, vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);
 	}
 
 	vas_attrs_free(sc->vas_ctx, attrs);
@@ -2724,6 +2806,7 @@ set_remote_user_attr(request_rec *r, const char *attr)
 	LOG_RERROR(APLOG_ERR, 0, r,
 		"vas_user_get_attrs() failed to get attribute %s: %s",
 		attr, vas_err_get_string(sc->vas_ctx, 1));
+        vas_err_clear(sc->vas_ctx);
     }
 
 finish:
@@ -3012,12 +3095,13 @@ auth_vas_create_dir_config(apr_pool_t *p, char *dirspec)
 static void *
 auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *new_conf)
 {
+
+    TRACE_P(p, "%s: Merging parent directory configuration with a base directory config", __func__);
     auth_vas_dir_config *base_dc = (auth_vas_dir_config *)base_conf;
     auth_vas_dir_config *new_dc = (auth_vas_dir_config *)new_conf;
     auth_vas_dir_config *merged_dc;
 
     merged_dc = (auth_vas_dir_config *)apr_pcalloc(p, sizeof *merged_dc);
-    TRACE_P(p, __func__);
     if (merged_dc != NULL) {
 	merged_dc->auth_negotiate = FLAG_MERGE(base_dc->auth_negotiate,
 		new_dc->auth_negotiate);
@@ -3103,34 +3187,21 @@ static void *auth_vas_merge_server_config(apr_pool_t *p, void *base_conf,
 
     merged_sc = (auth_vas_server_config *) apr_pcalloc(p, sizeof *merged_sc);
 
-    /*
-     * Overwrite the server default of HTTP/, if it is NULL then we will ether
-     * pick up the parents server setting, or reset it back to HTTP/. This will 
-     * allow us to pick up the parents server setting if it was set and is not
-     * using the default value.
-    */
-    new_sc->server_principal = NULL;
-
-    TRACE_P(p, __func__);
-
     if (merged_sc != NULL) {
         if (new_sc->server_principal) {
             if (strcasecmp(new_sc->server_principal, "default") == 0)
                 merged_sc->server_principal = DEFAULT_SERVER_PRINCIPAL;
             else
-                merged_sc->server_principal = apr_pstrdup(p,
-                        new_sc->server_principal);
+                merged_sc->server_principal = apr_pstrdup(p, new_sc->server_principal);
         } else if (base_sc->server_principal) {
-            merged_sc->server_principal = apr_pstrdup(p,
-                    base_sc->server_principal);
+            merged_sc->server_principal = apr_pstrdup(p, base_sc->server_principal);
         }
 
         if (new_sc->default_realm) {
             if (strcasecmp(new_sc->default_realm, "default") == 0)
                 merged_sc->default_realm = NULL;
             else
-                merged_sc->default_realm
-                        = apr_pstrdup(p, new_sc->default_realm);
+                merged_sc->default_realm = apr_pstrdup(p, new_sc->default_realm);
         } else if (base_sc->default_realm) {
             merged_sc->default_realm = apr_pstrdup(p, base_sc->default_realm);
         }
@@ -3139,11 +3210,25 @@ static void *auth_vas_merge_server_config(apr_pool_t *p, void *base_conf,
             if (strcasecmp(new_sc->keytab_filename, "default") == 0)
                 merged_sc->keytab_filename = NULL;
             else
-                merged_sc->keytab_filename = apr_pstrdup(p,
-                        new_sc->keytab_filename);
+                merged_sc->keytab_filename = apr_pstrdup(p, new_sc->keytab_filename);
         } else if (base_sc->keytab_filename) {
-            merged_sc->keytab_filename = apr_pstrdup(p,
-                    base_sc->keytab_filename);
+            merged_sc->keytab_filename = apr_pstrdup(p, base_sc->keytab_filename);
+        }
+
+        if (new_sc->cache_size) {
+            merged_sc->cache_size = apr_pstrdup(p, new_sc->cache_size);
+        } else if (base_sc->cache_size) {
+            merged_sc->cache_size = apr_pstrdup(p, base_sc->cache_size);
+        }
+        if (new_sc->cache_time) {
+            merged_sc->cache_time = apr_pstrdup(p, new_sc->cache_time);
+        } else if (base_sc->cache_time) {
+            merged_sc->cache_time = apr_pstrdup(p, base_sc->cache_time);
+        }
+        if (new_sc->vas_api_debug_level) {
+            merged_sc->vas_api_debug_level = new_sc->vas_api_debug_level;
+        } else if (base_sc->vas_api_debug_level) {
+           merged_sc->vas_api_debug_level = base_sc->vas_api_debug_level;
         }
     }
 
@@ -3158,20 +3243,24 @@ auth_vas_server_config_destroy(void *data)
     
     if (sc != NULL) {
 
-	if (sc->cache) {
-	    auth_vas_cache_flush(sc->cache);
-	    sc->cache = NULL;
-	}
+    	if (sc->cache) {
+	        auth_vas_cache_flush(sc->cache);
+	        sc->cache = NULL;
+    	}
 
-    if(sc->dso_fn.dso_h!= NULL) apr_dso_unload(sc->dso_fn.dso_h);
+        if(sc->dso_fn.dso_h!= NULL) apr_dso_unload(sc->dso_fn.dso_h);
         
-	/* sc->default_realm is always handled by apache */
-	/* sc->keytab_filename is always handled by apache */
+    	/* sc->default_realm is always handled by apache */
+	    /* sc->keytab_filename is always handled by apache */
 
         if (sc->vas_serverid != NULL) {
             vas_id_free(sc->vas_ctx, sc->vas_serverid);
             sc->vas_serverid = NULL;
         }        
+
+        if (sc->dso_fn.vas_log_deinit_log_fn) {
+            sc->dso_fn.vas_log_deinit_log_fn();
+        }
         
         if (sc->vas_ctx) {
             vas_ctx_free(sc->vas_ctx);
@@ -3192,13 +3281,11 @@ auth_vas_server_config_destroy(void *data)
 static void *
 auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
 {
+
+    TRACE_P(p, "%s Creating %s configuration for %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->defn_name ? s->defn_name : "<global>");
     auth_vas_server_config *sc;
 
     sc = (auth_vas_server_config *)apr_pcalloc(p, sizeof *sc);
-    if (sc != NULL) {
-	/* XXX Shouldn't we default to "HTTP/" + s->server_hostname ? */
-	sc->server_principal = DEFAULT_SERVER_PRINCIPAL;
-    }
     
     /* register our server config cleanup function */
     apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy,
