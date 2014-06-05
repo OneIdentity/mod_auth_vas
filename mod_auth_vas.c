@@ -1884,6 +1884,23 @@ get_server_creds(server_rec *s)
     return OK;
 }
 
+/*
+ * Logs each cause in a separate message for simplicity-of-code.
+ *
+ */
+static void log_vas_err_info_string(server_rec *s, const char *prefix, vas_err_info_t *errinfo) {
+
+    LOG_ERROR(APLOG_ERR, 0, s, "%s:", prefix);
+
+    while (errinfo) {
+        if (errinfo->message)
+            LOG_ERROR(APLOG_ERR, 0, s,
+                      "  %s", errinfo->message);
+        errinfo = errinfo->cause;
+    }
+}
+
+
 /**
  * Initialises the VAS context for a server.
  * Assumes that the server configuration files have been
@@ -1907,7 +1924,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     char dso_errbuf[256];
     char apr_errbuf[256];
 
-    TRACE_S(s, "%s: Initializing %s for host: %s: Defined on line %i in conf file: %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->server_hostname, s->defn_line_number, s->defn_name);
+    TRACE_S(s, "%s: Initializing %s for host: %s: Defined on line %i in conf file: %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->server_hostname, s->defn_line_number, (s->defn_name ? s->defn_name : ""));
 
     sc = GET_SERVER_CONFIG(s->module_config);
 
@@ -1978,6 +1995,14 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
             TRACE_S(s, "%s: apr INFO %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function vas_err_set_option. Non-critical failure. Nested VAS API debug will not be enbled.", __func__, rv, apr_errbuf, dso_errbuf);
         }
 
+         if ( (rv = apr_dso_sym( (apr_dso_handle_sym_t*)&sc->dso_fn.vas_ctx_alloc_with_flags_fn, sc->dso_fn.dso_h, "vas_ctx_alloc_with_flags")) == APR_SUCCESS) {
+            TRACE_S(s, "%s: Loaded module contained the symbol vas_ctx_alloc_with_flags.", __func__);
+        }else {
+            apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+            apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+            TRACE_S(s, "%s: apr INFO %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function vas_ctx_alloc_with_flags. Non-critical failure.", __func__, rv, apr_errbuf, dso_errbuf);
+        }
+
     }
 
     if(sc->dso_fn.vas_log_init_log_fn){
@@ -1987,12 +2012,25 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
     TRACE_S(s, "%s: Using servicePrincipalName '%s'", __func__, sc->server_principal);
 
     /* Obtain a new VAS context for the web server */
-    vaserr = vas_ctx_alloc(&sc->vas_ctx);
-    if (vaserr != VAS_ERR_SUCCESS) {
-        LOG_ERROR(APLOG_ERR, 0, s, 
-		"vas_ctx_alloc failed, err = %d",
-	       	vaserr);
-	return;
+    if(sc->dso_fn.vas_ctx_alloc_with_flags_fn) {
+        TRACE_S(s, "%s: using vas_ctx_alloc_with_flags", __func__);
+        vas_err_info_t  *vaserr_info = NULL;
+        vaserr = sc->dso_fn.vas_ctx_alloc_with_flags_fn( &sc->vas_ctx, &vaserr_info, 0);
+
+      if( vaserr != VAS_ERR_SUCCESS ) {
+        log_vas_err_info_string(s, "vas_ctx_alloc failed", vaserr_info);
+        vas_err_info_free(vaserr_info);
+        return;
+      }
+    } else {
+        TRACE_S(s, "%s: using vas_ctx_alloc", __func__);
+        vaserr = vas_ctx_alloc(&sc->vas_ctx);
+        if (vaserr != VAS_ERR_SUCCESS) {
+            LOG_ERROR(APLOG_ERR, 0, s, 
+    		"vas_ctx_alloc failed, err = %d",
+	           	vaserr);
+    	    return;
+        }
     }
 
     /* If debug is set to 3 or higher enabled nested QAS api debugging */
@@ -2017,7 +2055,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	free(tmp_realm);
     }
     else {
-	LOG_ERROR(APLOG_WARNING, vaserr, s,
+	LOG_ERROR(APLOG_WARNING, 0, s,
 		"VAS cannot determine the default realm, "
 		"ensure it is set with AuthVasDefaultRealm.");
 	/* make sure default_realm contains _something_. If one day

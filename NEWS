@@ -15,6 +15,10 @@
         - If AuthVasApiDebugLevel is > 2 QAS API nested log messages
           will be included. 
 
+        - MAV will use vas_ctx_alloc_with_flags (also returns an error)
+          if the version of QAS supports it, otherwise vas_ctx_alloc
+          will be used. Bug #518
+
 3.6.8.1 (2013-02-03)
          - Because bug fix #831 depended on a QAS 4.0.3.177 api change
            this broke backwards compatibility.  Added a new way to
