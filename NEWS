@@ -19,6 +19,12 @@
           if the version of QAS supports it, otherwise vas_ctx_alloc
           will be used. Bug #518
 
+        - Fixed the following issue when compiling: 
+            mod_auth_vas.c:48:25: fatal error: 
+            gssapi_krb5.h: No such file or directory
+
+        - Set the environment variable KRB5RCACHETYPE to none by default.
+
 3.6.8.1 (2013-02-03)
          - Because bug fix #831 depended on a QAS 4.0.3.177 api change
            this broke backwards compatibility.  Added a new way to

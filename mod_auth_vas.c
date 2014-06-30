@@ -45,7 +45,7 @@
 
 #include <vas.h>
 #include <vas_gss.h>
-#include <gssapi_krb5.h>
+#include <gssapi/gssapi_krb5.h>
 #include <pwd.h>
 
 #include <httpd.h>
@@ -1526,10 +1526,11 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
 	return HTTP_INTERNAL_SERVER_ERROR;
     }
 
+    OM_uint32 ret_flags = 0;
     /* Accept token - have the VAS api handle the base64 stuff for us */
     TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d", (int) in_token.length);
     gsserr = vas_gss_spnego_accept(sc->vas_ctx, sc->vas_serverid,
-	    NULL, &rn->gss_ctx, NULL,
+	    NULL, &rn->gss_ctx, ret_flags,
 	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token,
 	    &rn->deleg_cred);
 
@@ -1938,6 +1939,11 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	TRACE_S(s, "%s: context has already initialised", __func__);
 	return;
     }
+
+    if(setenv("KRB5RCACHETYPE", "none", 1) == 0)
+        TRACE_S(s, "%s: KRB5RCACHETYPE set to none, replay cache will be disabled", __func__);
+    else
+        LOG_ERROR(APLOG_ERR, 0, s, "%s: Failed to set KRB5RCACHETYPE", __func__);
 
     /* If the server_principal has not been set by the user then set it here.
      * We no longer set a default when the server config is initialized
