@@ -194,4 +194,19 @@ static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uin
     }
 }
 
+/*
+ * Logs each cause in a separate message for simplicity-of-code.
+ *
+ */
+static void log_vas_err_info_string(server_rec *s, const char *prefix, vas_err_info_t *errinfo) {
+
+    ERROR_S(s, "%s:", prefix);
+
+    while (errinfo) {
+        if (errinfo->message)
+            ERROR_S(s, "  %s", errinfo->message);
+        errinfo = errinfo->cause;
+    }
+}
+
 #endif /* MAV_LOG_H */

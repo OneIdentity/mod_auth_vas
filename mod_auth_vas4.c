@@ -1281,7 +1281,8 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
         vas_err_info_t  *vaserr_info = NULL;
         vaserr = sc->dso_fn.vas_ctx_alloc_with_flags_fn( &sc->vas_ctx, &vaserr_info, 0);
         if (vaserr != VAS_ERR_SUCCESS) {
-            ERROR_S(s, "vas_ctx_alloc_with_flags failed, err = %d", vaserr);
+            log_vas_err_info_string(s, "vas_ctx_alloc failed", vaserr_info);
+            vas_err_info_free(vaserr_info);
             TRACE8_S(s, "%s: end", __func__);
             return;
         }
