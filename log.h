@@ -1,4 +1,4 @@
-#ifndef MiAV_LOG_H
+#ifndef MAV_LOG_H
 #define MAV_LOG_H
 
 /*
@@ -139,7 +139,7 @@
 #ifdef TRACE_DEBUG
 
     static FILE* traceLogFile = NULL;
-    static const char *traceLogFileName = "/tmp/mav_debug_trace.log";
+    static const char *traceLogFileName = "/tmp/mav4_debug_trace.log";
 
 #   define tfprintf(fmt, args...){\
         traceLogFile = fopen( traceLogFileName, "a" );\
@@ -166,8 +166,7 @@ static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uin
     if ( GSS_ERROR(major_status) || GSS_SUPPLEMENTARY_INFO(major_status) ) {
         /* First process the Major status code */
         do {
-            /* Get the status string associated
- *                with the Major (GSS=API) status code */
+            /* Get the status string associated with the Major (GSS=API) status code */
             majErr = gss_display_status( &minErr, major_status, GSS_C_GSS_CODE, GSS_C_NO_OID, &message_context, &status_string );
             /* Print the status string */
             #ifdef TRACE_DEBUG
@@ -181,8 +180,7 @@ static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uin
 
         /* Then process the Minor status code */
         do {
-            /* Get the status string associated
- *                with the Minor (mechanism) status code */
+            /* Get the status string associated with the Minor (mechanism) status code */
             majErr = gss_display_status( &minErr, minor_status, GSS_C_MECH_CODE, GSS_C_NO_OID, &message_context, &status_string );
             /* Print the status string */
             #ifdef TRACE_DEBUG
