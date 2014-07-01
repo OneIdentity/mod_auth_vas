@@ -124,7 +124,7 @@ vas_err_t auth_vas_user_alloc(
     vas_err_t vaserr; /* Temp storage */
     vas_ctx_t *vasctx; /* Don't free */
     vas_id_t *local_id;
-    auth_vas_user *cached_user;
+    auth_vas_user *cached_user = NULL;
 
     vasctx = auth_vas_cache_get_vasctx(cache);
 
@@ -156,13 +156,23 @@ vas_err_t auth_vas_user_alloc(
 
             vaserr = vas_user_get_krb5_client_name( vasctx, local_id, cached_user->vas_user_obj, &krb5princname);
             if (vaserr) {
-                tfprintf("Failed to get Kerberos Client Name for user %.100s: %s", username, vas_err_get_string(vasctx,1));
-                vas_id_free(vasctx, local_id);
-                RETURN(vaserr);
-            }else{
-                tfprintf("krb5PrincipalName %s\n", krb5princname);
-                cached_user->principal_name = krb5princname;
+                tfprintf("Failed to get Kerberos Client Name for user %.100s: %s. Looking for userPrincipalName.", username, vas_err_get_string(vasctx,1));
+                vas_err_clear( vasctx );
+                /* Fix for bug# 849. When user is a UPM vas maynot be able to find its samAccountName so fall back to the old method of 
+                 * looking up the users userPrincipalName, This could have problems as well when trying to set the REMOTE_USER variable
+                 * if the username is disjoined (samAccountName is different than UPN) - jhurst 5-21-14
+                 */
+                vaserr = vas_id_get_name(vasctx, local_id, &krb5princname, NULL);
+                if(vaserr) {
+                    tfprintf("Failed to get UserPrincipalName for user %.100s: %s", username, vas_err_get_string(vasctx,1));
+                    vas_id_free(vasctx, local_id);
+                    RETURN(vaserr);
+                }                    
             }
+
+            tfprintf("Principal Name %s\n", krb5princname);
+            cached_user->principal_name = krb5princname;
+            
         }
 
 	    /* Cache refs the user object for itself */
@@ -177,6 +187,9 @@ vas_err_t auth_vas_user_alloc(
     RETURN(VAS_ERR_SUCCESS);
 
 finish:
+    if(result)
+       vas_err_clear( vasctx ); 
+
     return result;
 } /* auth_vas_user_alloc */
 
