@@ -1,3 +1,33 @@
+4.0.0.2 (2014-5-21)
+        - Added ability to enable QAS API debug Bug# 848
+
+        - AuthVasCacheSize & AuthVasCacheExpire now are merged correctly
+          when set in both the parent and virtual host configs. Bug # 847
+
+        - AuthVasServerPrincipal is now working correctly when set in
+          parent config as well as virtual configs. (Bugs 845 & 846)
+
+        - Added a new per server directive AuthVasApiDebugLevel in
+          relation to bug# 848 to set the debug level of the QAS API
+          logging. Logging by default will be sent to syslog with the
+          name mod_auth_vas.
+
+        - If AuthVasApiDebugLevel is > 2 QAS API nested log messages
+          will be included.
+
+        - MAV will use vas_ctx_alloc_with_flags (also returns an error)
+          if the version of QAS supports it, otherwise vas_ctx_alloc
+          will be used. Bug #518
+
+        - Fixed the following issue when compiling:
+            mod_auth_vas.c:48:25: fatal error:
+            gssapi_krb5.h: No such file or directory
+
+        - Fixed an issue where in certain scenarios like UPM mode vas
+          maynot be able to find a users samAccountName. When 
+          samAccountName cannot be found fall back to userPrincipalName
+          Bug #849
+
 4.0.0.1 (2013-2-06)
          - The -u option now works with -n in the http-get/get binary.
 
