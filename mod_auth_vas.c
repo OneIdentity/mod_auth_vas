@@ -1530,7 +1530,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     /* Accept token - have the VAS api handle the base64 stuff for us */
     TRACE_R(r, "calling vas_gss_spnego_accept, base64 token_size=%d", (int) in_token.length);
     gsserr = vas_gss_spnego_accept(sc->vas_ctx, sc->vas_serverid,
-	    NULL, &rn->gss_ctx, ret_flags,
+	    NULL, &rn->gss_ctx, &ret_flags,
 	    VAS_GSS_SPNEGO_ENCODING_BASE64, &in_token, &out_token,
 	    &rn->deleg_cred);
 
