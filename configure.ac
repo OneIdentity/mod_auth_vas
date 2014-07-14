@@ -89,7 +89,7 @@ else
 fi
 
 AC_MSG_CHECKING([what the Apache version is])
-apache_version=$(`$APXS -q SBINDIR`/`$APXS -q TARGET` -V | grep '^Server version' | cut -d/ -f2)
+apache_version=$(`$APXS -q SBINDIR`/`$APXS -q TARGET` -v | grep '^Server version' | cut -d/ -f2)
 AC_MSG_RESULT([$apache_version])
 APACHE_MAJOR_VERSION=`echo $apache_version | cut -d. -f1`
 APACHE_MINOR_VERSION=`echo $apache_version | cut -d. -f2`
@@ -333,8 +333,8 @@ fi
 if test -n "$APR_CONFIG"; then
     APR_INCLUDES=`$APR_CONFIG --includes`
     APR_LIBS=`$APR_CONFIG --link-libtool --libs`
-    APR_CFLAGS=`$APR_CONFIG --cflags`
-    APR_CPPFLAGS=`$APR_CONFIG --cppflags`
+    APR_CFLAGS=`$APR_CONFIG --cflags --includes`
+    APR_CPPFLAGS=`$APR_CONFIG --cppflags --includes`
     APR_LDFLAGS=`$APR_CONFIG --ldflags`
 fi
 
@@ -403,8 +403,8 @@ AC_SUBST([VAS_LIBS])
 
 # Try vasapi functions
 LIBS_save="$LIBS"
-CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS" LIBS="$LIBS $VAS_LIBS"
-CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS" LIBS="$LIBS $VAS_LIBS"
+CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS $APR_INCLUDES" LIBS="$LIBS $VAS_LIBS"
+CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS $APR_INCLUDES" LIBS="$LIBS $VAS_LIBS"
 AC_CHECK_FUNC([vas_ctx_alloc],,[
 	       # Prevent the cached "no" being reused
 	       $as_unset ac_cv_func_vas_ctx_alloc
