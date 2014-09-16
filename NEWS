@@ -1,3 +1,8 @@
+4.0.2.1 (2014-9-16)
+        - No longer write out trace debug by default. Must be recompiled 
+          in order to turn it on.
+        - Updated configure.ac to fix issue when compiling with newer gcc
+
 4.0.2.0 (2014-5-21)
         - Added ability to enable QAS API debug Bug# 848
 
