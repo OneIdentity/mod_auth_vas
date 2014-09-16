@@ -131,8 +131,6 @@
 # endif
 #endif
 
-#define TRACE_DEBUG 1
-
 /*
  * Prints trace messages to traceLogFileName
  */
