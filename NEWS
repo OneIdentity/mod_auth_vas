@@ -1,3 +1,9 @@
+3.6.8.3 (2014-09-16)
+        - Fixed configure.ac to compile with newer version of gcc.
+        - removed #define TRACE_DEBUG so trace debug will not be written
+          out to /tmp by default.
+        - Fixed an issue with the check symbol code.
+
 3.6.8.2 (2014-05-19)
         - Added ability to enable QAS API debug Bug# 848
 

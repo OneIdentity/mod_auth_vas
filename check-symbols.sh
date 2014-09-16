@@ -31,7 +31,8 @@ while [ $# -gt 1 ]; do
     # Find Initialized (D)ata, (T)ext, (B)SS (zeroed) and (R)ead-only dynamic
     # symbols. _init and _fini are always ignored.
     syms=`nm -D --defined-only -- "$MODULE" | cut -d' ' -f2- | grep -E '^(D|T|B|R)' | \
-	grep -Ev -- "$ALLOW_PATTERN" | grep -Ev '^T _(init|fini)$' || true`
+	grep -Ev -- "$ALLOW_PATTERN" | grep -Ev '^T _(init|fini)$' | \
+    grep -Ev '^B _(_bss_start|end)$' | grep -Ev '^D _edata' || true`
     if [ "$syms" != "" ]; then
 	echo >&2
 	echo "Found unexpected symbols in $MODULE:" >&2
