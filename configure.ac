@@ -9,6 +9,8 @@ AC_PREREQ(2.55)
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
+m4_pattern_allow([AM_PROG_AR])
+AM_PROG_AR
 AM_INIT_AUTOMAKE([foreign -Wall])
 
 AC_CONFIG_SRCDIR([mod_auth_vas4.c])
