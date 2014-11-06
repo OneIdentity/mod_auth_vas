@@ -62,8 +62,6 @@
 #include "user.h"
 #include "cache.h"
 
-#define TRACE_DEBUG 1
-
 /*
  * Prints trace messages to traceLogFileName
  */
