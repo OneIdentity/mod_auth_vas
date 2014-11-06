@@ -67,6 +67,7 @@
 #include "compat.h"
 #include "cache.h"
 #include "user.h"
+#include "group.h"
 
 #if HAVE_MOD_AUTH_H
 # include <mod_auth.h>
@@ -103,6 +104,7 @@ typedef struct {
     vas_id_t    *vas_serverid;      /* The server identity */
     apr_time_t   creds_established_at; /* The last time vas_id_establish_cred_keytab() was called. */
     auth_vas_cache      *cache;     /* See cache.h */
+    auth_vas_cache *neg_group_cache;/* Negative group cache */
     const char  *server_principal;  /* AuthVasServerPrincipal or NULL */
     char *default_realm;            /* AuthVasDefaultRealm (never NULL) */
     char *cache_size;               /* Configured cache size */
@@ -486,7 +488,7 @@ server_ctx_is_valid(server_rec *s)
     ASSERT(s != NULL);
     sc = GET_SERVER_CONFIG(s->module_config);
     ASSERT(sc != NULL);
-    return (sc->vas_ctx != NULL && sc->cache != NULL);
+    return (sc->vas_ctx != NULL && sc->cache != NULL && sc->neg_group_cache != NULL);
 }
 
 /**
@@ -686,7 +688,31 @@ match_group(request_rec *r, const char *name)
     	vas_auth_is_client_member(c,a,n)
 #endif
 
-    vaserr = auth_vas_is_user_in_group(rnote->user, name);
+
+    /* check if group name is in our negative group cache.
+     * if yes then do not bother to check if user is in
+     * an invalid group
+     */
+    cached_group_data *cached_group;
+    cached_group = (cached_group_data*)auth_vas_cache_get(sc->neg_group_cache, name);
+    if (!cached_group) {
+        TRACE_R(r, "%s: Group is not in negative cache. Looking up <%s> group membership", __FUNCTION__, name);
+        vaserr = auth_vas_is_user_in_group(rnote->user, name);
+        if(vaserr == VAS_ERR_EXISTS) {
+            TRACE_R(r, "%s, Group <%s> does not exist, adding <%s> to negative group cache", __FUNCTION__, name, name);
+            cached_group = calloc(1, sizeof(*cached_group));
+            cached_group->key = strdup(name);
+
+            /* Cache refs the user object for itself */
+            auth_vas_cache_insert(sc->neg_group_cache, cached_group->key, cached_group);
+
+            cached_group_data_ref(cached_group); /* For our caller */
+        }
+    } else {
+        TRACE_R(r, "%s: Group <%s> is in the negative group cache", __FUNCTION__, name);
+        vaserr = VAS_ERR_EXISTS;
+    }
+
     switch (vaserr) {
         case VAS_ERR_SUCCESS: /* user is member of group */
             LOG_RERROR(APLOG_DEBUG, 0, r,
@@ -2131,6 +2157,11 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
     set_cache_size(s);
     set_cache_timeout(s);
+
+    /* Init a negative group cache */
+    TRACE_S(s, "Initializing negative group cache");
+    sc->neg_group_cache = auth_vas_cache_new(p, NULL, NULL, &cached_group_data_ref, &cached_group_data_unref, &get_cached_group_data_key_cb); 
+
 }
 
 /**
@@ -3291,6 +3322,11 @@ auth_vas_server_config_destroy(void *data)
 	        auth_vas_cache_flush(sc->cache);
 	        sc->cache = NULL;
     	}
+
+        if (sc->neg_group_cache) {
+            auth_vas_cache_flush(sc->neg_group_cache);
+            sc->neg_group_cache = NULL;
+        }
 
         if(sc->dso_fn.dso_h!= NULL) apr_dso_unload(sc->dso_fn.dso_h);
         

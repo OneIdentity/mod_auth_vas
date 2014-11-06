@@ -13,6 +13,7 @@ mod_auth_vas_la_SOURCES = \
 			  mod_auth_vas.c \
 			  cache.c cache.h \
 			  user.c user.h \
+              group.c group.h \
 			  mav_apr_hash.c mav_apr_hash.h \
 			  #
 

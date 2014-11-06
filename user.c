@@ -62,6 +62,8 @@
 #include "user.h"
 #include "cache.h"
 
+#define TRACE_DEBUG 1
+
 /*
  * Prints trace messages to traceLogFileName
  */
@@ -133,6 +135,7 @@ struct auth_vas_user {
 vas_err_t
 auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
     vas_ctx_t *vasctx;
+    vas_id_t *serverid;
 
     if (user->vas_authctx == NULL)
 	return VAS_ERR_INVALID_PARAM;
@@ -142,8 +145,9 @@ auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
     /* No caching, simply a pass-through because
      * vas_auth_check_client_membership does not hit the network. */
 
-    return vas_auth_check_client_membership(vasctx, user->vas_id,
-	    user->vas_authctx, group);
+    serverid = auth_vas_cache_get_serverid(user->cache);
+
+    return vas_auth_check_client_membership_with_server_id(vasctx, serverid, user->vas_id, user->vas_authctx, group);
 }
 
 #define RETURN(x) do { \

@@ -1,3 +1,9 @@
+3.6.8.4 (2014-11-06)
+        - Added a negative group cache for invalid group name lookups. Bug# 851
+        - Updated group lookups to use new API call provided in QAS 4.0.1.X
+          to fix an issue with group LDAP lookups failing when QAS isn't joined
+          to an Active Directory domain.
+ 
 3.6.8.3 (2014-09-16)
         - Fixed configure.ac to compile with newer version of gcc.
         - removed #define TRACE_DEBUG so trace debug will not be written
