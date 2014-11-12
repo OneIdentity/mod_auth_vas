@@ -131,7 +131,7 @@ struct auth_vas_user {
  * @sa vas_auth_check_client_membership
  */
 vas_err_t
-auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
+auth_vas_is_user_in_group(auth_vas_user *user, const char *group, const dso_fn_t *dso_fn) {
     vas_ctx_t *vasctx;
     vas_id_t *serverid;
 
@@ -142,10 +142,13 @@ auth_vas_is_user_in_group(auth_vas_user *user, const char *group) {
 
     /* No caching, simply a pass-through because
      * vas_auth_check_client_membership does not hit the network. */
-
-    serverid = auth_vas_cache_get_serverid(user->cache);
-
-    return vas_auth_check_client_membership_with_server_id(vasctx, serverid, user->vas_id, user->vas_authctx, group);
+    if ( !dso_fn->vas_auth_check_client_membership_with_server_id_fn )
+    {
+        return vas_auth_check_client_membership(vasctx, user->vas_id, user->vas_authctx, group);
+    }else{
+        serverid = auth_vas_cache_get_serverid(user->cache);
+        return dso_fn->vas_auth_check_client_membership_with_server_id_fn(vasctx, serverid, user->vas_id, user->vas_authctx, group);
+    }
 }
 
 #define RETURN(x) do { \

@@ -61,6 +61,7 @@ typedef struct {
     void      (*vas_log_deinit_log_fn)(void);
     vas_err_t (*vas_err_set_option_fn)(vas_ctx_t* ctx, int option, ... );
     vas_err_t (*vas_ctx_alloc_with_flags_fn)(vas_ctx_t **ctx, vas_err_info_t **errinfo, int ctx_flags );
+    vas_err_t (*vas_auth_check_client_membership_with_server_id_fn)(vas_ctx_t* ctx, vas_id_t* serverid, vas_id_t* clientid, vas_auth_t* auth, const char* group );
     apr_dso_handle_t       *dso_h;
 } dso_fn_t;
 
@@ -88,7 +89,7 @@ vas_err_t
 auth_vas_user_use_gss_result(auth_vas_user *user, gss_cred_id_t cred, gss_ctx_id_t context, const dso_fn_t *dso_fn);
 
 vas_err_t
-auth_vas_is_user_in_group(auth_vas_user *user, const char *group);
+auth_vas_is_user_in_group(auth_vas_user *user, const char *group, const dso_fn_t *dso_fn);
 
 vas_err_t
 auth_vas_user_get_vas_user(const auth_vas_user *avuser, vas_user_t **vasuserp);

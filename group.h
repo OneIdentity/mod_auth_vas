@@ -43,8 +43,8 @@ typedef struct cached_group_data {
    unsigned refcount;
 } cached_group_data;
 
-void cached_group_data_ref(void *vobj); 
-void cached_group_data_unref(void *vobj);
-const char * get_cached_group_data_key_cb(void *vobj);
+void auth_vas_cached_group_data_ref(cached_group_data *group); 
+void auth_vas_cached_group_data_unref(cached_group_data *group);
+const char * auth_vas_get_cached_group_data_key_cb(cached_group_data *group);
 
 #endif /* MAV_GROUP_H */

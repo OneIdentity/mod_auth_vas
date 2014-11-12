@@ -43,14 +43,11 @@
 #include "cache.h"
 #include "group.h"
 
-void cached_group_data_ref(void *vobj) {
-    cached_group_data *d = (cached_group_data*)vobj;
-
-    ++d->refcount;
+void auth_vas_cached_group_data_ref(cached_group_data *group) {
+    ++group->refcount;
 }
 
-void cached_group_data_unref(void *vobj) {
-    cached_group_data *group = (cached_group_data*)vobj;
+void auth_vas_cached_group_data_unref(cached_group_data *group) {
     ASSERT(group->refcount > 0);
 
     --group->refcount;
@@ -61,10 +58,8 @@ void cached_group_data_unref(void *vobj) {
     }
 }
 
-const char * get_cached_group_data_key_cb(void *vobj)
+const char * auth_vas_get_cached_group_data_key_cb(cached_group_data *group)
 {
-    cached_group_data *group = (cached_group_data*)vobj;
-
     if (!group)
         return NULL;
 
