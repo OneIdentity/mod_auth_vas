@@ -69,6 +69,7 @@
 #include "compat.h"
 #include "cache.h"
 #include "user.h"
+#include "group.h"
 
 #if HAVE_MOD_AUTH_H
 # include <mod_auth.h>
@@ -88,6 +89,13 @@
  **/
 #define VAS_API_DEBUG_LOG_FILE_NAME "mod_auth_vas4"
 
+/* Contains data members associated to a auth_vas_cache */
+typedef struct {
+   auth_vas_cache  *cache;          /* See cache.h */
+   char            *cache_size;     /* Configured cache size */
+   char            *cache_time;     /* Configured cache lifetime */
+} cache_t;
+
 /*
  * Per-server configuration structure - exists for lifetime of server process.
  */
@@ -95,14 +103,13 @@ typedef struct {
     vas_ctx_t       *vas_ctx;               /* The global VAS context - needs locking */
     vas_id_t        *vas_serverid;          /* The server identity */
     apr_time_t      creds_established_at;   /* The last time vas_id_establish_cred_keytab() was called. */
-    auth_vas_cache  *cache;                 /* See cache.h */
     const char      *server_principal;      /* AuthVasServerPrincipal or NULL */
     char            *default_realm;         /* AuthVasDefaultRealm (never NULL) */
-    char            *cache_size;            /* Configured cache size */
-    char            *cache_time;            /* Configured cache lifetime */
     char            *keytab_filename;       /* AuthVasKeytabFile */
     dso_fn_t        dso_fn;                 /* List of new QAS API function pointers  */
     int             vas_api_debug_level;    /* Enable QAS API debug  */
+    cache_t         *user_cache;            /* User cache: See cache.h */
+    cache_t         *neg_group_cache;       /* Negative group cache */
 } auth_vas_server_config;
 
 /*
@@ -213,6 +220,8 @@ static int initialize_user(request_rec *request, const char *username);
 static authn_status authn_vas_check_password(request_rec *r, const char *user, const char *password);
 static int get_server_creds(server_rec *s);
 static const char *add_authn_provider(cmd_parms *cmd, void *config, const char *arg);
+static cache_t *auth_vas_merge_cache_t(apr_pool_t *p, cache_t *base_cache, cache_t *new_cache);
+static cache_t *auth_vas_cache_t_alloc(apr_pool_t *p);
 
 /*
  * The per-process VAS mutex.
@@ -265,9 +274,7 @@ static void auth_vas_unlock(request_rec *r) {
 static const char *
 server_set_string_slot(cmd_parms *cmd, void *ignored, const char *arg)
 {
-	return ap_set_string_slot(cmd, 
-	    (char *)GET_SERVER_CONFIG(cmd->server->module_config), 
-	    (char *)arg);
+	return ap_set_string_slot(cmd, (char *)GET_SERVER_CONFIG(cmd->server->module_config), (char *)arg);
 }
 
 static const char *
@@ -276,6 +283,31 @@ server_set_int_slot(cmd_parms *cmd, void *ignored, const char* arg)
     return ap_set_int_slot(cmd, (char *)GET_SERVER_CONFIG(cmd->server->module_config), arg);
 }
 
+/* Sets a member of a cache_t struct based on the Apache Directive being set */
+static const char *server_set_cache_member(cmd_parms *cmd, void *config, const char *arg)
+{
+    TRACE_P(cmd->pool, "%s: Setting %s to value %s", __func__, cmd->cmd->name, arg);
+    auth_vas_server_config *sc = GET_SERVER_CONFIG(cmd->server->module_config);
+    ASSERT(sc != NULL);
+
+    if( strcasecmp("AuthVasCacheSize", cmd->cmd->name) == 0 ) {
+        return ap_set_string_slot(cmd, (char*)sc->user_cache, (char*)arg);
+    }
+
+    if( strcasecmp("AuthVasCacheExpire", cmd->cmd->name) == 0 ) {
+        return ap_set_string_slot(cmd, (char*)sc->user_cache, (char*)arg);
+    }
+
+    if( strcasecmp("AuthVasNegGroupCacheSize", cmd->cmd->name ) == 0 ) {
+        return ap_set_string_slot(cmd, (char*)sc->neg_group_cache, (char*)arg);
+    }
+
+    if( strcasecmp("AuthVasNegGroupCacheExpire", cmd->cmd->name ) == 0 ) {
+        return ap_set_string_slot(cmd, (char*)sc->neg_group_cache, (char*)arg);
+    }
+
+    return NULL;
+}
 
 /*
  * Configuration commands table for this module.
@@ -296,6 +328,8 @@ server_set_int_slot(cmd_parms *cmd, void *ignored, const char* arg)
 #define CMD_AUTHZ               "AuthVasAuthz"
 #define CMD_VASPROVIDERS        "AuthVasProvider"
 #define CMD_VASAPIDEBUGLEVEL    "AuthVasApiDebugLevel"
+#define CMD_NEGGROUPCACHESIZE   "AuthVasNegGroupCacheSize"
+#define CMD_NEGGROUPCACHEEXPIRE "AuthVasNegGroupCacheExpire"
 
 static const command_rec auth_vas_cmds[] =
 {
@@ -335,14 +369,22 @@ static const command_rec auth_vas_cmds[] =
         (void*)APR_OFFSETOF(auth_vas_server_config, default_realm),
         RSRC_CONF,
         "Default realm for authorization"),
-    AP_INIT_TAKE1(CMD_CACHESIZE, server_set_string_slot,
-		(void*)APR_OFFSETOF(auth_vas_server_config, cache_size),
+    AP_INIT_TAKE1(CMD_CACHESIZE, server_set_cache_member,
+		(void*)APR_OFFSETOF(cache_t, cache_size),
 		RSRC_CONF,
-		"Cache size (number of objects)"),
-    AP_INIT_TAKE1(CMD_CACHEEXPIRE, server_set_string_slot,
-		(void*)APR_OFFSETOF(auth_vas_server_config, cache_time),
+		"User cache size (number of objects)"),
+    AP_INIT_TAKE1(CMD_CACHEEXPIRE, server_set_cache_member,
+		(void*)APR_OFFSETOF(cache_t, cache_time),
 		RSRC_CONF,
-		"Cache object lifetime (expiry)"),
+		"User cache object lifetime (expiry)"),
+    AP_INIT_TAKE1(CMD_NEGGROUPCACHESIZE, server_set_cache_member,
+        (void*)APR_OFFSETOF(cache_t, cache_size),
+        RSRC_CONF,
+        "Negative Group Cache size (number of objects)"),
+    AP_INIT_TAKE1(CMD_NEGGROUPCACHEEXPIRE, server_set_cache_member,
+        (void*)APR_OFFSETOF(cache_t, cache_time),
+         RSRC_CONF,
+        "Negative Group object lifetime (expiry)"),
     AP_INIT_TAKE1(CMD_KEYTABFILE, server_set_string_slot,
 		(void*)APR_OFFSETOF(auth_vas_server_config, keytab_filename),
 		RSRC_CONF,
@@ -401,7 +443,7 @@ static int server_ctx_is_valid(server_rec *s)
     ASSERT(s != NULL);
     sc = GET_SERVER_CONFIG(s->module_config);
     ASSERT(sc != NULL);
-    return (sc->vas_ctx != NULL && sc->cache != NULL);
+    return (sc->vas_ctx != NULL && sc->user_cache->cache != NULL && sc->neg_group_cache != NULL);
 } /* server_ctx_is_valid */
 
 /**
@@ -721,7 +763,7 @@ static int initialize_user(request_rec *request, const char *username) {
     	rnote->mav_user = NULL;
     }
 
-    vaserr = auth_vas_user_alloc(sc->cache, username, &rnote->mav_user);
+    vaserr = auth_vas_user_alloc(sc->user_cache->cache, username, &rnote->mav_user);
     if (vaserr) {
     	rnote->mav_user = NULL; /* ensure */
 	    ERROR_R(request, "%s: Failed to initialize user for %s: %s", __func__, username, vas_err_get_string(sc->vas_ctx, 1));
@@ -1046,37 +1088,81 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     return result;
 } /* do_gss_spnego_accept */
 
+/*
+* Merge two cache_t into a new cache.  If new_cache value is setup use this value otherwise
+* use the base_cache value if set.
+*
+* @param cache_t base_cache - This is usually the cache_t holding values from the httpd.conf
+* server config
+*
+* @param cache_t new_cache - This is usually a cache_t holding values from a virtual host 
+* server config
+*
+* @return cache_t - A merged cache_t. The values are set based on base_cache and new_cache.
+*/
+static cache_t *auth_vas_merge_cache_t(apr_pool_t *p, cache_t *base_cache, cache_t *new_cache)
+{
+    TRACE3_P(p, "%s Merging caches", __func__);
+    cache_t *merged_cache;
+
+    ASSERT(new_cache != NULL);
+    ASSERT(base_cache != NULL);
+
+    merged_cache = auth_vas_cache_t_alloc(p);
+    merged_cache->cache_time = new_cache->cache_time ? new_cache->cache_time : base_cache->cache_time;
+    merged_cache->cache_size = new_cache->cache_size ? new_cache->cache_size : base_cache->cache_size;
+
+    return merged_cache;
+}
+
+/*
+* Allocates a new cache_t. Setting all members to NULL.
+*
+* @return cacht_t - A new allocated cache_t
+*/
+static cache_t *auth_vas_cache_t_alloc(apr_pool_t *p)
+{
+    cache_t *cache = NULL;
+    if(cache == NULL) {
+        if ((cache = apr_palloc(p, sizeof (cache_t))) == NULL){
+            ERROR_P(p, "Could not allocated cache");
+        }
+        cache->cache = NULL;
+        cache->cache_time = NULL;
+        cache->cache_size = NULL;
+    }
+
+    return cache;
+}
+
 /**
  *
  *
  *
  */
-static void set_cache_size(server_rec *server)
+static void set_cache_size(server_rec *server, cache_t *cache)
 {
-    auth_vas_server_config *sc;
     apr_int64_t size;
     char *end;
 
-    sc = GET_SERVER_CONFIG(server->module_config);
+    if (!cache->cache_size) /* Not configured */
+    	return;
 
-    if (!sc->cache_size) /* Not configured */
-	return;
-
-    size = apr_strtoi64(sc->cache_size, &end, 10);
+    size = apr_strtoi64(cache->cache_size, &end, 10);
 
     if (*end == '\0') {
-	/* Clamp the size to [1,UINT_MAX] */
-	if (size < 1)
-	    size = 1;
-	if (size > UINT_MAX)
-	    size = UINT_MAX;
+	    /* Clamp the size to [1,UINT_MAX] */
+    	if (size < 1)
+	        size = 1;
+    	if (size > UINT_MAX)
+	        size = UINT_MAX;
 
-	auth_vas_cache_set_max_size(sc->cache, (unsigned int) size);
+        auth_vas_cache_set_max_size(cache->cache, (unsigned int) size);
     } else {
-    	MAV_LOG_S(APLOG_WARNING, server, "%s: invalid " CMD_CACHESIZE " setting: %s", __func__, sc->cache_size);
+        MAV_LOG_S(APLOG_WARNING, server, "%s: invalid cache size setting: %s", __func__, cache->cache_size);
     }
 
-    DEBUG_S(server, "%s: cache size is %u", __func__, auth_vas_cache_get_max_size(sc->cache));
+    DEBUG_S(server, "%s: cache size is %u", __func__, auth_vas_cache_get_max_size(cache->cache));
 } /* set_cache_size */
 
 /**
@@ -1088,50 +1174,47 @@ static void set_cache_size(server_rec *server)
  *
  * The value must be an integer.
  */
-static void set_cache_timeout(server_rec *server)
+static void set_cache_timeout(server_rec *server, cache_t *cache)
 {
-    auth_vas_server_config *sc;
     apr_int64_t secs;
     char *end;
     int multiplier = 1; /* Using a separate var to detect integer overflow */
 
-    sc = GET_SERVER_CONFIG(server->module_config);
+    if (!cache->cache_time) /* Not configured */
+    	return;
 
-    if (!sc->cache_time) /* Not configured */
-	return;
-
-    secs = apr_strtoi64(sc->cache_time, &end, 10);
+    secs = apr_strtoi64(cache->cache_time, &end, 10);
 
     /* Clamp the time to [0,UINT_MAX] */
     if (secs < 0)
-	secs = 0;
+	    secs = 0;
     if (secs > UINT_MAX)
-	secs = UINT_MAX;
+    	secs = UINT_MAX;
 
     /* Process (h)our/(m)inute/(s)econd suffixes.
      * Makes liberal use of fall-throughs. */
     switch (*end) {
-	case 'h':
-	    multiplier *= 60;
-	case 'm':
-	    multiplier *= 60;
+	    case 'h':
+	        multiplier *= 60;
+    	case 'm':
+	        multiplier *= 60;
 
-	    /* Prevent wrapping */
-	    if (secs > (UINT_MAX / multiplier))
-		secs = UINT_MAX;
-	    else
-		secs *= multiplier;
+	        /* Prevent wrapping */
+    	    if (secs > (UINT_MAX / multiplier))
+	        	secs = UINT_MAX;
+	        else
+    	    	secs *= multiplier;
 
-	case 's':
-	case '\0':
-	    auth_vas_cache_set_max_age(sc->cache, (unsigned int) secs);
-	    break;
+    	case 's':
+	    case '\0':
+	        auth_vas_cache_set_max_age(cache->cache, (unsigned int) secs);
+    	    break;
 
-	default:
-	    MAV_LOG_S(APLOG_WARNING, server, "%s: invalid " CMD_CACHEEXPIRE " setting: %s", __func__, sc->cache_time);
+    	default:
+	        MAV_LOG_S(APLOG_WARNING, server, "%s: invalid cache expire time setting: %s", __func__, cache->cache_time);
     }
 
-    DEBUG_S(server, "%s: cache lifetime is %u seconds", __func__, auth_vas_cache_get_max_age(sc->cache));
+    DEBUG_S(server, "%s: cache lifetime is %u seconds", __func__, auth_vas_cache_get_max_age(cache->cache));
 } /* set_cache_timeout */
 
 /**
@@ -1192,7 +1275,6 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
     char                   apr_errbuf[256];
 
     TRACE8_S(s, "%s: called", __func__);
-    LOG_S(APLOG_TRACE1, s, "called");
 
     DEBUG_S(s, "%s: Initializing %s for host: %s: Defined on line %i in conf file: %s", __func__, (s->is_virtual ? "VirtualHost" : "Server"), s->server_hostname, s->defn_line_number, s->defn_name ? s->defn_name : "default conf file");
 
@@ -1266,6 +1348,14 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
             apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
             apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
             TRACE_S(s, "%s: apr INFO %d: %s.  Reason: %s.  The version of QAS you are using does not contain the api function vas_ctx_alloc_with_flags. Non-critical failure.", __func__, rv, apr_errbuf, dso_errbuf);
+        }
+
+        if ( (rv = apr_dso_sym( (apr_dso_handle_sym_t*)&sc->dso_fn.vas_auth_check_client_membership_with_server_id_fn, sc->dso_fn.dso_h, "vas_auth_check_client_membership_with_server_id")) == APR_SUCCESS) {
+            TRACE3_S(s, "%s: Loaded module contained the symbol vas_auth_check_client_membership_with_server_id.", __func__);
+        }else {
+            apr_strerror(rv, apr_errbuf, sizeof(apr_errbuf));
+            apr_dso_error(sc->dso_fn.dso_h, dso_errbuf, sizeof(dso_errbuf));
+            TRACE3_S(s, "%s: apr INFO %d: %s. Reason: %s.  The version of QAS you are using does not contain the api function vas_auth_check_client_membership_with_server_id. Non-critical failure.", __func__, rv, apr_errbuf, dso_errbuf);
         }
     }
 
@@ -1374,13 +1464,24 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
                 vas_auth_free(sc->vas_ctx, vasauth);
     }
 
-    sc->cache = auth_vas_cache_new(p, sc->vas_ctx, sc->vas_serverid,
+    TRACE3_S(s, "Initializing user cache");
+    sc->user_cache->cache = auth_vas_cache_new(p, sc->vas_ctx, sc->vas_serverid,
 	    (void(*)(void*))auth_vas_user_ref,
 	    (void(*)(void*))auth_vas_user_unref,
 	    (const char*(*)(void*))auth_vas_user_get_name);
 
-    set_cache_size(s);
-    set_cache_timeout(s);
+    set_cache_size(s, sc->user_cache);
+    set_cache_timeout(s, sc->user_cache);
+
+    /* Init a negative group cache */
+    TRACE3_S(s, "Initializing negative group cache");
+    sc->neg_group_cache->cache = auth_vas_cache_new(p, NULL, NULL,
+        (void(*)(void*))auth_vas_cached_group_data_ref,
+        (void(*)(void*))auth_vas_cached_group_data_unref,
+        (const char*(*)(void*))auth_vas_get_cached_group_data_key_cb); 
+
+    set_cache_size(s, sc->neg_group_cache);
+    set_cache_timeout(s, sc->neg_group_cache);
 
     TRACE8_S(s, "%s: end", __func__);
 } /* auth_vas_server_init */
@@ -2381,6 +2482,30 @@ static void * auth_vas_merge_dir_config(apr_pool_t *p, void *base_conf, void *ne
     return (void *)merged_dc;
 } /* auth_vas_merge_dir_config */
 
+/*
+* Prints an auth_vas server configuration as set by the directives that are set in the apache conf files
+*/
+static void auth_vas_print_server_config_options(apr_pool_t *p, auth_vas_server_config *conf)
+{
+    TRACE4_P(p, "Merged Server Config settings \
+                AuthVasServerPrincipal: %s \
+                AuthVasDefaultRealm: %s \
+                AuthVasKeytabFile: %s \
+                AuthVasCacheSize: %s \
+                AuthVasCacheExpire: %s \
+                AuthVasNegGroupCacheSize: %s \
+                AuthVasNegGroupCacheExpire: %s \
+                AuthVasApiDebugLevel: %d",
+                conf->server_principal              ? conf->server_principal            : "<Not Set>",
+                conf->default_realm                 ? conf->default_realm               : "<Not Set>",
+                conf->keytab_filename               ? conf->keytab_filename             : "<Not Set>",
+                conf->user_cache->cache_size        ? conf->user_cache->cache_size      : "<Not Set>",
+                conf->user_cache->cache_time        ? conf->user_cache->cache_time      : "<Not Set>",
+                conf->neg_group_cache->cache_size   ? conf->neg_group_cache->cache_size : "<Not Set>",
+                conf->neg_group_cache->cache_time   ? conf->neg_group_cache->cache_time : "<Not Set>",
+                conf->vas_api_debug_level);
+}
+
 /**
  * Merges a parent server configuration with a base server configuration.
  * Each field of a freshly allocated merged config is computed from
@@ -2430,37 +2555,19 @@ static void *auth_vas_merge_server_config(apr_pool_t *p, void *base_conf, void *
             merged_sc->keytab_filename = apr_pstrdup(p, base_sc->keytab_filename);
         }
 
-        if (new_sc->cache_size) {
-            merged_sc->cache_size = apr_pstrdup(p, new_sc->cache_size);
-        } else if (base_sc->cache_size) {
-            merged_sc->cache_size = apr_pstrdup(p, base_sc->cache_size);
-        }
-        if (new_sc->cache_time) {
-            merged_sc->cache_time = apr_pstrdup(p, new_sc->cache_time);
-        } else if (base_sc->cache_time) {
-            merged_sc->cache_time = apr_pstrdup(p, base_sc->cache_time);
-        }
         if (new_sc->vas_api_debug_level) {
             merged_sc->vas_api_debug_level = new_sc->vas_api_debug_level;
         } else if (base_sc->vas_api_debug_level) {
            merged_sc->vas_api_debug_level = base_sc->vas_api_debug_level;
         }
+
+        /* Merge the user cache and negative group caches */
+        merged_sc->neg_group_cache = auth_vas_merge_cache_t(p, base_sc->neg_group_cache, new_sc->neg_group_cache);
+        merged_sc->user_cache = auth_vas_merge_cache_t(p, base_sc->user_cache, new_sc->user_cache);
+
     }
-    TRACE4_P(p, "%s: Merged Server Config settings \
-                AuthVasServerPrincipal: %s \
-                AuthVasDefaultRealm: %s \
-                AuthVasKeytabFile: %s \
-                AuthVasCacheSize: %s \
-                AuthVasCacheExpire: %s \
-                AuthVasApiDebugLevel: %d",
-                __func__,
-                merged_sc->server_principal ? merged_sc->server_principal : "<Not Set>",
-                merged_sc->default_realm ? merged_sc->default_realm : "<Not Set>",
-                merged_sc->keytab_filename ? merged_sc->keytab_filename : "<Not Set>",
-                merged_sc->cache_size ? merged_sc->cache_size : "<Not Set>",
-                merged_sc->cache_time ? merged_sc->cache_time : "<Not Set>",
-                merged_sc->vas_api_debug_level);
     
+    auth_vas_print_server_config_options(p, merged_sc);
 
     return (void *) merged_sc;
 } /* auth_vas_merge_server_config */
@@ -2472,10 +2579,15 @@ static apr_status_t auth_vas_server_config_destroy(void *data)
     
     if (sc != NULL) {
 
-	    if (sc->cache) {
-	        auth_vas_cache_flush(sc->cache);
-    	    sc->cache = NULL;
+	    if (sc->user_cache->cache) {
+	        auth_vas_cache_flush(sc->user_cache->cache);
+    	    sc->user_cache->cache = NULL;
 	    }
+
+        if (sc->neg_group_cache->cache) {
+            auth_vas_cache_flush(sc->neg_group_cache->cache);
+            sc->neg_group_cache->cache = NULL;
+        }
 
         if(sc->dso_fn.dso_h!= NULL) apr_dso_unload(sc->dso_fn.dso_h);
         
@@ -2516,6 +2628,24 @@ static void * auth_vas_create_server_config(apr_pool_t *p, server_rec *s)
     
     /* register our server config cleanup function */
     apr_pool_cleanup_register(p, sc, auth_vas_server_config_destroy, apr_pool_cleanup_null);
+
+    if(sc->neg_group_cache == NULL) {
+        if ((sc->neg_group_cache = apr_palloc(p, sizeof (cache_t))) == NULL){
+            ERROR_P(p, "Could not allocated negative group cache");
+        }
+        sc->neg_group_cache->cache = NULL;
+        sc->neg_group_cache->cache_time = NULL;
+        sc->neg_group_cache->cache_size = NULL;
+    }
+
+    if(sc->user_cache == NULL) {
+        if ((sc->user_cache = apr_palloc(p, sizeof (cache_t))) == NULL){
+            ERROR_P(p, "Could not allocated user cache");
+        }
+        sc->user_cache->cache = NULL;
+        sc->user_cache->cache_time = NULL;
+        sc->user_cache->cache_size = NULL;
+    }
     
     TRACE_P(p, "%s (%s:%u)", __func__, s->server_hostname ? s->server_hostname : "<global>", s->port);
     return (void *)sc;
@@ -2905,13 +3035,32 @@ static authz_status authz_vas_adgroup_check_authorization(request_rec *r, const 
 #endif
     const char* group_names = require_args;
     char *group_name;
+    cached_group_data *cached_group;
 
     DEBUG_R(r, "%s: require ad-group: testing for group membership in \"%s\"", __func__, group_names);
 
     while((group_name = ap_getword_conf(r->pool, &group_names)) && group_name[0]) {
         TRACE1_R(r, "%s: checking if user is member of group %s", __func__, group_name);
-        vaserr = auth_vas_is_user_in_group(rnote->mav_user, group_name);
-        TRACE3_R(r, "%s: auth_vas_is_user_in_group error code: %i", __func__, vaserr);
+        cached_group = (cached_group_data*)auth_vas_cache_get(sc->neg_group_cache->cache, group_name);
+        if (!cached_group) {
+            TRACE3_R(r, "%s: group was not found in the negative group cache. Looking up <%s> group information", __func__, group_name);
+            vaserr = auth_vas_is_user_in_group(rnote->mav_user, group_name, &sc->dso_fn);
+            TRACE3_R(r, "%s: auth_vas_is_user_in_group error code: %i", __func__, vaserr);
+            /* If vaserr is VAS_ERR_EXISTS, the group is invalid. Add it to the neg group cache */
+            if(vaserr == VAS_ERR_EXISTS) {
+                TRACE3_R(r, "%s: group <%s> is an invalid group, adding <%s> to the negative group cache", __func__, group_name, group_name);
+                cached_group = calloc(1, sizeof(*cached_group));
+                cached_group->key = strdup(group_name);
+
+                /* Cache refs the user object for itself */
+                auth_vas_cache_insert(sc->neg_group_cache->cache, cached_group->key, cached_group);
+            }
+        } else {
+            TRACE3_R(r, "%s: group <%s> is in the negative group cache", __func__, group_name);
+            vaserr = VAS_ERR_EXISTS;
+            auth_vas_cached_group_data_unref(cached_group);
+        }
+
         if(vaserr == VAS_ERR_SUCCESS) {
             TRACE1_R(r, "%s: user %s is a member of group %s", __func__, auth_vas_user_get_principal_name(rnote->mav_user), group_name);
             result = AUTHZ_GRANTED;

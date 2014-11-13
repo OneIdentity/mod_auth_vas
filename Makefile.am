@@ -13,6 +13,7 @@ mod_auth_vas4_la_SOURCES = \
 			  mod_auth_vas4.c \
 			  cache.c cache.h \
 			  user.c user.h \
+              group.c group.h \
 			  log.h \
 			  #
 
@@ -55,6 +56,7 @@ print-dist-name:;     echo $(distdir)
 
 check_PROGRAMS = \
 		 test-cache \
+         test-group-cache \
 		 #
 
 TESTS = $(check_PROGRAMS)
@@ -62,6 +64,11 @@ TESTS = $(check_PROGRAMS)
 test_cache_SOURCES = test-cache.c cache.c cache.h compat.h
 test_cache_CFLAGS = $(AM_CFLAGS) $(COVERAGE_CFLAGS)
 test_cache_LDFLAGS = $(AM_LDFLAGS) $(COVERAGE_LDFLAGS)
+
+test_group_cache_SOURCES = test-group-cache.c cache.c cache.h compat.h group.c group.h
+test_group_cache_CFLAGS = $(AM_CFLAGS) $(COVERAGE_CFLAGS)
+test_group_cache_LDFLAGS = $(AM_LDFLAGS) $(COVERAGE_LDFLAGS)
+
 
 if HAVE_COVERAGE
 
