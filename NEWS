@@ -3,6 +3,8 @@
         - Updated group lookups to use new API call provided in QAS 4.0.1.X
           to fix an issue with group LDAP lookups failing when QAS isn't joined
           to an Active Directory domain.
+        - Clear VAS ctx error messages after each group lookup in 
+          authz_vas_unixgroup_check_authorization. Bug# 852
 
 4.0.2.1 (2014-9-16)
         - No longer write out trace debug by default. Must be recompiled 
