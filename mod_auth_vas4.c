@@ -3077,6 +3077,7 @@ static authz_status authz_vas_adgroup_check_authorization(request_rec *r, const 
             result = AUTHZ_GENERAL_ERROR;
             break;
         }
+        vas_err_clear(sc->vas_ctx);
     }
 
     if(result != AUTHZ_GRANTED) {
@@ -3108,7 +3109,6 @@ static authz_status authz_vas_adcontainer_check_authorization(request_rec *r, co
     auth_vas_server_config  *sc = NULL;
     auth_vas_dir_config     *dc = NULL;
     auth_vas_rnote          *rnote = NULL;
-//    vas_user_t              *vasuser = NULL;
     char                    *dn = NULL;
 
     ASSERT(r != NULL);
