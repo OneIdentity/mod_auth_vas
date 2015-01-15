@@ -1,8 +1,8 @@
 4.0.2.2 (2014-11-13)
         - Added a negative group cache for invalid group name lookups. Bug# 851
-        - Updated group lookups to use new API call provided in QAS 4.0.1.X
+        - Updated group lookups to use new API call provided in QAS 4.0.1.21408
           to fix an issue with group LDAP lookups failing when QAS isn't joined
-          to an Active Directory domain.
+          to an Active Directory domain. QAS Bug# 412110
         - Clear VAS ctx error messages after each group lookup in 
           authz_vas_unixgroup_check_authorization. Bug# 852
 
