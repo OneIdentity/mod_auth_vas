@@ -749,7 +749,7 @@ match_group(request_rec *r, const char *name)
             auth_vas_cache_insert(sc->neg_group_cache->cache, cached_group->key, cached_group);
         }
     } else {
-        TRACE_R(r, "%s: group <%s> is in the negative group cache", __FUNCTION__, name);
+        TRACE_R(r, "%s: group <%s> is in the negative group cache", __func__, name);
         vaserr = VAS_ERR_EXISTS;
         auth_vas_cached_group_data_unref(cached_group);
     }
