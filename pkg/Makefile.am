@@ -100,6 +100,7 @@ mav.pp: mav.pp.in
 	    -e 's,@MODULEDIR@,$(AP_MODULEDIR),g' \
 	    -e 's,@POSTINST_ENABLECMD@,$(POSTINST_ENABLECMD),g' \
 	    -e 's,@PRERM_DISABLECMD@,$(PRERM_DISABLECMD),g' \
+        -e 's,[@]AP_CONF_D_DIR[@],$(AP_CONF_D_DIR),g' \
 	    -e 's,^ *,,' \
 	    < $^ > $@
 

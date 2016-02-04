@@ -14,11 +14,15 @@ fi
   Quest Software"
   copyright="(c) 2008 Quest Software, Inc."
 
+%files [rpm]
+  @AP_CONF_D_DIR@/*
+
 %files
   @MODULEDIR@/mod_auth_vas4.%so
   # Apache 1.3 module info
   @MODULEDIR@/*mod_auth_vas4.info  optional
   $sbindir/setup-mod_auth_vas4
+%files [!rpm]
   /etc/**
 
 %if [deb]

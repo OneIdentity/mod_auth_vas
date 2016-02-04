@@ -1,3 +1,8 @@
+4.0.2.3 (2016-02-03)
+        - No longer add /etc/*/conf.d* dir to rpm packages, only include
+          the actual file from conf.d. This is to resolve conflicts on RHEL7
+          with the httpd package. Bug# 861
+
 4.0.2.2 (2014-11-13)
         - Added a negative group cache for invalid group name lookups. Bug# 851
         - Updated group lookups to use new API call provided in QAS 4.0.1.21408
