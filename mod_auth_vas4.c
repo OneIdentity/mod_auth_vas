@@ -1292,6 +1292,11 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
         return;
     }
 
+    if(setenv("KRB5RCACHETYPE", "none", 1) == 0)
+        TRACE1_S(s, "%s: KRB5RCACHETYPE set to none, replay cache will be disabled", __func__);
+    else
+        ERROR_S(s, "%s: Failed to set KRB5RCACHETYPE", __func__);
+
     /* If the server_principal has not been set by the user then set it here.
      * We no longer set a default when the server config is initialized
      * Bug #846 fix: jayson.hurst@software.dell.com (4-1-14)
