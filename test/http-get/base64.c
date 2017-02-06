@@ -1,4 +1,4 @@
-/* (c) 2005 Quest Software, Inc. All rights reserved. */
+/* (c) 2017 Quest Software, Inc. All rights reserved. */
 /* David Leonard */
 
 /*

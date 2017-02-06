@@ -1,5 +1,5 @@
 #! /bin/sh
-# (c) 2008 Quest Software, Inc. All rights reserved.
+# (c) 2017 Quest Software, Inc. All rights reserved.
 # Initialises the directory with autoconf after a respoitory check-out.
 
 bootstrap () { 

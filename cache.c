@@ -1,7 +1,7 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  *
- *   Copyright 2008 Quest Software, Inc.
+ *   Copyright 2017 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
