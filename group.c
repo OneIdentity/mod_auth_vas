@@ -1,7 +1,7 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  *
- *   Copyright 2014 Dell Software, Inc.
+ *   Copyright 2017 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -14,7 +14,7 @@
  *      notice, this list of conditions and the following disclaimer
  *      in the documentation and/or other materials provided with the
  *      distribution.
- *   c. Neither the name of Dell Software, Inc. nor the names of its
+ *   c. Neither the name of Quest Software, Inc. nor the names of its
  *      contributors may be used to endorse or promote products derived
  *      from this software without specific prior written permission.
  *
@@ -32,7 +32,7 @@
  *   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *   Authors:
- *     Jayson Hurst <jayson.hurst@software.dell.com>
+ *     Jayson Hurst <jayson.hurst@quest.com>
  */
 
 #ifdef HAVE_CONFIG_H

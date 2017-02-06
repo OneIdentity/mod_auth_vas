@@ -1,4 +1,4 @@
-# (c) 2008, Quest Software, Inc. All rights reserved.
+# (c) 2017, Quest Software, Inc. All rights reserved.
 
 abs_builddir=		@abs_builddir@
 

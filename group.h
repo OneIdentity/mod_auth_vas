@@ -4,7 +4,7 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  *
- *   Copyright 2014 Quest Software, Inc.
+ *   Copyright 2017 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -35,7 +35,7 @@
  *   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *   Authors:
- *    Jayson Hurst <jayson.hurst@software.dell.com> 
+ *    Jayson Hurst <jayson.hurst@quest.com> 
  */
 
 #ifdef __cplusplus

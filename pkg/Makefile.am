@@ -1,4 +1,4 @@
-# (c) 2008 Quest Software, Inc.
+# (c) 2017 Quest Software, Inc.
 # License at end of file.
 
 AP1_MODINFO=500mod_auth_vas4.info

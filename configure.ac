@@ -1,4 +1,4 @@
-# (c) 2008 Quest Software. All right reserved.
+# (c) 2017 Quest Software. All right reserved.
 
 dnl For exported trees, the version is derived from the NEWS file.
 AC_INIT([mod_auth_vas4], 
