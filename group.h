@@ -35,7 +35,7 @@
  *   THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *   Authors:
- *    Jayson Hurst <jayson.hurst@software.dell.com> 
+ *    Jayson Hurst <jayson.hurst@quest.com> 
  */
 
 typedef struct cached_group_data {

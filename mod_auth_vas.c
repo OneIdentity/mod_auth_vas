@@ -1,7 +1,7 @@
 /*
  * mod_auth_vas: VAS authentication module for Apache.
  * 
- *   Copyright 2007 Quest Software, Inc.
+ *   Copyright 2017 Quest Software, Inc.
  *   All rights reserved.
  *
  *   Redistribution and use in source and binary forms, with or without
@@ -2054,7 +2054,7 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
     /* If the server_principal has not been set by the user then set it here.
      * We no longer set a default when the server config is initialized
-     * Bug #846 fix: jayson.hurst@software.dell.com (4-1-14)
+     * Bug #846 fix: jayson.hurst@quest.com (4-1-14)
      */
     if(sc->server_principal == NULL) sc->server_principal = DEFAULT_SERVER_PRINCIPAL;
 
