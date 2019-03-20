@@ -694,13 +694,18 @@ label "checking mod_auth_vas4 is loaded"
 if test -n "$apxs"; then
     sbindir=`$apxs -q SBINDIR`
     target=`$apxs -q TARGET`
-    if recordcmd "$sbindir/$target" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
+    if [ -x "$sbindir/${target}ctl" ]; then
+      apachecmd="$sbindir/${target}ctl"
+    else
+      apachecmd="$sbindir/${target}"
+    fi
+    if recordcmd "$apachecmd" ${AP_CF+-f "$AP_CF"} -t -e debug 2>&1 | 
 	grep 'loaded module.*auth_vas' >/dev/null
     then
 	echo 'yes'
 
 	label "checking loaded mod_auth_vas4 version"
-	module_version=`"$sbindir/$target" ${AP_CF+-f "$AP_CF"} \
+	module_version=`"$apachecmd" ${AP_CF+-f "$AP_CF"} \
 	    -t -e debug 2>&1 | 
 	    sed -n -e 's/.*mod_auth_vas version \([^,]*\),.*/\1/p'`
 	echo "${module_version-not found}"
@@ -732,7 +737,7 @@ if test -n "$apxs"; then
 
 	The command I used to detect what modules were loaded was:
 
-	   $sbindir/$target ${AP_CF+-f "$AP_CF"} -t -e debug
+	   $apachecmd ${AP_CF+-f "$AP_CF"} -t -e debug
 
 .
 	die "Module not loaded."
