@@ -1079,8 +1079,9 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     	WARN_R(r, "do_gss_spnego_accept: cannot acquire lock to release resources");
     else {
 	    gss_release_buffer(&gsserr, &out_token);
+        OM_uint32 minor_status;
     	if (client_name)
-	        gss_release_name(NULL, &client_name);
+	        gss_release_name(&minor_status, &client_name);
     	UNLOCK_VAS(r);
     }
 
