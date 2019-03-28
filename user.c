@@ -143,7 +143,7 @@ vas_err_t auth_vas_user_alloc(
 
     if (!cached_user) {
 
-        tfprintf("User enterened name %s\n", username);
+        tfprintf("User entered name %s\n", username);
 
 	    vaserr = vas_id_alloc(vasctx, username, &local_id);
     	if (vaserr)

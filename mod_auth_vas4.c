@@ -2005,7 +2005,7 @@ static void export_cc(request_rec *r)
     }
 
     if ((krb5err = krb5_cc_new_unique(krb5ctx, "FILE", NULL, &ccache))) {
-        ERROR_R(r, "krb5_cc_new_unique: %.100s", krb5_get_err_text(krb5ctx, krb5err));
+        ERROR_R(r, "krb5_cc_new_unique: %.100s", krb5_get_error_message(krb5ctx, krb5err));
 	    goto finish;
     }
 
