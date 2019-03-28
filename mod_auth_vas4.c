@@ -1454,7 +1454,7 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	    errinfo = vas_err_get_cause_by_type(sc->vas_ctx, VAS_ERR_TYPE_KRB5);
 
     	if (errinfo && errinfo->code == KRB5KDC_ERR_C_PRINCIPAL_UNKNOWN) {
-	        MAV_LOG_S(APLOG_INFO, s, "Credential test for %s failed with %s, " "this is harmless if it is a service alias", sc->server_principal, krb5_get_error_name(errinfo->code));
+	        MAV_LOG_S(APLOG_INFO, s, "Credential test for %s failed (principal is unknown), this is harmless if it is a service alias", sc->server_principal);
     	} else {
 	        ERROR_S(s, "vas_auth failed, err = %s", vas_err_get_string(sc->vas_ctx, 1));
             vas_err_clear(sc->vas_ctx);
