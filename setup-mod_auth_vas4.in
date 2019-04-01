@@ -595,6 +595,10 @@ if test "$keytab_readable" = "no"; then
     echo "Skipping keytab validity check (keytab is unreadable)." >&2
     echo >&2
 else # Keytab is readable
+    if [ x"$HTTP_SPN" = "x" ]; then
+        query "Service account name:" HTTP_SPN HTTP/
+    fi
+
     label "checking keytab can authenticate"
     tmpcc=/tmp/.mod_auth_vas4cc$$
     old_KRB5CCNAME="${KRB5CCNAME}"
@@ -635,6 +639,9 @@ if test "$keytab_readable" = "no"; then
     echo >&2
 else
     kinit "run tests on the service account $HTTP_SPN"
+    if [ x"$SAMACCOUNTNAME" = "x" ]; then
+        SAMACCOUNTNAME=$($VASTOOL ${uflag+-u "$uflag"} attrs -q -s "$HTTP_SPN" samaccountname || die "Cannot get samAccountName from $HTTP_SPN service account")
+    fi
     echo "SamAccountName: $SAMACCOUNTNAME"
     spns=$($VASTOOL ${uflag+-u "$uflag"} attrs -u "$SAMACCOUNTNAME" servicePrincipalName | wc -l)
 
