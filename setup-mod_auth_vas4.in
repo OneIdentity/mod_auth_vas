@@ -736,6 +736,29 @@ if test -f "$KEYTAB"; then
     fi
 fi
 
+label "checking module loading is enabled"
+if test -n "$apxs"; then
+    sysconfdir=$($apxs -q SYSCONFDIR)
+    # format of config dir for example debian/ubuntu is using
+    available_module_path=${sysconfdir}/mods-available/auth_vas4.load
+    enabled_modules_dir=${sysconfdir}/mods-enabled
+    if [ -e "$available_module_path" ] && [ -d "${enabled_modules_dir}" ]; then
+        if [ -e "${enabled_modules_dir}/auth_vas4.load" ]; then
+            echo "yes"
+        else
+            echo "no"
+            echo
+            echo "You seem to have '${available_module_path}'. For apache to actually load the module,"
+            echo "this file needs to be symlinked to ${enabled_modules_dir}."
+            if yesorno "Do you want to create symlink and enable the module to be loaded?"; then
+                ln -s "${available_module_path}" "${enabled_modules_dir}"
+            fi
+        fi
+    else
+        echo "skipping"
+    fi
+fi
+
 #-- check that auth_vas module is loaded when config is parsed
 label "checking mod_auth_vas4 is loaded"
 if test -n "$apxs"; then
