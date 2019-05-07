@@ -1799,7 +1799,7 @@ do_gss_spnego_accept(request_rec *r, const char *auth_line)
     else {
 		gss_release_buffer(&gsserr, &out_token);
 		if (client_name)
-	    	gss_release_name(NULL, &client_name);
+	    	gss_release_name(&gsserr, &client_name);
 		UNLOCK_VAS(r);
     }
 

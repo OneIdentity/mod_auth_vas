@@ -1,3 +1,6 @@
+3.6.8.5 (2019-05-07)
+        - Updated to work with QAS 4.2.1 api
+
 3.6.8.4 (2014-11-06)
         - Added a negative group cache for invalid group name lookups. Bug# 851
         - Updated group lookups to use new API call provided in QAS 4.0.1.X
