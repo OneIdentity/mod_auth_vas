@@ -39,3 +39,9 @@ pkg/mav.pp
 pkg/500mod_auth_vas.info
 pkg/*.rpm
 pkg/*.deb
+.vscode/
+ar-lib
+m4/
+pkg/auth_vas4.load
+setup-mod_auth_vas4
+test-driver

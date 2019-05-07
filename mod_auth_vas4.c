@@ -1079,8 +1079,9 @@ static int do_gss_spnego_accept(request_rec *r, const char *auth_line)
     	WARN_R(r, "do_gss_spnego_accept: cannot acquire lock to release resources");
     else {
 	    gss_release_buffer(&gsserr, &out_token);
+        OM_uint32 minor_status;
     	if (client_name)
-	        gss_release_name(NULL, &client_name);
+	        gss_release_name(&minor_status, &client_name);
     	UNLOCK_VAS(r);
     }
 
@@ -1453,7 +1454,7 @@ static void auth_vas_server_init(apr_pool_t *p, server_rec *s)
 	    errinfo = vas_err_get_cause_by_type(sc->vas_ctx, VAS_ERR_TYPE_KRB5);
 
     	if (errinfo && errinfo->code == KRB5KDC_ERR_C_PRINCIPAL_UNKNOWN) {
-	        MAV_LOG_S(APLOG_INFO, s, "Credential test for %s failed with %s, " "this is harmless if it is a service alias", sc->server_principal, krb5_get_error_name(errinfo->code));
+	        MAV_LOG_S(APLOG_INFO, s, "Credential test for %s failed (principal is unknown), this is harmless if it is a service alias", sc->server_principal);
     	} else {
 	        ERROR_S(s, "vas_auth failed, err = %s", vas_err_get_string(sc->vas_ctx, 1));
             vas_err_clear(sc->vas_ctx);
@@ -2004,7 +2005,7 @@ static void export_cc(request_rec *r)
     }
 
     if ((krb5err = krb5_cc_new_unique(krb5ctx, "FILE", NULL, &ccache))) {
-        ERROR_R(r, "krb5_cc_new_unique: %.100s", krb5_get_err_text(krb5ctx, krb5err));
+        ERROR_R(r, "krb5_cc_new_unique: %.100s", krb5_get_error_message(krb5ctx, krb5err));
 	    goto finish;
     }
 

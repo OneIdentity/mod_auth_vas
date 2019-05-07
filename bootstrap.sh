@@ -7,6 +7,10 @@ bootstrap () {
      rm -rf autom4te.cache install-sh missing Makefile.in configure aclocal.m4 config.h.in
      autoreconf --force --install
     )
+
+    # uncomment PACKAGE_* variables to prevent redefine warnings
+    # because apache headers redefines these unfortunately to empty - but fortunately we do not use them
+    sed -i~ -e '/#undef PACKAGE_/ s|^/*|//|' -i config.h.in
 }
 
 set -e
