@@ -149,13 +149,13 @@
         }\
     }
 #else
-#   define tfprintf
+#   define tfprintf(fmt, args...)
 #endif
 
 /*
  * Prints a message with a GSS error code to traceLogFileName if TRACE_DEBUG is defined otherwise prints to stderr
  */
-static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uint32 minor_status)
+MAV_UNUSED static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uint32 minor_status)
 {
     OM_uint32       majErr, minErr  = 0;
     OM_uint32       message_context = 0;
@@ -196,7 +196,7 @@ static void mav_print_gss_err(const char *prefix, OM_uint32 major_status, OM_uin
  * Logs each cause in a separate message for simplicity-of-code.
  *
  */
-static void log_vas_err_info_string(server_rec *s, const char *prefix, vas_err_info_t *errinfo) {
+MAV_UNUSED static void log_vas_err_info_string(server_rec *s, const char *prefix, vas_err_info_t *errinfo) {
 
     ERROR_S(s, "%s:", prefix);
 
