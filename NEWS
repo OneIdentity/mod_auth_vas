@@ -1,3 +1,11 @@
+4.0.2.4 (2019-05-20)
+        - Updates to work with QAS 4.2 api
+        - Added ability on ubuntu to optionally let user enable vas module loading
+        - Updated the mav setup script to support rerunning on failure.
+        - Cleaned up compiler warnings
+        - Use apache2ctl if it exists instead of apache2 when gathering information
+          about the installed apache.
+
 4.0.2.3 (2016-02-10)
         - No longer add /etc/*/conf.d* dir to rpm packages, only include
           the actual file from conf.d. This is to resolve conflicts on RHEL7
