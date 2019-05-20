@@ -2218,10 +2218,9 @@ auth_vas_server_init(apr_pool_t *p, server_rec *s)
 
 	if (errinfo && errinfo->code == KRB5KDC_ERR_C_PRINCIPAL_UNKNOWN) {
 	    LOG_ERROR(APLOG_INFO, 0, s,
-		      "Credential test for %s failed with %s, "
-		      "this is harmless if it is a service alias",
-		      sc->server_principal,
-		      krb5_get_error_name(errinfo->code));
+              "Credential test for %s failed (principal is unknown), "
+              "this is harmless if it is a service alias",
+              sc->server_principal);
 	} else {
 	    LOG_ERROR(APLOG_ERR, 0, s,
 		      "vas_auth failed, err = %s",
