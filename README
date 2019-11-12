@@ -2,7 +2,7 @@
 mod_auth_vas is an Active Directory authentication module for 
 the Apache project's HTTP server.
 
-Please see http://rc.quest.com/topics/mod_auth_vas/ for detailed
+Please see https://github.com/OneIdentity/mod_auth_vas/wiki for detailed
 information about this package, its prerequistes and instructions
 on how to build and install it.
 
