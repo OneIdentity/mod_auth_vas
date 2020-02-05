@@ -4,7 +4,7 @@
 AP1_MODINFO=500mod_auth_vas4.info
 AP2_MODLOAD=auth_vas4.load
 POLYPKGFILE=/data/rc/pub/rc/polypkg/pp
-POLYPKGURI=http://rc.quest.com/pub/rc/polypkg/pp
+POLYPKGURI=https://github.com/OneIdentity/Polypkg/releases/download/20191112/pp
 
 EXTRA_DATA = $(AUXINFO_FILES)
 EXTRA_DIST = pp mav.pp.in auth_vas4.conf.in
