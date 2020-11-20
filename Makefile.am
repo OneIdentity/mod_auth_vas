@@ -30,7 +30,7 @@ check-local: mod_auth_vas4.la
 # setup-mod_auth_vas4 is a setup wizard 
 sbin_SCRIPTS=  setup-mod_auth_vas4
 
-EXTRA_DIST=	NEWS README LICENCE NOTICE examples
+EXTRA_DIST=	NEWS README.md LICENCE NOTICE examples
 EXTRA_DIST+=	$(sbin_SCRIPTS) check-symbols.sh
 CLEANFILES=	setup-mod_auth_vas4 *.gcno *.gcda *.gcov
 
