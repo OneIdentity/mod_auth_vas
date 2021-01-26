@@ -340,6 +340,19 @@ if test -n "$APR_CONFIG"; then
     APR_LDFLAGS=`$APR_CONFIG --ldflags`
 fi
 
+# The APU_CONFIG can tell us the directory of apr_* headers
+AC_MSG_CHECKING([whether $APXS defines APU_CONFIG])
+if $APXS -q APU_CONFIG >/dev/null 2>&1; then
+    AC_MSG_RESULT([yes])
+    APU_CONFIG=`$APXS -q APU_CONFIG`
+else
+    AC_MSG_RESULT([no])
+fi
+
+if test -n "$APU_CONFIG"; then
+    APR_INCLUDES="$APR_INCLUDES `$APU_CONFIG --includes`"
+fi
+
 AC_SUBST([APR_INCLUDES])
 AC_SUBST([APR_LIBS])
 AC_SUBST([APR_CFLAGS])
