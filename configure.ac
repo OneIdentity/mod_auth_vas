@@ -1,9 +1,9 @@
 # (c) 2017 Quest Software. All right reserved.
 
 dnl For exported trees, the version is derived from the NEWS file.
-AC_INIT([mod_auth_vas4], 
-	esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
-	     echo -n `head -n1 NEWS | cut -f1`.exp; fi),
+AC_INIT([mod_auth_vas4],
+	m4_translit(esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
+	     echo \"`head -n1 NEWS | cut -f1`.exp\"; fi), m4_newline),
 	[support@quest.com])
 AC_PREREQ(2.55)
 AC_CONFIG_HEADERS([config.h])
