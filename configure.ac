@@ -384,12 +384,38 @@ libdir=$AP_MODULEDIR
 sysconfdir=$AP_SYSCONFDIR
 
 # APXS1 only has CFLAGS. APXS2 has the gamut of flags
-APXS_CFLAGS=`$APXS -q CFLAGS`
+APXS_DESIRED_CFLAGS=`$APXS -q CFLAGS`
+AC_MSG_NOTICE([APXS_CFLAGS: $APXS_DESIRED_CFLAGS])
 if test $APACHE_MAJOR_VERSION = 2; then
     APXS_CPPFLAGS=`$APXS -q CPPFLAGS`
     APXS_LDFLAGS=`$APXS -q LDFLAGS`
+    AC_MSG_NOTICE([APXS_CPPFLAGS: $APXS_CPPFLAGS])
+    AC_MSG_NOTICE([APXS_LDFLAGS: $APXS_LDFLAGS])
 fi
 APXS_CPPFLAGS="-I`$APXS -q INCLUDEDIR` $APXS_CPPFLAGS"
+
+# AC_MSG_CHECKING([whether ${CC} accepts cflags "$APXS -q CFLAGS" provided])
+APXS_FLAGS_OK=1
+orig_CFLAGS="$CFLAGS"
+for flag in $APXS_DESIRED_CFLAGS; do
+	AC_MSG_CHECKING([apxs flags: whether ${flag} is accepted])
+	CFLAGS="$orig_CFLAGS $APXS_CFLAGS $flag"
+
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,)],
+			  [AC_MSG_RESULT([yes])
+			   APXS_CFLAGS="$APXS_CFLAGS $flag"
+			  ],
+			  [AC_MSG_RESULT([no])
+			   APXS_FLAGS_OK=0])
+done
+CFLAGS=$orig_CFLAGS
+
+if test "$APXS_FLAGS_OK" != "1"; then
+	AC_MSG_WARN([Skipping some compiler flags apxs reported, because compiler does not support them.
+		    This is usually because Apache was compiled with some different compiler.
+		    Compilation might still work, but it is not guaranteed to.])
+fi
+
 AC_SUBST([APXS_CFLAGS])
 AC_SUBST([APXS_CPPFLAGS])
 AC_SUBST([APXS_LDFLAGS])
