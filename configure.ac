@@ -420,6 +420,7 @@ AC_SUBST([APXS_CFLAGS])
 AC_SUBST([APXS_CPPFLAGS])
 AC_SUBST([APXS_LDFLAGS])
 
+VAS_PREFIX=`$VASCONFIG --prefix`
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Convert a GNU ld search path (-rpath) into a libtool search path (-R)
 VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
@@ -444,15 +445,16 @@ AC_SUBST([VAS_LIBS])
 
 # Try vasapi functions
 LIBS_save="$LIBS"
-CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS $APR_INCLUDES" LIBS="$LIBS $VAS_LIBS"
-CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS $APR_INCLUDES" LIBS="$LIBS $VAS_LIBS"
+CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS $APR_INCLUDES"
+LIBS="$LIBS_save $VAS_LIBS"
+CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS $APR_INCLUDES"
 AC_CHECK_FUNC([vas_ctx_alloc],,[
 	       # Prevent the cached "no" being reused
 	       $as_unset ac_cv_func_vas_ctx_alloc
 	       # Try adding libgcc_s (VAS bug #12950)
-	       LIBS="$LIBS -L/opt/quest/lib/support -lgcc_s"
+	       LIBS="$LIBS -L$VAS_PREFIX/lib/support -lgcc_s"
 	       AC_CHECK_FUNC([vas_ctx_alloc],
-			     [VAS_LIBS="$VAS_LIBS -L/opt/quest/lib/support -lgcc_s"],
+			     [VAS_LIBS="$VAS_LIBS -L$VAS_PREFIX/lib/support -lgcc_s"],
 			     [AC_MSG_FAILURE([VAS 3 SDK required])])
 	       ])
 LIBS="$LIBS_save"
