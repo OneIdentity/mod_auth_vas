@@ -449,14 +449,26 @@ CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS $APR_INCLUDES"
 LIBS="$LIBS_save $VAS_LIBS"
 CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS $APR_INCLUDES"
 AC_CHECK_FUNC([vas_ctx_alloc],,[
-	       # Prevent the cached "no" being reused
-	       $as_unset ac_cv_func_vas_ctx_alloc
-	       # Try adding libgcc_s (VAS bug #12950)
-	       LIBS="$LIBS -L$VAS_PREFIX/lib/support -lgcc_s"
-	       AC_CHECK_FUNC([vas_ctx_alloc],
-			     [VAS_LIBS="$VAS_LIBS -L$VAS_PREFIX/lib/support -lgcc_s"],
-			     [AC_MSG_FAILURE([VAS 3 SDK required])])
-	       ])
+		# Prevent the cached "no" being reused
+		$as_unset ac_cv_func_vas_ctx_alloc
+		# Try adding libgcc_s (VAS bug #12950)
+		LIBS="$LIBS -L$VAS_PREFIX/lib/support -lgcc_s"
+		AC_CHECK_FUNC([vas_ctx_alloc],
+			[VAS_LIBS="$VAS_LIBS -L$VAS_PREFIX/lib/support -lgcc_s"],
+			[
+				# in case apxs cflags (eg. -m64) changes our build to the alternate target, we might
+				# need to link to those vas libs
+				VAS_LIBS=`echo "$VAS_LIBS" | sed -e "s,$VAS_PREFIX/lib,$VAS_PREFIX/lib/64,g"`
+				LIBS="$LIBS_save $VAS_LIBS"
+				$as_unset ac_cv_func_vas_ctx_alloc
+				AC_CHECK_FUNC([vas_ctx_alloc],
+					[],
+					[AC_MSG_FAILURE([Unable to found a way to compile/link against VAS SDK])]
+				)
+			]
+		)
+	]
+)
 LIBS="$LIBS_save"
 
 AC_ARG_ENABLE([rcdev-tests],
