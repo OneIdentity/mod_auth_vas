@@ -1,9 +1,9 @@
 # (c) 2017 Quest Software. All right reserved.
 
 dnl For exported trees, the version is derived from the NEWS file.
-AC_INIT([mod_auth_vas4], 
-	esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo -n `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
-	     echo -n `head -n1 NEWS | cut -f1`.exp; fi),
+AC_INIT([mod_auth_vas4],
+	m4_translit(esyscmd(if test -d .git && which git >/dev/null 2>&1; then echo `git describe``if ! git diff --quiet || ! git diff --cached --quiet; then echo M; fi`; else
+	     echo \"`head -n1 NEWS | cut -f1`.exp\"; fi), m4_newline),
 	[support@quest.com])
 AC_PREREQ(2.55)
 AC_CONFIG_HEADERS([config.h])
@@ -340,6 +340,19 @@ if test -n "$APR_CONFIG"; then
     APR_LDFLAGS=`$APR_CONFIG --ldflags`
 fi
 
+# The APU_CONFIG can tell us the directory of apr_* headers
+AC_MSG_CHECKING([whether $APXS defines APU_CONFIG])
+if $APXS -q APU_CONFIG >/dev/null 2>&1; then
+    AC_MSG_RESULT([yes])
+    APU_CONFIG=`$APXS -q APU_CONFIG`
+else
+    AC_MSG_RESULT([no])
+fi
+
+if test -n "$APU_CONFIG"; then
+    APR_INCLUDES="$APR_INCLUDES `$APU_CONFIG --includes`"
+fi
+
 AC_SUBST([APR_INCLUDES])
 AC_SUBST([APR_LIBS])
 AC_SUBST([APR_CFLAGS])
@@ -371,16 +384,43 @@ libdir=$AP_MODULEDIR
 sysconfdir=$AP_SYSCONFDIR
 
 # APXS1 only has CFLAGS. APXS2 has the gamut of flags
-APXS_CFLAGS=`$APXS -q CFLAGS`
+APXS_DESIRED_CFLAGS=`$APXS -q CFLAGS`
+AC_MSG_NOTICE([APXS_CFLAGS: $APXS_DESIRED_CFLAGS])
 if test $APACHE_MAJOR_VERSION = 2; then
     APXS_CPPFLAGS=`$APXS -q CPPFLAGS`
     APXS_LDFLAGS=`$APXS -q LDFLAGS`
+    AC_MSG_NOTICE([APXS_CPPFLAGS: $APXS_CPPFLAGS])
+    AC_MSG_NOTICE([APXS_LDFLAGS: $APXS_LDFLAGS])
 fi
 APXS_CPPFLAGS="-I`$APXS -q INCLUDEDIR` $APXS_CPPFLAGS"
+
+# AC_MSG_CHECKING([whether ${CC} accepts cflags "$APXS -q CFLAGS" provided])
+APXS_FLAGS_OK=1
+orig_CFLAGS="$CFLAGS"
+for flag in $APXS_DESIRED_CFLAGS; do
+	AC_MSG_CHECKING([apxs flags: whether ${flag} is accepted])
+	CFLAGS="$orig_CFLAGS $APXS_CFLAGS $flag"
+
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,)],
+			  [AC_MSG_RESULT([yes])
+			   APXS_CFLAGS="$APXS_CFLAGS $flag"
+			  ],
+			  [AC_MSG_RESULT([no])
+			   APXS_FLAGS_OK=0])
+done
+CFLAGS=$orig_CFLAGS
+
+if test "$APXS_FLAGS_OK" != "1"; then
+	AC_MSG_WARN([Skipping some compiler flags apxs reported, because compiler does not support them.
+		    This is usually because Apache was compiled with some different compiler.
+		    Compilation might still work, but it is not guaranteed to.])
+fi
+
 AC_SUBST([APXS_CFLAGS])
 AC_SUBST([APXS_CPPFLAGS])
 AC_SUBST([APXS_LDFLAGS])
 
+VAS_PREFIX=`$VASCONFIG --prefix`
 VAS_CFLAGS=`$VASCONFIG --cflags vasapi`
 # Convert a GNU ld search path (-rpath) into a libtool search path (-R)
 VAS_LIBS=`$VASCONFIG --libs vasapi | sed -e 's/-Wl,-rpath/-Wl,-R/g'`
@@ -405,17 +445,30 @@ AC_SUBST([VAS_LIBS])
 
 # Try vasapi functions
 LIBS_save="$LIBS"
-CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS $APR_INCLUDES" LIBS="$LIBS $VAS_LIBS"
-CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS $APR_INCLUDES" LIBS="$LIBS $VAS_LIBS"
+CFLAGS="$CFLAGS $VAS_CFLAGS $APXS_CFLAGS $APR_INCLUDES"
+LIBS="$LIBS_save $VAS_LIBS"
+CPPFLAGS="$CPPFLAGS $APXS_CPPFLAGS $APR_INCLUDES"
 AC_CHECK_FUNC([vas_ctx_alloc],,[
-	       # Prevent the cached "no" being reused
-	       $as_unset ac_cv_func_vas_ctx_alloc
-	       # Try adding libgcc_s (VAS bug #12950)
-	       LIBS="$LIBS -L/opt/quest/lib/support -lgcc_s"
-	       AC_CHECK_FUNC([vas_ctx_alloc],
-			     [VAS_LIBS="$VAS_LIBS -L/opt/quest/lib/support -lgcc_s"],
-			     [AC_MSG_FAILURE([VAS 3 SDK required])])
-	       ])
+		# Prevent the cached "no" being reused
+		$as_unset ac_cv_func_vas_ctx_alloc
+		# Try adding libgcc_s (VAS bug #12950)
+		LIBS="$LIBS -L$VAS_PREFIX/lib/support -lgcc_s"
+		AC_CHECK_FUNC([vas_ctx_alloc],
+			[VAS_LIBS="$VAS_LIBS -L$VAS_PREFIX/lib/support -lgcc_s"],
+			[
+				# in case apxs cflags (eg. -m64) changes our build to the alternate target, we might
+				# need to link to those vas libs
+				VAS_LIBS=`echo "$VAS_LIBS" | sed -e "s,$VAS_PREFIX/lib,$VAS_PREFIX/lib/64,g"`
+				LIBS="$LIBS_save $VAS_LIBS"
+				$as_unset ac_cv_func_vas_ctx_alloc
+				AC_CHECK_FUNC([vas_ctx_alloc],
+					[],
+					[AC_MSG_FAILURE([Unable to found a way to compile/link against VAS SDK])]
+				)
+			]
+		)
+	]
+)
 LIBS="$LIBS_save"
 
 AC_ARG_ENABLE([rcdev-tests],
